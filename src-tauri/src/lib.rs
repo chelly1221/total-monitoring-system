@@ -1,7 +1,12 @@
 use std::path::PathBuf;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use tauri::Manager;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct ManagedProcesses {
     server: Option<Child>,
@@ -46,12 +51,15 @@ fn init_database(resource_dir: &PathBuf, database_url: &str) -> Result<(), Strin
         return Err(format!("init-db.js not found: {}", init_script.display()));
     }
 
-    let status = std::process::Command::new("node")
-        .arg(&init_script)
+    let mut cmd = std::process::Command::new("node");
+    cmd.arg(&init_script)
         .arg(&schema_path)
         .env("DATABASE_URL", database_url)
         .env("PATH", std::env::var("PATH").unwrap_or_default())
-        .current_dir(resource_dir)
+        .current_dir(resource_dir);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let status = cmd
         .status()
         .map_err(|e| format!("Failed to run init-db: {}", e))?;
 
@@ -65,26 +73,30 @@ fn init_database(resource_dir: &PathBuf, database_url: &str) -> Result<(), Strin
 fn spawn_server(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
     let server_script = resource_dir.join("standalone").join("server.js");
 
-    Command::new("node")
-        .arg(&server_script)
+    let mut cmd = Command::new("node");
+    cmd.arg(&server_script)
         .env("PORT", "7777")
         .env("HOSTNAME", "127.0.0.1")
         .env("DATABASE_URL", database_url)
         .current_dir(resource_dir.join("standalone"))
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.spawn()
         .map_err(|e| format!("Failed to start server: {}", e))
 }
 
 fn spawn_worker(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
     let worker_script = resource_dir.join("worker").join("index.js");
 
-    Command::new("node")
-        .arg(&worker_script)
+    let mut cmd = Command::new("node");
+    cmd.arg(&worker_script)
         .env("DATABASE_URL", database_url)
         .current_dir(resource_dir)
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.spawn()
         .map_err(|e| format!("Failed to start worker: {}", e))
 }
 
