@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model System {
+  id          String    @id @default(cuid())
+  name        String
+  type        String    // 'equipment' | 'ups' | 'sensor' (legacy: radar, fms, etc.)
+  status      String    @default("offline") // normal, warning, critical, offline
+  isActive    Boolean   @default(true)
+  isEnabled   Boolean   @default(true)   // User toggle for enable/disable
+  port        Int?                        // UDP/TCP port (optional for legacy data)
+  protocol    String?                     // 'udp' or 'tcp' (optional for legacy data)
+  lastDataAt  DateTime?                   // Last data received timestamp for offline detection
+  config      String?                     // JSON configuration for type-specific settings
+  audioConfig String?                     // JSON: { type: 'tts'|'file'|'none', text?, fileName? }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  metrics Metric[]
+  alarms  Alarm[]
+
+  @@map("systems")
+}
+
+model Metric {
+  id        String   @id @default(cuid())
+  systemId  String
+  name      String
+  value     Float
+  textValue String?
+  unit      String
+  min       Float?
+  max       Float?
+  warningThreshold  Float?
+  criticalThreshold Float?
+  trend     String?  // up, down, stable
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  system  System          @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  history MetricHistory[]
+
+  @@map("metrics")
+}
+
+model MetricHistory {
+  id         String   @id @default(cuid())
+  metricId   String
+  value      Float
+  recordedAt DateTime @default(now())
+
+  metric Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+
+  @@index([metricId, recordedAt])
+  @@map("metric_history")
+}
+
+model Alarm {
+  id           String    @id @default(cuid())
+  systemId     String
+  severity     String    // warning, critical
+  message      String
+  value        String?
+  acknowledged Boolean   @default(false)
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@map("alarms")
+}
+
+model AlarmLog {
+  id        String   @id @default(cuid())
+  systemId  String
+  systemName String
+  severity  String
+  message   String
+  value     String?
+  createdAt DateTime @default(now())
+
+  @@map("alarm_logs")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Siren {
+  id        String   @id @default(cuid())
+  ip        String
+  port      Int
+  protocol   String   @default("tcp")
+  messageOn  String
+  messageOff String   @default("")
+  location   String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sirens")
+}

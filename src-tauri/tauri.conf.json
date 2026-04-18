@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicktomlin/tauri-settings-schema/refs/heads/main/schema/2.1.1.json",
+  "productName": "TMS Portable",
+  "version": "0.1.0",
+  "identifier": "kr.chelly.tms-portable",
+  "build": {
+    "beforeBuildCommand": "npm run tauri:build-frontend",
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:7777"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "통합알람감시체계",
+        "width": 1920,
+        "height": 1080,
+        "fullscreen": false,
+        "resizable": true,
+        "url": "http://localhost:7777"
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "tooltip": "통합알람감시체계"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true,
+      "scope": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        }
+      ]
+    }
+  }
+}

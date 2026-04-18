@@ -1,0 +1,17 @@
+[Unit]
+Description=통합알람감시체계 Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=dietpi
+WorkingDirectory=/home/dietpi/alarm
+ExecStart=/usr/local/bin/npm start
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

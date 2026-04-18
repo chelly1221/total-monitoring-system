@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicktomlin/tauri-settings-schema/refs/heads/main/schema/capability.json",
+  "identifier": "default",
+  "description": "Default capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "shell:allow-open",
+    "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-maximize",
+    "core:window:allow-minimize"
+  ]
+}
