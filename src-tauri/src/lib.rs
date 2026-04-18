@@ -13,34 +13,75 @@ struct AppState {
 }
 
 fn get_resource_dir(app: &tauri::AppHandle) -> PathBuf {
-    app.path()
+    let dir = app
+        .path()
         .resource_dir()
         .expect("failed to resolve resource dir")
-        .join("resources")
+        .join("resources");
+    dunce::canonicalize(&dir).unwrap_or(dir)
 }
 
-fn get_node_path() -> String {
-    "node".to_string()
+fn get_data_dir(app: &tauri::AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .expect("failed to resolve app data dir");
+    std::fs::create_dir_all(&dir).ok();
+    dunce::canonicalize(&dir).unwrap_or(dir)
 }
 
-fn spawn_server(resource_dir: &PathBuf) -> Result<Child, String> {
+fn get_database_url(data_dir: &PathBuf) -> String {
+    let db_path = data_dir.join("app.db");
+    format!("file:{}", db_path.display())
+}
+
+fn init_database(resource_dir: &PathBuf, database_url: &str) -> Result<(), String> {
+    let schema_path = resource_dir.join("prisma").join("schema.prisma");
+    if !schema_path.exists() {
+        return Err(format!("Prisma schema not found: {}", schema_path.display()));
+    }
+
+    let init_script = resource_dir.join("init-db.js");
+    if !init_script.exists() {
+        return Err(format!("init-db.js not found: {}", init_script.display()));
+    }
+
+    let status = std::process::Command::new("node")
+        .arg(&init_script)
+        .arg(&schema_path)
+        .env("DATABASE_URL", database_url)
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .current_dir(resource_dir)
+        .status()
+        .map_err(|e| format!("Failed to run init-db: {}", e))?;
+
+    if !status.success() {
+        return Err("Database initialization failed".to_string());
+    }
+
+    Ok(())
+}
+
+fn spawn_server(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
     let server_script = resource_dir.join("standalone").join("server.js");
 
-    Command::new(get_node_path())
+    Command::new("node")
         .arg(&server_script)
         .env("PORT", "7777")
         .env("HOSTNAME", "127.0.0.1")
+        .env("DATABASE_URL", database_url)
         .current_dir(resource_dir.join("standalone"))
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Failed to start server: {}", e))
 }
 
-fn spawn_worker(resource_dir: &PathBuf) -> Result<Child, String> {
+fn spawn_worker(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
     let worker_script = resource_dir.join("worker").join("index.js");
 
-    Command::new(get_node_path())
+    Command::new("node")
         .arg(&worker_script)
+        .env("DATABASE_URL", database_url)
         .current_dir(resource_dir)
         .kill_on_drop(true)
         .spawn()
@@ -74,20 +115,37 @@ pub fn run() {
 
             tauri::async_runtime::spawn(async move {
                 let resource_dir = get_resource_dir(&handle);
+                let data_dir = get_data_dir(&handle);
+                let database_url = get_database_url(&data_dir);
 
-                let server = spawn_server(&resource_dir);
-                let worker = spawn_worker(&resource_dir);
+                eprintln!("[tms] Resource dir: {}", resource_dir.display());
+                eprintln!("[tms] Data dir: {}", data_dir.display());
+                eprintln!("[tms] Database URL: {}", database_url);
+
+                match init_database(&resource_dir, &database_url) {
+                    Ok(_) => eprintln!("[tms] Database initialized"),
+                    Err(e) => eprintln!("[tms] Database init error: {}", e),
+                }
+
+                let server = spawn_server(&resource_dir, &database_url);
+                let worker = spawn_worker(&resource_dir, &database_url);
 
                 let state = handle.state::<AppState>();
                 let mut procs = state.processes.lock().await;
 
                 match server {
-                    Ok(child) => procs.server = Some(child),
-                    Err(e) => eprintln!("Server start error: {}", e),
+                    Ok(child) => {
+                        eprintln!("[tms] Server started");
+                        procs.server = Some(child);
+                    }
+                    Err(e) => eprintln!("[tms] Server start error: {}", e),
                 }
                 match worker {
-                    Ok(child) => procs.worker = Some(child),
-                    Err(e) => eprintln!("Worker start error: {}", e),
+                    Ok(child) => {
+                        eprintln!("[tms] Worker started");
+                        procs.worker = Some(child);
+                    }
+                    Err(e) => eprintln!("[tms] Worker start error: {}", e),
                 }
 
                 drop(procs);

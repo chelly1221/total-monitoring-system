@@ -72,4 +72,24 @@ if (fs.existsSync(prismaNodeModule)) {
   cp(prismaNodeModule, path.join(RESOURCES, 'node_modules', '@prisma'));
 }
 
+// Copy prisma CLI (needed for runtime db push)
+const prismaCli = path.join(ROOT, 'node_modules', 'prisma');
+if (fs.existsSync(prismaCli)) {
+  cp(prismaCli, path.join(RESOURCES, 'node_modules', 'prisma'));
+}
+
+// Copy .bin/prisma for npx
+const binDir = path.join(ROOT, 'node_modules', '.bin');
+const resBinDir = path.join(RESOURCES, 'node_modules', '.bin');
+fs.mkdirSync(resBinDir, { recursive: true });
+for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
+  const src = path.join(binDir, name);
+  if (fs.existsSync(src)) {
+    fs.cpSync(src, path.join(resBinDir, name));
+  }
+}
+
+// Copy init-db script
+fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
+
 console.log('\n✅ Build complete. Resources ready in src-tauri/resources/');

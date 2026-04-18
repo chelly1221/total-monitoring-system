@@ -3735,6 +3735,7 @@ dependencies = [
 name = "tms-portable"
 version = "0.1.0"
 dependencies = [
+ "dunce",
  "serde",
  "serde_json",
  "tauri",
