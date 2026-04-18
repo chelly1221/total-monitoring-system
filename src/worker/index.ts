@@ -56,8 +56,7 @@ syncOfflineAlarms()
 console.log('\n' + '-'.repeat(60))
 console.log('Worker is running. Press Ctrl+C to stop.\n')
 
-// Health check interval (60s)
-const HEALTH_CHECK_INTERVAL = 60000
+const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL || '60000', 10)
 const expectedUdp = Object.keys(UDP_PORTS).length
 const expectedTcp = Object.keys(TCP_PORTS).length
 

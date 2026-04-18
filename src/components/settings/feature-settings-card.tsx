@@ -39,15 +39,15 @@ export function FeatureSettingsCard({
   }
 
   return (
-    <Card className="py-4">
-      <CardHeader>
+    <Card className="flex flex-1 flex-col py-4">
+      <CardHeader className="shrink-0">
         <div className="flex items-center gap-2">
           <ToggleLeft className="h-5 w-5" />
           <CardTitle>기능 표시 설정</CardTitle>
         </div>
         <CardDescription>탭 및 버튼의 표시 여부를 설정합니다</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-1 flex-col justify-center space-y-4">
         <div className="flex items-center justify-between">
           <Label htmlFor="temperature-toggle" className="cursor-pointer">온습도 탭</Label>
           <Switch

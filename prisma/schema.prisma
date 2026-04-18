@@ -75,6 +75,7 @@ model Alarm {
 
   system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
 
+  @@index([systemId, resolvedAt])
   @@map("alarms")
 }
 
@@ -113,5 +114,6 @@ model Siren {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([ip, port])
   @@map("sirens")
 }

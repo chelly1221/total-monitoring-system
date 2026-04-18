@@ -24,6 +24,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    // Magic bytes validation
+    const isWav = buffer.length >= 12 && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+    const isMp3Id3 = buffer.length >= 3 && buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33
+    const isMp3Sync = buffer.length >= 2 && buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0
+    if (!isWav && !isMp3Id3 && !isMp3Sync) {
+      return NextResponse.json(
+        { error: '유효한 MP3 또는 WAV 파일이 아닙니다' },
+        { status: 400 }
+      )
+    }
+
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
         { error: '파일 크기는 5MB 이하여야 합니다' },
@@ -42,7 +55,6 @@ export async function POST(request: NextRequest) {
     await mkdir(audioDir, { recursive: true })
 
     const filePath = path.join(audioDir, fileName)
-    const buffer = Buffer.from(await file.arrayBuffer())
     await writeFile(filePath, buffer)
 
     return NextResponse.json({

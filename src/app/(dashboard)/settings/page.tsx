@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { GateSettingsCard } from '@/components/settings/gate-settings-card'
 import { SirenSettingsCard } from '@/components/settings/siren-settings-card'
 import { FeatureSettingsCard } from '@/components/settings/feature-settings-card'
+import { DataManagementCard } from '@/components/settings/data-management-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,15 +22,14 @@ export default async function SettingsPage() {
   const [settings, sirens] = await Promise.all([getSettings(), getSirens()])
 
   return (
-    <div className="space-y-4">
-      <div>
+    <div className="flex h-full flex-col gap-4">
+      <div className="shrink-0">
         <h1 className="text-2xl font-bold">설정</h1>
         <p className="text-muted-foreground">시스템 설정 관리</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Left column: Gate + Feature toggles */}
-        <div className="space-y-4">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
+        <div className="flex flex-col gap-4">
           <GateSettingsCard
             initialIp={settings.gateIp}
             initialPort={settings.gatePort}
@@ -40,9 +40,9 @@ export default async function SettingsPage() {
             initialUpsEnabled={settings.upsEnabled !== 'false'}
             initialGateEnabled={settings.gateEnabled !== 'false'}
           />
+          <DataManagementCard />
         </div>
 
-        {/* Right column: Siren */}
         <SirenSettingsCard initialSirens={sirens} />
       </div>
     </div>

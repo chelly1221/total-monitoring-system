@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
@@ -112,10 +112,28 @@ async fn kill_processes(state: &AppState) {
     procs.worker = None;
 }
 
+#[tauri::command]
+async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, path: String) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let url = format!("http://localhost:7777{}", path);
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url.parse().unwrap()))
+        .title(&title)
+        .inner_size(1920.0, 1080.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![open_sub_window])
         .manage(AppState {
             processes: Mutex::new(ManagedProcesses {
                 server: None,
@@ -173,11 +191,13 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                let handle = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let state = handle.state::<AppState>();
-                    kill_processes(&state).await;
-                });
+                if window.label() == "main" {
+                    let handle = window.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state = handle.state::<AppState>();
+                        kill_processes(&state).await;
+                    });
+                }
             }
         })
         .run(tauri::generate_context!())

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,8 +19,8 @@ import { useRealtime } from '@/components/realtime/realtime-provider'
 
 const navItems = [
   { href: '/', label: '대시보드', icon: LayoutDashboard },
-  { href: '/temperature', label: '온습도', icon: Thermometer },
-  { href: '/ups', label: 'UPS', icon: BatteryCharging },
+  { href: '/temperature', label: '온습도', icon: Thermometer, openInNewWindow: true },
+  { href: '/ups', label: 'UPS', icon: BatteryCharging, openInNewWindow: true },
   { href: '/alarms', label: '알람 로그', icon: AlertTriangle },
 ]
 
@@ -30,6 +30,23 @@ export function Sidebar() {
   const [showInfo, setShowInfo] = useState(false)
   const { alarms, featureFlags } = useRealtime()
   const alarmCount = alarms.filter(a => !a.acknowledged && !a.resolvedAt).length
+
+  const openNewWindow = useCallback(async (href: string, label: string) => {
+    const titles: Record<string, string> = {
+      temperature: '온습도 감시',
+      ups: 'UPS 감시',
+    }
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('open_sub_window', {
+        label,
+        title: titles[label] || label,
+        path: `${href}?standalone=true`,
+      })
+    } catch {
+      window.open(`${href}?standalone=true`, '_blank', 'width=1920,height=1080')
+    }
+  }, [])
 
   const filteredNavItems = navItems.filter((item) => {
     if (item.href === '/temperature' && !featureFlags.temperatureEnabled) return false
@@ -53,17 +70,15 @@ export function Sidebar() {
 
             const showBadge = item.href === '/alarms' && alarmCount > 0
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors relative',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
+            const className = cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors relative',
+              isActive
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            )
+
+            const content = (
+              <>
                 <div className="relative shrink-0">
                   <Icon className="h-5 w-5" />
                   {showBadge && collapsed && (
@@ -85,6 +100,29 @@ export function Sidebar() {
                     )}
                   </>
                 )}
+              </>
+            )
+
+            if (item.openInNewWindow) {
+              const windowLabel = item.href.replace('/', '')
+              return (
+                <button
+                  key={item.href}
+                  className={className}
+                  onClick={() => openNewWindow(item.href, windowLabel)}
+                >
+                  {content}
+                </button>
+              )
+            }
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={className}
+              >
+                {content}
               </Link>
             )
           })}

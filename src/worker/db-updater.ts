@@ -15,6 +15,9 @@ import type { EquipmentConfig, MetricsConfig, SystemStatus, DisplayItem } from '
 import { evaluateSensorStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
 import { executeCustomCode } from './custom-code-executor'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('db-updater')
 
 export const prisma = new PrismaClient()
 
@@ -34,9 +37,43 @@ const SPIKE_BUFFER_SIZE = 20
 const SPIKE_WARMUP = 5
 const SPIKE_Z_THRESHOLD = 3.5
 
+// Parsed config cache to avoid repeated JSON.parse on every data point
+const configCache = new Map<string, { raw: string; parsed: Record<string, unknown> }>()
+
+function getParsedConfig(systemId: string, configJson: string | null): Record<string, unknown> | null {
+  if (!configJson) return null
+  const cached = configCache.get(systemId)
+  if (cached && cached.raw === configJson) return cached.parsed
+  try {
+    const parsed = JSON.parse(configJson) as Record<string, unknown>
+    configCache.set(systemId, { raw: configJson, parsed })
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Clean up in-memory maps for a deleted system.
+ */
+export function cleanupSystemMaps(systemId: string): void {
+  for (const key of criticalCounters.keys()) {
+    if (key === systemId || key.startsWith(`${systemId}:`)) criticalCounters.delete(key)
+  }
+  for (const key of metricCriticalState.keys()) {
+    if (key === systemId || key.startsWith(`${systemId}:`)) metricCriticalState.delete(key)
+  }
+  for (const key of spikeFilterBuffers.keys()) {
+    if (key.startsWith(systemId)) spikeFilterBuffers.delete(key)
+  }
+  systemMutexes.delete(systemId)
+  configCache.delete(systemId)
+  log.debug(`Cleaned up maps for system ${systemId}`)
+}
+
 function withSystemMutex(systemId: string, fn: () => Promise<void>): Promise<void> {
   const prev = systemMutexes.get(systemId) ?? Promise.resolve()
-  const next = prev.then(fn, fn)
+  const next = prev.catch(() => {}).then(fn)
   systemMutexes.set(systemId, next)
   return next
 }
@@ -64,7 +101,7 @@ function isSpikeValue(metricId: string, newValue: number, metricMin: number | nu
     const minDelta = range > 0 ? range * 0.3 : 5 // 30% of range, or absolute 5 as last resort
     const deviation = Math.abs(newValue - median)
     if (deviation > minDelta) {
-      console.log(`[SpikeFilter] Rejected metricId=${metricId} value=${newValue} (median=${median.toFixed(2)}, MAD≈0, delta=${deviation.toFixed(2)} > ${minDelta.toFixed(2)})`)
+      log.debug(`[SpikeFilter] Rejected metricId=${metricId} value=${newValue} (median=${median.toFixed(2)}, MAD≈0, delta=${deviation.toFixed(2)} > ${minDelta.toFixed(2)})`)
       return true
     }
     return false
@@ -72,7 +109,7 @@ function isSpikeValue(metricId: string, newValue: number, metricMin: number | nu
 
   const modifiedZScore = 0.6745 * Math.abs(newValue - median) / mad
   if (modifiedZScore > SPIKE_Z_THRESHOLD) {
-    console.log(`[SpikeFilter] Rejected metricId=${metricId} value=${newValue} (median=${median.toFixed(2)}, MAD=${mad.toFixed(2)}, z=${modifiedZScore.toFixed(2)})`)
+    log.debug(`[SpikeFilter] Rejected metricId=${metricId} value=${newValue} (median=${median.toFixed(2)}, MAD=${mad.toFixed(2)}, z=${modifiedZScore.toFixed(2)})`)
     return true
   }
   return false
@@ -93,10 +130,8 @@ function addToSpikeBuffer(metricId: string, value: number): void {
   }
 }
 
-// Offline detection interval (check every 10 seconds)
-const OFFLINE_CHECK_INTERVAL = 10000
-// Systems are marked offline after 5 minutes of no data
-const OFFLINE_THRESHOLD = 300000
+const OFFLINE_CHECK_INTERVAL = parseInt(process.env.OFFLINE_CHECK_INTERVAL || '10000', 10)
+const OFFLINE_THRESHOLD = parseInt(process.env.OFFLINE_THRESHOLD || '300000', 10)
 
 let offlineCheckInterval: ReturnType<typeof setInterval> | null = null
 let historyCleanupInterval: ReturnType<typeof setInterval> | null = null
@@ -136,14 +171,10 @@ async function processSystemMetric(
 ): Promise<boolean> {
   // Check if this is an equipment type system with pattern matching
   let equipmentConfig: EquipmentConfig | null = null
-  if (system.config) {
-    try {
-      const parsed = JSON.parse(system.config)
-      if (parsed.normalPatterns || parsed.criticalPatterns) {
-        equipmentConfig = parsed as EquipmentConfig
-      }
-    } catch {
-      // Invalid JSON, ignore
+  const parsedConfig = getParsedConfig(system.id, system.config)
+  if (parsedConfig) {
+    if (parsedConfig.normalPatterns || parsedConfig.criticalPatterns) {
+      equipmentConfig = parsedConfig as unknown as EquipmentConfig
     }
   }
 
@@ -156,10 +187,10 @@ async function processSystemMetric(
       const count = Math.min((criticalCounters.get(system.id) ?? 0) + 1, CRITICAL_THRESHOLD)
       criticalCounters.set(system.id, count)
       if (count < CRITICAL_THRESHOLD) {
-        console.log(`[db-updater] ${system.name}: critical count ${count}/${CRITICAL_THRESHOLD}`)
+        log.debug(`${system.name}: critical count ${count}/${CRITICAL_THRESHOLD}`)
         newStatus = null // suppress until threshold reached
       } else {
-        console.log(`[db-updater] ${system.name}: critical threshold reached (${count}/${CRITICAL_THRESHOLD})`)
+        log.debug(`${system.name}: critical threshold reached (${count}/${CRITICAL_THRESHOLD})`)
       }
     } else if (newStatus !== null) {
       // Non-critical matched status → decrement counter symmetrically
@@ -168,11 +199,11 @@ async function processSystemMetric(
         const count = prev - 1
         if (count > 0) {
           criticalCounters.set(system.id, count)
-          console.log(`[db-updater] ${system.name}: critical counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
+          log.debug(`${system.name}: critical counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
           newStatus = null // suppress normal until counter reaches 0
         } else {
           criticalCounters.delete(system.id)
-          console.log(`[db-updater] ${system.name}: critical counter cleared, allowing status change`)
+          log.debug(`${system.name}: critical counter cleared, allowing status change`)
         }
       }
     }
@@ -180,7 +211,7 @@ async function processSystemMetric(
 
     // null = unmatched message → ignore (lastDataAt still updated below)
     if (newStatus === null) {
-      console.log(`[db-updater] ${system.name}: unmatched message ignored (${data.value})`)
+      log.debug(`${system.name}: unmatched message ignored (${data.value})`)
     } else {
       // Get current status
       const currentSystem = await prisma.system.findUnique({
@@ -195,7 +226,7 @@ async function processSystemMetric(
           data: { status: newStatus },
         })
         broadcastSystemStatus(system.id, system.name, newStatus)
-        console.log(`[db-updater] ${system.name} status: ${currentSystem.status} → ${newStatus}`)
+        log.info(`${system.name} status: ${currentSystem.status} → ${newStatus}`)
 
         // Resolve alarms when system returns to normal
         if (newStatus === 'normal' && currentSystem.status !== 'normal') {
@@ -208,7 +239,7 @@ async function processSystemMetric(
           })
 
           if (resolvedCount.count > 0) {
-            console.log(`[db-updater] Resolved ${resolvedCount.count} alarm(s) for ${system.name}`)
+            log.info(`Resolved ${resolvedCount.count} alarm(s) for ${system.name}`)
             broadcastAlarmResolution(system.id, system.name)
           }
 
@@ -248,7 +279,7 @@ async function processSystemMetric(
             `${system.name} ${statusLabel} 상태 (${data.value})`
           )
 
-          console.log(`[db-updater] Alarm created for ${system.name}: ${statusLabel}`)
+          log.info(`Alarm created for ${system.name}: ${statusLabel}`)
 
           // Sync siren state after alarm creation
           await syncSirenState()
@@ -260,14 +291,9 @@ async function processSystemMetric(
 
   // UPS/Sensor type: check for condition-based config
   let metricsConfig: MetricsConfig | null = null
-  if (system.config) {
-    try {
-      const parsed = JSON.parse(system.config)
-      if ((parsed.delimiter || parsed.customCode) && parsed.displayItems) {
-        metricsConfig = parsed as MetricsConfig
-      }
-    } catch {
-      // Invalid JSON
+  if (parsedConfig) {
+    if ((parsedConfig.delimiter || parsedConfig.customCode) && parsedConfig.displayItems) {
+      metricsConfig = parsedConfig as unknown as MetricsConfig
     }
   }
 
@@ -287,7 +313,8 @@ async function processSystemMetric(
       // Custom code path: run user code to extract metric values
       const codeResult = executeCustomCode(system.id, metricsConfig.customCode, data.value)
       if (codeResult === null) {
-        return false // Custom code execution error, skip
+        log.error(`Custom code execution failed for system ${system.name} (${system.id}), raw: ${data.value.substring(0, 100)}`)
+        return false
       }
       customCodeRan = true
       for (const [metricName, val] of Object.entries(codeResult)) {
@@ -433,13 +460,13 @@ async function processSystemMetric(
             if (count >= CRITICAL_THRESHOLD) {
               metricCriticalState.set(counterKey, true)
             }
-            console.log(`[db-updater] ${system.name}:${displayItem.name} critical count ${count}/${CRITICAL_THRESHOLD}`)
+            log.debug(`${system.name}:${displayItem.name} critical count ${count}/${CRITICAL_THRESHOLD}`)
           } else {
             const prev = criticalCounters.get(counterKey) ?? 0
             if (prev > 0) {
               criticalCounters.delete(counterKey)
               metricCriticalState.delete(counterKey)
-              console.log(`[db-updater] ${system.name}:${displayItem.name} non-critical, counter reset (was ${prev})`)
+              log.debug(`${system.name}:${displayItem.name} non-critical, counter reset (was ${prev})`)
             }
           }
         }
@@ -561,7 +588,7 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
     })
 
     if (systems.length === 0) {
-      console.log(`[db-updater] No systems found for port ${port}/${protocol}`)
+      log.debug(`No systems found for port ${port}/${protocol}`)
       return
     }
 
@@ -575,13 +602,9 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
         // For equipment: always update (even unmatched messages count for offline detection)
         // For sensor/ups: only update if data was actually processed
         let equipmentConfig: EquipmentConfig | null = null
-        if (system.config) {
-          try {
-            const parsed = JSON.parse(system.config)
-            if (parsed.normalPatterns || parsed.criticalPatterns) {
-              equipmentConfig = parsed as EquipmentConfig
-            }
-          } catch { /* ignore */ }
+        const cachedCfg = getParsedConfig(system.id, system.config)
+        if (cachedCfg && (cachedCfg.normalPatterns || cachedCfg.criticalPatterns)) {
+          equipmentConfig = cachedCfg as unknown as EquipmentConfig
         }
 
         if (equipmentConfig || processed) {
@@ -595,14 +618,14 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
         }
 
         if (processed) {
-          console.log(`[db-updater] Updated ${system.name}: ${data.value}`)
+          log.debug(`Updated ${system.name}: ${data.value}`)
         }
       } catch (error) {
-        console.error(`[db-updater] Error processing system ${system.name}:`, error)
+        log.error(`Error processing system ${system.name}:`, error)
       }
     }
   } catch (error) {
-    console.error(`[db-updater] Error updating port ${port}/${protocol}:`, error)
+    log.error(`Error updating port ${port}/${protocol}:`, error)
   }
 }
 
@@ -636,10 +659,10 @@ async function updateSystemStatus(
     const count = Math.min((criticalCounters.get(systemId) ?? 0) + 1, CRITICAL_THRESHOLD)
     criticalCounters.set(systemId, count)
     if (count < CRITICAL_THRESHOLD) {
-      console.log(`[db-updater] ${systemName}: critical count ${count}/${CRITICAL_THRESHOLD}`)
+      log.debug(`${systemName}: critical count ${count}/${CRITICAL_THRESHOLD}`)
       if (currentSystem) status = currentSystem.status as 'normal' | 'warning' | 'critical'
     } else {
-      console.log(`[db-updater] ${systemName}: critical threshold reached (${count}/${CRITICAL_THRESHOLD})`)
+      log.debug(`${systemName}: critical threshold reached (${count}/${CRITICAL_THRESHOLD})`)
     }
   } else {
     // Symmetric decrement: require CRITICAL_THRESHOLD consecutive non-critical to exit
@@ -648,11 +671,11 @@ async function updateSystemStatus(
       const count = prev - 1
       if (count > 0) {
         criticalCounters.set(systemId, count)
-        console.log(`[db-updater] ${systemName}: critical counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
+        log.debug(`${systemName}: critical counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
         if (currentSystem) status = currentSystem.status as 'normal' | 'warning' | 'critical'
       } else {
         criticalCounters.delete(systemId)
-        console.log(`[db-updater] ${systemName}: critical counter cleared, allowing status change`)
+        log.debug(`${systemName}: critical counter cleared, allowing status change`)
       }
     }
   }
@@ -677,7 +700,7 @@ async function updateSystemStatus(
       })
 
       if (resolvedCount.count > 0) {
-        console.log(`[db-updater] Resolved ${resolvedCount.count} alarm(s) for ${systemName}`)
+        log.info(`Resolved ${resolvedCount.count} alarm(s) for ${systemName}`)
         broadcastAlarmResolution(systemId, systemName)
       }
 
@@ -719,14 +742,14 @@ async function updateSystemStatus(
         alarmValue
       )
 
-      console.log(`[db-updater] Alarm created for ${systemName}: ${statusLabel}`)
+      log.info(`Alarm created for ${systemName}: ${statusLabel}`)
 
       // Sync siren state after alarm creation
       await syncSirenState()
     }
   }
   } catch (error) {
-    console.error(`[db-updater] Error in updateSystemStatus for ${systemName}:`, error)
+    log.error(`Error in updateSystemStatus for ${systemName}:`, error)
   }
 }
 
@@ -762,7 +785,7 @@ async function updateSensorSystemStatus(
       data: { resolvedAt: new Date() },
     })
     if (staleAlarms.count > 0) {
-      console.log(`[db-updater] Cleaned up ${staleAlarms.count} stale alarm(s) for ${systemName}`)
+      log.info(` Cleaned up ${staleAlarms.count} stale alarm(s) for ${systemName}`)
       broadcastAlarmResolution(systemId, systemName)
       await syncSirenState()
     }
@@ -787,7 +810,7 @@ async function updateSensorSystemStatus(
     })
 
     if (resolvedCount.count > 0) {
-      console.log(`[db-updater] Resolved ${resolvedCount.count} alarm(s) for ${systemName}`)
+      log.info(` Resolved ${resolvedCount.count} alarm(s) for ${systemName}`)
       broadcastAlarmResolution(systemId, systemName)
     }
 
@@ -843,7 +866,7 @@ async function updateSensorSystemStatus(
       })
 
       broadcastAlarm(systemId, systemName, alarm.id, severity, message, alarmValue)
-      console.log(`[db-updater] Alarm created for ${systemName}: ${statusLabel}`)
+      log.info(` Alarm created for ${systemName}: ${statusLabel}`)
       created = true
     }
 
@@ -861,7 +884,7 @@ async function updateSensorSystemStatus(
           data: { resolvedAt: new Date() },
         })
         resolvedAlarmIds.push(...legacyAlarms.map(a => a.id))
-        console.log(`[db-updater] Resolved legacy generic alarm(s) for ${systemName}`)
+        log.info(` Resolved legacy generic alarm(s) for ${systemName}`)
       }
     }
 
@@ -882,7 +905,7 @@ async function updateSensorSystemStatus(
           data: { resolvedAt: new Date() },
         })
         resolvedAlarmIds.push(...toResolve.map(a => a.id))
-        console.log(`[db-updater] Resolved ${label} alarm(s) for ${systemName}`)
+        log.info(` Resolved ${label} alarm(s) for ${systemName}`)
       }
     }
     if (resolvedAlarmIds.length > 0) {
@@ -892,7 +915,7 @@ async function updateSensorSystemStatus(
     if (created || resolvedAlarmIds.length > 0) await syncSirenState()
   }
   } catch (error) {
-    console.error(`[db-updater] Error in updateSensorSystemStatus for ${systemName}:`, error)
+    log.error(` Error in updateSensorSystemStatus for ${systemName}:`, error)
   }
 }
 
@@ -911,7 +934,7 @@ export async function processAlarm(config: PortConfig, data: ParsedData): Promis
     })
 
     if (!system) {
-      console.log(`[db-updater] Alarm system not found: ${config.system}`)
+      log.info(` Alarm system not found: ${config.system}`)
       return
     }
 
@@ -956,10 +979,10 @@ export async function processAlarm(config: PortConfig, data: ParsedData): Promis
       // Broadcast status change
       broadcastSystemStatus(system.id, system.name, 'warning')
 
-      console.log(`[db-updater] Alarm created for ${config.system}: ${alarmValue}`)
+      log.info(` Alarm created for ${config.system}: ${alarmValue}`)
     }
   } catch (error) {
-    console.error(`[db-updater] Error processing alarm for ${config.system}:`, error)
+    log.error(` Error processing alarm for ${config.system}:`, error)
   }
 }
 
@@ -989,7 +1012,7 @@ export async function syncOfflineAlarms(): Promise<void> {
       })
 
       broadcastAlarm(sys.id, sys.name, alarm.id, severity, `${sys.name} 오프라인`)
-      console.log(`[db-updater] Created offline alarm for ${sys.name} (sync, severity=${severity})`)
+      log.info(` Created offline alarm for ${sys.name} (sync, severity=${severity})`)
     }
 
     // Also sync critical/warning UPS systems that have no active alarm
@@ -1006,13 +1029,9 @@ export async function syncOfflineAlarms(): Promise<void> {
 
     for (const sys of criticalUpsSystems) {
       let metricsConfig: MetricsConfig | null = null
-      if (sys.config) {
-        try {
-          const parsed = JSON.parse(sys.config)
-          if ((parsed.delimiter || parsed.customCode) && parsed.displayItems) {
-            metricsConfig = parsed as MetricsConfig
-          }
-        } catch { /* ignore */ }
+      const cachedSysCfg = getParsedConfig(sys.id, sys.config)
+      if (cachedSysCfg && (cachedSysCfg.delimiter || cachedSysCfg.customCode) && cachedSysCfg.displayItems) {
+        metricsConfig = cachedSysCfg as unknown as MetricsConfig
       }
 
       if (metricsConfig) {
@@ -1066,15 +1085,15 @@ export async function syncOfflineAlarms(): Promise<void> {
         broadcastAlarm(sys.id, sys.name, alarm.id, 'critical', `${sys.name} 임계치 초과 상태`)
       }
 
-      console.log(`[db-updater] Created critical alarm for UPS ${sys.name} (sync)`)
+      log.info(` Created critical alarm for UPS ${sys.name} (sync)`)
     }
 
     const totalSynced = offlineSystems.length + criticalUpsSystems.length
     if (totalSynced > 0) {
-      console.log(`[db-updater] Synced ${totalSynced} alarm(s) (${offlineSystems.length} offline, ${criticalUpsSystems.length} UPS critical)`)
+      log.info(` Synced ${totalSynced} alarm(s) (${offlineSystems.length} offline, ${criticalUpsSystems.length} UPS critical)`)
     }
   } catch (error) {
-    console.error('[db-updater] Error syncing offline alarms:', error)
+    log.error(' Error syncing offline alarms:', error)
   }
 }
 
@@ -1084,7 +1103,7 @@ export async function syncOfflineAlarms(): Promise<void> {
 export function startOfflineDetection(): void {
   if (offlineCheckInterval) return
 
-  console.log('[db-updater] Starting offline detection (5min threshold)')
+  log.info(' Starting offline detection (5min threshold)')
 
   offlineCheckInterval = setInterval(async () => {
     try {
@@ -1103,7 +1122,7 @@ export function startOfflineDetection(): void {
         const timeSinceLastData = now - lastData
 
         if (timeSinceLastData > OFFLINE_THRESHOLD) {
-          console.log(`[db-updater] System "${system.name}" offline (${Math.round(timeSinceLastData / 1000)}s since last data)`)
+          log.info(` System "${system.name}" offline (${Math.round(timeSinceLastData / 1000)}s since last data)`)
 
           // Update status to offline
           await prisma.system.update({
@@ -1144,7 +1163,7 @@ export function startOfflineDetection(): void {
         }
       }
     } catch (error) {
-      console.error('[db-updater] Offline detection error:', error)
+      log.error(' Offline detection error:', error)
     }
   }, OFFLINE_CHECK_INTERVAL)
 }
@@ -1156,7 +1175,7 @@ export function stopOfflineDetection(): void {
   if (offlineCheckInterval) {
     clearInterval(offlineCheckInterval)
     offlineCheckInterval = null
-    console.log('[db-updater] Offline detection stopped')
+    log.info(' Offline detection stopped')
   }
 }
 
@@ -1172,7 +1191,7 @@ export function stopOfflineDetection(): void {
 export function startHistoryCleanup(): void {
   if (historyCleanupInterval) return
 
-  console.log('[db-updater] Starting metric history cleanup (365d tiered retention)')
+  log.info(' Starting metric history cleanup (365d tiered retention)')
   isFirstCleanupRun = true
 
   // Run cleanup immediately on start
@@ -1195,7 +1214,7 @@ async function cleanOldHistory(): Promise<void> {
       where: { recordedAt: { lt: yearCutoff } },
     })
     if (deleted.count > 0) {
-      console.log(`[db-updater] Deleted ${deleted.count} records older than 365 days`)
+      log.info(` Deleted ${deleted.count} records older than 365 days`)
     }
 
     if (isFirstCleanupRun) {
@@ -1203,10 +1222,10 @@ async function cleanOldHistory(): Promise<void> {
       isFirstCleanupRun = false
 
       const r30 = await downsampleRange(yearCutoff, d31, 30)
-      if (r30 > 0) console.log(`[db-updater] Startup 30-min downsample: reduced ${r30} records`)
+      if (r30 > 0) log.info(` Startup 30-min downsample: reduced ${r30} records`)
 
       const r10 = await downsampleRange(d31, d7, 10)
-      if (r10 > 0) console.log(`[db-updater] Startup 10-min downsample: reduced ${r10} records`)
+      if (r10 > 0) log.info(` Startup 10-min downsample: reduced ${r10} records`)
     } else {
       // Incremental: only process 2-hour windows at each boundary
 
@@ -1216,7 +1235,7 @@ async function cleanOldHistory(): Promise<void> {
         d31,
         30,
       )
-      if (r30 > 0) console.log(`[db-updater] 30-min downsample: reduced ${r30} records`)
+      if (r30 > 0) log.info(` 30-min downsample: reduced ${r30} records`)
 
       // 7-day boundary → downsample to 10-min averages
       const r10 = await downsampleRange(
@@ -1224,10 +1243,10 @@ async function cleanOldHistory(): Promise<void> {
         d7,
         10,
       )
-      if (r10 > 0) console.log(`[db-updater] 10-min downsample: reduced ${r10} records`)
+      if (r10 > 0) log.info(` 10-min downsample: reduced ${r10} records`)
     }
   } catch (error) {
-    console.error('[db-updater] History cleanup error:', error)
+    log.error(' History cleanup error:', error)
   }
 }
 
@@ -1255,19 +1274,15 @@ async function downsampleRange(
   if (currentCount === 0) return 0
 
   // Get averaged data grouped by metric and time bucket
-  const averaged = await prisma.$queryRawUnsafe<
+  const averaged = await prisma.$queryRaw<
     Array<{ metricId: string; avgValue: number; bucketEpoch: bigint }>
-  >(
-    `SELECT
+  >`SELECT
        metricId,
        AVG(value) as avgValue,
        (CAST(strftime('%s', recordedAt) AS INTEGER) / ${intervalSeconds}) * ${intervalSeconds} as bucketEpoch
      FROM metric_history
-     WHERE recordedAt >= ? AND recordedAt < ?
-     GROUP BY metricId, bucketEpoch`,
-    startISO,
-    endISO,
-  )
+     WHERE recordedAt >= ${startISO} AND recordedAt < ${endISO}
+     GROUP BY metricId, bucketEpoch`
 
   // If bucket count matches record count, already at target resolution
   if (averaged.length >= currentCount) return 0
@@ -1276,21 +1291,12 @@ async function downsampleRange(
   await prisma.$transaction(
     async (tx) => {
       // Delete all records in range
-      await tx.$executeRawUnsafe(
-        `DELETE FROM metric_history WHERE recordedAt >= ? AND recordedAt < ?`,
-        startISO,
-        endISO,
-      )
+      await tx.$executeRaw`DELETE FROM metric_history WHERE recordedAt >= ${startISO} AND recordedAt < ${endISO}`
 
       // Insert averaged records
       for (const row of averaged) {
         const ts = new Date(Number(row.bucketEpoch) * 1000).toISOString()
-        await tx.$executeRawUnsafe(
-          `INSERT INTO metric_history (id, metricId, value, recordedAt) VALUES (lower(hex(randomblob(12))), ?, ?, ?)`,
-          row.metricId,
-          Number(row.avgValue),
-          ts,
-        )
+        await tx.$executeRaw`INSERT INTO metric_history (id, metricId, value, recordedAt) VALUES (lower(hex(randomblob(12))), ${row.metricId}, ${Number(row.avgValue)}, ${ts})`
       }
     },
     { timeout: 120000 },
@@ -1306,7 +1312,7 @@ export function stopHistoryCleanup(): void {
   if (historyCleanupInterval) {
     clearInterval(historyCleanupInterval)
     historyCleanupInterval = null
-    console.log('[db-updater] History cleanup stopped')
+    log.info(' History cleanup stopped')
   }
 }
 

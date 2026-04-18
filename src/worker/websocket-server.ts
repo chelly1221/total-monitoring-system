@@ -3,6 +3,7 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { WebSocketMessage } from '@/types'
 import { syncSirenState } from './siren-trigger'
+import { cleanupSystemMaps } from './db-updater'
 
 const WS_PORT = 7778
 
@@ -47,6 +48,9 @@ export function startWebSocketServer(): void {
         if (message.type === 'siren-sync') {
           syncSirenState()
           return
+        }
+        if (message.type === 'delete' && message.data.systemId) {
+          cleanupSystemMaps(message.data.systemId)
         }
         // Relay delete, alarm, and settings messages to all OTHER clients
         if (message.type === 'delete' || message.type === 'alarm' || message.type === 'settings') {

@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Default capability for the main window",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://localhost:7777/*"]
+  },
   "permissions": [
     "core:default",
     "shell:default",
@@ -11,6 +14,7 @@
     "core:window:allow-close",
     "core:window:allow-set-fullscreen",
     "core:window:allow-maximize",
-    "core:window:allow-minimize"
+    "core:window:allow-minimize",
+    "core:webview:allow-create-webview-window"
   ]
 }

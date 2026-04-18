@@ -5,9 +5,15 @@ import { SystemActions } from "@/components/forms/system-actions"
 import { getStatusBadgeClass, getStatusLabel, getTypeLabel } from "@/lib/system-display-utils"
 import type { SystemStatus, PrismaSystem } from "@/types"
 
+interface SystemHeaderSystem {
+  id: string
+  name: string
+  type: string
+  isEnabled: boolean
+}
+
 interface SystemDetailHeaderProps {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  system: any
+  system: SystemHeaderSystem
   displayName: string
   displayPort: string
   displayProtocol: string

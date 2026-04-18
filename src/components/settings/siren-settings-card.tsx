@@ -76,8 +76,8 @@ export function SirenSettingsCard({ initialSirens }: SirenSettingsCardProps) {
   }
 
   return (
-    <Card className="py-4">
-      <CardHeader>
+    <Card className="flex flex-col py-4">
+      <CardHeader className="shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
@@ -92,14 +92,13 @@ export function SirenSettingsCard({ initialSirens }: SirenSettingsCardProps) {
         </div>
         <CardDescription>알람 발생 시 외부 사이렌 장비에 신호를 전송합니다</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Siren list */}
+      <CardContent className="flex min-h-0 flex-1 flex-col">
         {sirens.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
             등록된 사이렌 장비가 없습니다
           </p>
         ) : (
-          <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+          <div className="space-y-1.5 overflow-y-auto">
             {sirens.map((siren) => (
               <div
                 key={siren.id}

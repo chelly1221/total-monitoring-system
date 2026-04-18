@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     const acknowledged = searchParams.get('acknowledged')
     const severity = searchParams.get('severity')
     const systemId = searchParams.get('systemId')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50') || 50, 1), 500)
 
     const where: Record<string, unknown> = {}
 

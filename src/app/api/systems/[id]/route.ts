@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import vm from 'vm'
 import { prisma } from '@/lib/db'
 import { notifySystemDeleted, notifySystemStatusChanged, notifyAlarmResolution, notifySirenSync } from '@/lib/ws-notify'
+import { validateCustomCode } from '@/lib/validate-custom-code'
 import type { MetricsConfig, SystemStatus, DisplayItem } from '@/types'
 import { evaluateSensorStatus } from '@/lib/threshold-evaluator'
 import { syncMetricsFromConfig } from '@/lib/sync-metrics'
@@ -181,15 +181,11 @@ export async function PUT(request: Request, { params }: RouteParams) {
       )
     }
 
-    // Validate customCode syntax if present
     if (config?.customCode?.trim()) {
-      try {
-        const wrapped = `(function(raw) { ${config.customCode} })(rawInput)`
-        new vm.Script(wrapped)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+      const result = validateCustomCode(config.customCode)
+      if (!result.valid) {
         return NextResponse.json(
-          { error: `커스텀 코드 구문 오류: ${msg}` },
+          { error: `커스텀 코드 구문 오류: ${result.error}` },
           { status: 400 }
         )
       }
