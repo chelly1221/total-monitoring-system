@@ -17,6 +17,44 @@ struct AppState {
     processes: Mutex<ManagedProcesses>,
 }
 
+#[cfg(windows)]
+fn ensure_firewall_rules() {
+    let rules = [
+        ("TMS Web Server (7777)", "7777"),
+        ("TMS WebSocket (7778)", "7778"),
+    ];
+
+    for (name, port) in &rules {
+        let check = std::process::Command::new("netsh")
+            .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", name)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+
+        let needs_add = match check {
+            Ok(output) => !output.status.success(),
+            Err(_) => true,
+        };
+
+        if needs_add {
+            eprintln!("[tms] Adding firewall rule: {} (port {})", name, port);
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args([
+                "-Command",
+                &format!(
+                    "Start-Process netsh -ArgumentList 'advfirewall firewall add rule name=\"{}\" dir=in action=allow protocol=TCP localport={}' -Verb RunAs -WindowStyle Hidden -Wait",
+                    name, port
+                ),
+            ]);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            match cmd.status() {
+                Ok(s) if s.success() => eprintln!("[tms] Firewall rule added: {}", name),
+                Ok(_) => eprintln!("[tms] Firewall rule skipped (user declined): {}", name),
+                Err(e) => eprintln!("[tms] Firewall rule error: {}", e),
+            }
+        }
+    }
+}
+
 fn get_resource_dir(app: &tauri::AppHandle) -> PathBuf {
     let dir = app
         .path()
@@ -76,7 +114,7 @@ fn spawn_server(resource_dir: &PathBuf, database_url: &str) -> Result<Child, Str
     let mut cmd = Command::new("node");
     cmd.arg(&server_script)
         .env("PORT", "7777")
-        .env("HOSTNAME", "127.0.0.1")
+        .env("HOSTNAME", "0.0.0.0")
         .env("DATABASE_URL", database_url)
         .current_dir(resource_dir.join("standalone"))
         .kill_on_drop(true);
@@ -142,6 +180,9 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+
+            #[cfg(windows)]
+            ensure_firewall_rules();
 
             tauri::async_runtime::spawn(async move {
                 let resource_dir = get_resource_dir(&handle);
