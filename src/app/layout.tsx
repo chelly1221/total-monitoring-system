@@ -28,7 +28,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: "(function(){try{var w=window.innerWidth||0;if(w>1920&&location.pathname.indexOf('/tv')!==0){location.replace('/tv/index.html');}}catch(e){}})();",
+            __html: "(function(){try{if(location.pathname.indexOf('/tv')===0)return;var ua=navigator.userAgent||'';var isTv=/Web0S|webOS|SmartTV|NetCast/i.test(ua);var w=((screen&&screen.width)||0)*(window.devicePixelRatio||1);var f=location.search.indexOf('tv=1')!==-1;if(isTv||w>1920||f){location.replace('/tv/index.html');}}catch(e){}})();",
           }}
         />
       </head>
