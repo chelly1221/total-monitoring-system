@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>통합알람감시체계 — TV</title>
+<link rel="stylesheet" href="vendor/uPlot.min.css?v=3">
+<link rel="stylesheet" href="tv.css?v=3">
+</head>
+<body>
+<header id="topbar">
+  <div class="tb-left">
+    <h1>통합알람감시체계</h1>
+    <div id="status-counts" class="status-counts" aria-live="polite">
+      <span class="sc-item sc-ok"><span class="dot"></span><span id="sc-ok" class="num">0</span></span>
+      <span class="sc-item sc-warn"><span class="dot"></span><span id="sc-warn" class="num">0</span></span>
+      <span class="sc-item sc-crit"><span class="dot"></span><span id="sc-crit" class="num">0</span></span>
+      <span class="sc-item sc-off"><span class="dot"></span><span id="sc-off" class="num">0</span></span>
+    </div>
+    <span id="ws-indicator" class="ws-off" hidden>WebSocket 연결끊김</span>
+  </div>
+  <div class="tb-right" id="tb-icons"></div>
+</header>
+
+<main id="grid">
+  <!-- 장비: sidebar + main area (dashboard mirror) -->
+  <section class="quadrant" id="q-equipment">
+    <div class="q-body eq-split">
+      <div class="eq-sidebar" id="eq-sidebar"></div>
+      <div class="eq-main" id="eq-main"></div>
+    </div>
+  </section>
+
+  <!-- 온습도 -->
+  <section class="quadrant" id="q-sensor">
+    <header class="q-head"><h2>온습도</h2><span class="q-sub" id="q-sensor-sub"></span></header>
+    <div class="q-body sensor-split">
+      <div class="sensor-gauges" id="sensor-gauges"></div>
+      <div class="sensor-charts">
+        <div class="chart-card"><div class="chart-title-row"><span class="chart-ic ic-temp"></span><span class="chart-title">온도</span></div><div class="chart-body" id="chart-temp"></div></div>
+        <div class="chart-card"><div class="chart-title-row"><span class="chart-ic ic-humid"></span><span class="chart-title">습도</span></div><div class="chart-body" id="chart-humid"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 알람 (하단 좌측) -->
+  <section class="quadrant" id="q-alarms">
+    <div class="q-body alarms-body">
+      <div class="alarms-left">
+        <div class="alarm-summary" id="alarm-summary"></div>
+        <div class="alarm-list-card">
+          <div class="alarm-list" id="alarm-list"></div>
+        </div>
+      </div>
+      <div class="alarms-right">
+        <div class="filter-card">
+          <div class="filter-head">
+            <span class="filter-head-ic" aria-hidden="true"></span>
+            <span class="filter-head-title">필터</span>
+          </div>
+          <div class="filter-body">
+            <div class="filter-section filter-dates" id="filter-dates">
+              <input type="date" id="f-date-from" class="filter-input filter-date">
+              <input type="text" id="f-time-from" class="filter-input filter-time" placeholder="00:00" value="00:00">
+              <span class="filter-sep">~</span>
+              <input type="date" id="f-date-to" class="filter-input filter-date">
+              <input type="text" id="f-time-to" class="filter-input filter-time" placeholder="23:59" value="23:59">
+              <button type="button" class="filter-reset-btn" id="f-date-reset" hidden>
+                <span class="filter-reset-ic" aria-hidden="true"></span>초기화
+              </button>
+            </div>
+            <div class="filter-section filter-types" id="filter-types"></div>
+            <div class="filter-section filter-systems">
+              <div class="filter-systems-head">
+                <h4 class="filter-subtitle">시스템</h4>
+                <div class="filter-systems-btns">
+                  <button type="button" class="filter-btn" id="f-sys-all">전체 선택</button>
+                  <button type="button" class="filter-btn" id="f-sys-none">전체 해제</button>
+                </div>
+              </div>
+              <div class="filter-systems-grid" id="filter-systems-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- UPS (하단 우측) -->
+  <section class="quadrant" id="q-ups">
+    <header class="q-head"><h2>UPS</h2><span class="q-sub" id="q-ups-sub"></span></header>
+    <div class="q-body ups-split">
+      <div class="ups-cards" id="ups-cards"></div>
+      <div class="ups-charts" id="ups-charts"></div>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/uPlot.iife.es5.min.js?v=3"></script>
+<script src="tv.js?v=3"></script>
+</body>
+</html>

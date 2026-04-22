@@ -79,16 +79,36 @@ export function RealtimeProvider({
     setLastUpdate(new Date())
   }, [])
 
+  // Throttle metric updates to 1 render/sec. UDP can push 16+ msgs/sec which
+  // causes React to reconcile the full systems tree 16×/sec — invisible to
+  // viewers but costly on low-spec hardware. Pending updates are coalesced
+  // (latest value wins per metric) and flushed on an interval.
+  const pendingMetricsRef = useRef<Map<string, Partial<PrismaMetric>>>(new Map())
+
   const updateMetric = useCallback((metricId: string, updates: Partial<PrismaMetric>) => {
-    setSystems((prev) =>
-      prev.map((system) => ({
-        ...system,
-        metrics: system.metrics?.map((m) =>
-          m.id === metricId ? { ...m, ...updates } : m
-        ),
-      }))
-    )
-    setLastUpdate(new Date())
+    const pending = pendingMetricsRef.current
+    const prior = pending.get(metricId)
+    pending.set(metricId, prior ? { ...prior, ...updates } : updates)
+  }, [])
+
+  useEffect(() => {
+    const flush = () => {
+      const pending = pendingMetricsRef.current
+      if (pending.size === 0) return
+      const snapshot = pending
+      pendingMetricsRef.current = new Map()
+      setSystems((prev) =>
+        prev.map((system) => ({
+          ...system,
+          metrics: system.metrics?.map((m) =>
+            snapshot.has(m.id) ? { ...m, ...snapshot.get(m.id)! } : m
+          ),
+        }))
+      )
+      setLastUpdate(new Date())
+    }
+    const id = setInterval(flush, 1000)
+    return () => clearInterval(id)
   }, [])
 
   const addAlarm = useCallback((alarm: PrismaAlarm) => {

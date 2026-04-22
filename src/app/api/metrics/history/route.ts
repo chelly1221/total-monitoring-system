@@ -36,7 +36,9 @@ export async function GET(request: Request) {
       },
     })
 
-    return NextResponse.json(metrics)
+    return NextResponse.json(metrics, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
+    })
   } catch (error) {
     console.error('Failed to fetch metric history:', error)
     return NextResponse.json(

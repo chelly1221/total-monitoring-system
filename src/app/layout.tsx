@@ -25,6 +25,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="dark">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "(function(){try{var w=window.innerWidth||0;if(w>1920&&location.pathname.indexOf('/tv')!==0){location.replace('/tv/index.html');}}catch(e){}})();",
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

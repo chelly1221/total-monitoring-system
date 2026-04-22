@@ -50,3 +50,6 @@ dev.db
 src-tauri/target/
 src-tauri/resources/
 src-tauri/gen/
+
+# tv-mode dev artifacts
+screenshots/

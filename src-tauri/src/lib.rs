@@ -8,6 +8,78 @@ use tokio::sync::Mutex;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+// On Windows, wrap all spawned children in a Job Object with KILL_ON_JOB_CLOSE.
+// When the parent process exits — cleanly, via crash, or via Task Manager "End task" —
+// the OS closes the last handle to the job, which forcibly terminates every process in it.
+// This is stronger than tokio's kill_on_drop, which relies on normal Drop ordering.
+#[cfg(windows)]
+mod winjob {
+    use std::ptr;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+
+    pub struct JobHandle(HANDLE);
+    // HANDLE is a raw pointer — safe to send between threads as we only use it via FFI.
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    impl JobHandle {
+        pub fn raw(&self) -> HANDLE { self.0 }
+    }
+
+    impl Drop for JobHandle {
+        fn drop(&mut self) {
+            unsafe {
+                if !self.0.is_null() {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    pub fn create_kill_on_close() -> Result<JobHandle, String> {
+        unsafe {
+            let h = CreateJobObjectW(ptr::null(), ptr::null());
+            if h.is_null() {
+                return Err("CreateJobObjectW failed".to_string());
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let ok = SetInformationJobObject(
+                h,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if ok == 0 {
+                CloseHandle(h);
+                return Err("SetInformationJobObject failed".to_string());
+            }
+            Ok(JobHandle(h))
+        }
+    }
+
+    pub fn assign_pid(job: HANDLE, pid: u32) -> Result<(), String> {
+        unsafe {
+            let h = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+            if h.is_null() {
+                return Err(format!("OpenProcess(pid={}) failed", pid));
+            }
+            let ok = AssignProcessToJobObject(job, h);
+            CloseHandle(h);
+            if ok == 0 {
+                return Err("AssignProcessToJobObject failed".to_string());
+            }
+            Ok(())
+        }
+    }
+}
+
 struct ManagedProcesses {
     server: Option<Child>,
     worker: Option<Child>,
@@ -15,6 +87,8 @@ struct ManagedProcesses {
 
 struct AppState {
     processes: Mutex<ManagedProcesses>,
+    #[cfg(windows)]
+    job: std::sync::Mutex<Option<winjob::JobHandle>>,
 }
 
 #[cfg(windows)]
@@ -177,12 +251,28 @@ pub fn run() {
                 server: None,
                 worker: None,
             }),
+            #[cfg(windows)]
+            job: std::sync::Mutex::new(None),
         })
         .setup(|app| {
             let handle = app.handle().clone();
 
             #[cfg(windows)]
             ensure_firewall_rules();
+
+            #[cfg(windows)]
+            {
+                match winjob::create_kill_on_close() {
+                    Ok(j) => {
+                        let state = app.state::<AppState>();
+                        if let Ok(mut slot) = state.job.lock() {
+                            *slot = Some(j);
+                        }
+                        eprintln!("[tms] Job Object created (KILL_ON_JOB_CLOSE)");
+                    }
+                    Err(e) => eprintln!("[tms] Job Object create failed: {} — cleanup relies on kill_on_drop only", e),
+                }
+            }
 
             tauri::async_runtime::spawn(async move {
                 let resource_dir = get_resource_dir(&handle);
@@ -217,6 +307,29 @@ pub fn run() {
                         procs.worker = Some(child);
                     }
                     Err(e) => eprintln!("[tms] Worker start error: {}", e),
+                }
+
+                #[cfg(windows)]
+                {
+                    if let Ok(slot) = state.job.lock() {
+                        if let Some(job) = slot.as_ref() {
+                            let handle_raw = job.raw();
+                            let server_pid = procs.server.as_ref().and_then(|c| c.id());
+                            let worker_pid = procs.worker.as_ref().and_then(|c| c.id());
+                            if let Some(pid) = server_pid {
+                                match winjob::assign_pid(handle_raw, pid) {
+                                    Ok(_) => eprintln!("[tms] Server (pid {}) assigned to job", pid),
+                                    Err(e) => eprintln!("[tms] Server job-assign failed: {}", e),
+                                }
+                            }
+                            if let Some(pid) = worker_pid {
+                                match winjob::assign_pid(handle_raw, pid) {
+                                    Ok(_) => eprintln!("[tms] Worker (pid {}) assigned to job", pid),
+                                    Err(e) => eprintln!("[tms] Worker job-assign failed: {}", e),
+                                }
+                            }
+                        }
+                    }
                 }
 
                 drop(procs);
