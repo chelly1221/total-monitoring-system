@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { IngestOptionsInline } from "./ingest-options-inline"
 
 interface SystemBasicInfoBarProps {
   name: string
@@ -16,6 +17,10 @@ interface SystemBasicInfoBarProps {
   onNameChange: (value: string) => void
   onPortChange: (value: string) => void
   onProtocolChange: (value: "udp" | "tcp") => void
+  encoding?: "buffer" | "utf8"
+  offlineThresholdMin?: string
+  onEncodingChange?: (value: "buffer" | "utf8") => void
+  onOfflineThresholdChange?: (value: string) => void
 }
 
 export function SystemBasicInfoBar({
@@ -26,6 +31,10 @@ export function SystemBasicInfoBar({
   onNameChange,
   onPortChange,
   onProtocolChange,
+  encoding,
+  offlineThresholdMin,
+  onEncodingChange,
+  onOfflineThresholdChange,
 }: SystemBasicInfoBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded border bg-card px-2 py-1.5 shrink-0">
@@ -71,6 +80,16 @@ export function SystemBasicInfoBar({
           </SelectContent>
         </Select>
       </div>
+      {onEncodingChange && onOfflineThresholdChange && (
+        <IngestOptionsInline
+          compact
+          disabled={!isEditMode}
+          encoding={encoding ?? "buffer"}
+          offlineThresholdMin={offlineThresholdMin ?? ""}
+          onEncodingChange={onEncodingChange}
+          onOfflineThresholdChange={onOfflineThresholdChange}
+        />
+      )}
     </div>
   )
 }

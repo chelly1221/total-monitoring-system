@@ -25,8 +25,10 @@ export function parseBuffer(buffer: Buffer, config: PortConfig): ParsedData {
     }
   }
 
-  // Parse first 20 bytes as string (Node-RED protocol)
-  const str = buffer.subarray(0, Math.min(20, buffer.length)).toString('utf8').trim()
+  // Node-RED protocol: the value lives in the first 20 bytes. Decode the bytes
+  // FIRST and then slice by character — slicing the raw buffer at byte offset 20
+  // can cut a multi-byte UTF-8 sequence in half and inject U+FFFD into the value.
+  const str = buffer.toString('utf8').slice(0, 20).trim()
   return {
     value: str,
     rawLength: buffer.length,
@@ -39,6 +41,9 @@ export function parseBuffer(buffer: Buffer, config: PortConfig): ParsedData {
  * Returns null if the string cannot be parsed as a number
  */
 export function extractNumericValue(data: ParsedData): number | null {
+  // Reject values corrupted by a decode error (U+FFFD replacement char) — a
+  // partially-decoded string would otherwise yield a plausible-but-wrong number.
+  if (data.value.includes('�')) return null
   const num = parseFloat(data.value)
   return isNaN(num) ? null : num
 }

@@ -20,6 +20,7 @@ import { SystemDataPreview } from "@/components/forms/system-data-preview"
 import { SystemEquipmentConfig } from "@/components/forms/system-equipment-config"
 import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
 import { SystemAudioConfig } from "@/components/forms/system-audio-config"
+import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
 import type {
   SystemType,
   EquipmentConfig,
@@ -75,6 +76,8 @@ function SystemNewForm() {
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
   const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
+  const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [systemType, setSystemType] = React.useState<SystemType>(() => getSystemType(typeParam))
 
   // Config state
@@ -173,6 +176,7 @@ function SystemNewForm() {
         type: systemType,
         port: portNum,
         protocol,
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
         config,
         audioConfig: systemType === 'sensor' ? { type: 'none' as const } : audioConfig,
       }
@@ -199,7 +203,6 @@ function SystemNewForm() {
   }
 
   const typeInfo = TYPE_LABELS[systemType]
-  const Icon = typeInfo.icon
   const isSensor = systemType === "sensor"
 
   const getConditionsForItem = (itemName: string): DataMatchCondition[] | undefined =>
@@ -304,6 +307,12 @@ function SystemNewForm() {
                   </SelectContent>
                 </Select>
               </div>
+              <IngestOptionsInline
+                encoding={encoding}
+                offlineThresholdMin={offlineThresholdMin}
+                onEncodingChange={setEncoding}
+                onOfflineThresholdChange={setOfflineThresholdMin}
+              />
             </div>
 
             {error && (
@@ -435,6 +444,13 @@ function SystemNewForm() {
                   </SelectContent>
                 </Select>
               </div>
+              <IngestOptionsInline
+                compact
+                encoding={encoding}
+                offlineThresholdMin={offlineThresholdMin}
+                onEncodingChange={setEncoding}
+                onOfflineThresholdChange={setOfflineThresholdMin}
+              />
             </div>
 
             {error && (

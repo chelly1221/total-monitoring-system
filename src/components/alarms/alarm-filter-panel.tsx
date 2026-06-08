@@ -139,13 +139,13 @@ export function AlarmFilterPanel({
         {/* Type filter */}
         <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
           {([
-            { key: 'all', label: '전체', active: '', inactive: '' },
-            { key: 'critical', label: '심각', active: 'bg-[#ef4444] text-white border-[#ef4444]', inactive: '' },
-            { key: 'warning', label: '오프라인', active: 'bg-[#eab308] text-black border-[#eab308]', inactive: '' },
-            { key: 'hot', label: '고온', active: 'bg-red-600 text-white border-red-600', inactive: '' },
-            { key: 'cold', label: '저온', active: 'bg-blue-500 text-white border-blue-500', inactive: '' },
-            { key: 'dry', label: '건조', active: 'bg-orange-500 text-white border-orange-500', inactive: '' },
-            { key: 'humid', label: '다습', active: 'bg-cyan-500 text-white border-cyan-500', inactive: '' },
+            { key: 'all', label: '전체', active: '' },
+            { key: 'critical', label: '심각', active: 'bg-[#ef4444] text-white border-[#ef4444]' },
+            { key: 'warning', label: '오프라인', active: 'bg-[#eab308] text-black border-[#eab308]' },
+            { key: 'hot', label: '고온', active: 'bg-red-600 text-white border-red-600' },
+            { key: 'cold', label: '저온', active: 'bg-blue-500 text-white border-blue-500' },
+            { key: 'dry', label: '건조', active: 'bg-orange-500 text-white border-orange-500' },
+            { key: 'humid', label: '다습', active: 'bg-cyan-500 text-white border-cyan-500' },
           ] as const).filter(({ key }) => {
             if (!temperatureEnabled && (key === 'hot' || key === 'cold' || key === 'dry' || key === 'humid')) return false
             return true

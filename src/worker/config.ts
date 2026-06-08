@@ -2,7 +2,7 @@
 
 export interface PortConfig {
   system: string
-  type: 'sensor' | 'alarm' | 'ups' | 'vdl' | 'marc' | 'lcms' | 'fms' | 'transmission'
+  type: 'sensor' | 'alarm' | 'ups' | 'equipment' | 'vdl' | 'marc' | 'lcms' | 'fms' | 'transmission'
   encoding?: 'utf8' | 'buffer'
   description?: string
 }

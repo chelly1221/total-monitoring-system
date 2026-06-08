@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, PlusCircle } from 'lucide-react'
+import { PlusCircle } from 'lucide-react'
 import type { TrendDirection, MetricsConfig, StatusConditions } from '@/types'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
 

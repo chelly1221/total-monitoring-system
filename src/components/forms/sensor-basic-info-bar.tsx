@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { IngestOptionsInline } from "./ingest-options-inline"
 
 interface SensorBasicInfoBarProps {
   name: string
@@ -16,6 +17,10 @@ interface SensorBasicInfoBarProps {
   onNameChange: (value: string) => void
   onPortChange: (value: string) => void
   onProtocolChange: (value: "udp" | "tcp") => void
+  encoding?: "buffer" | "utf8"
+  offlineThresholdMin?: string
+  onEncodingChange?: (value: "buffer" | "utf8") => void
+  onOfflineThresholdChange?: (value: string) => void
 }
 
 export function SensorBasicInfoBar({
@@ -26,6 +31,10 @@ export function SensorBasicInfoBar({
   onNameChange,
   onPortChange,
   onProtocolChange,
+  encoding,
+  offlineThresholdMin,
+  onEncodingChange,
+  onOfflineThresholdChange,
 }: SensorBasicInfoBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-6 rounded-lg border bg-card p-4 shrink-0">
@@ -71,6 +80,15 @@ export function SensorBasicInfoBar({
           </SelectContent>
         </Select>
       </div>
+      {onEncodingChange && onOfflineThresholdChange && (
+        <IngestOptionsInline
+          disabled={!isEditMode}
+          encoding={encoding ?? "buffer"}
+          offlineThresholdMin={offlineThresholdMin ?? ""}
+          onEncodingChange={onEncodingChange}
+          onOfflineThresholdChange={onOfflineThresholdChange}
+        />
+      )}
     </div>
   )
 }

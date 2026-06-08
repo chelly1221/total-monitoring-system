@@ -33,9 +33,14 @@ const systemMutexes = new Map<string, Promise<void>>()
 
 // Spike filter: rolling buffer of recent valid values per metric (sensor only)
 const spikeFilterBuffers = new Map<string, number[]>()
+// Consecutive spike-rejections per metric: a SUSTAINED shift must not be frozen out forever.
+const spikeRejectStreaks = new Map<string, number>()
 const SPIKE_BUFFER_SIZE = 20
 const SPIKE_WARMUP = 5
 const SPIKE_Z_THRESHOLD = 3.5
+// After this many consecutive rejections, treat the change as real (sustained) and
+// adopt it as the new baseline instead of rejecting forever against a stale median.
+const SPIKE_REJECT_LIMIT = 3
 
 // Parsed config cache to avoid repeated JSON.parse on every data point
 const configCache = new Map<string, { raw: string; parsed: Record<string, unknown> }>()
@@ -63,8 +68,12 @@ export function cleanupSystemMaps(systemId: string): void {
   for (const key of metricCriticalState.keys()) {
     if (key === systemId || key.startsWith(`${systemId}:`)) metricCriticalState.delete(key)
   }
+  // Spike maps are keyed by `${systemId}:${metricId}`, so match that prefix.
   for (const key of spikeFilterBuffers.keys()) {
-    if (key.startsWith(systemId)) spikeFilterBuffers.delete(key)
+    if (key.startsWith(`${systemId}:`)) spikeFilterBuffers.delete(key)
+  }
+  for (const key of spikeRejectStreaks.keys()) {
+    if (key.startsWith(`${systemId}:`)) spikeRejectStreaks.delete(key)
   }
   systemMutexes.delete(systemId)
   configCache.delete(systemId)
@@ -128,6 +137,36 @@ function addToSpikeBuffer(metricId: string, value: number): void {
   if (buffer.length > SPIKE_BUFFER_SIZE) {
     buffer.shift()
   }
+}
+
+/**
+ * Spike-filter gate for sensor metrics.
+ * Returns true if the value should be ACCEPTED (stored + applied), false if it
+ * should be dropped as a transient spike.
+ *
+ * Crucially, a SUSTAINED change (SPIKE_REJECT_LIMIT consecutive rejections) is
+ * adopted as the new baseline rather than rejected forever — otherwise a genuine
+ * rapid shift (e.g. a cooling failure driving temperature up) would be permanently
+ * filtered against a stale median, freezing the metric and suppressing the alarm.
+ */
+function acceptSensorValue(metricId: string, value: number, metricMin: number | null, metricMax: number | null): boolean {
+  if (!isSpikeValue(metricId, value, metricMin, metricMax)) {
+    spikeRejectStreaks.delete(metricId)
+    addToSpikeBuffer(metricId, value)
+    return true
+  }
+
+  const streak = (spikeRejectStreaks.get(metricId) ?? 0) + 1
+  spikeRejectStreaks.set(metricId, streak)
+
+  if (streak >= SPIKE_REJECT_LIMIT) {
+    // Sustained shift, not a one-off spike — adopt the new level and re-seed the buffer.
+    log.warn(`[SpikeFilter] Sustained shift on metricId=${metricId}: adopting value=${value} after ${streak} consecutive rejections`)
+    spikeFilterBuffers.set(metricId, [value])
+    spikeRejectStreaks.delete(metricId)
+    return true
+  }
+  return false
 }
 
 const OFFLINE_CHECK_INTERVAL = parseInt(process.env.OFFLINE_CHECK_INTERVAL || '10000', 10)
@@ -336,11 +375,10 @@ async function processSystemMetric(
           ;(metric as unknown as { textValue?: string | null }).textValue = val
           broadcastMetric(system.id, system.name, metric.id, metric.name, metric.value, metric.unit, 'stable', val)
         } else {
-          // Spike filter for sensor systems
-          if (system.type === 'sensor' && isSpikeValue(metric.id, val, metric.min, metric.max)) {
+          // Spike filter for sensor systems (sustained shifts are adopted, not frozen)
+          if (system.type === 'sensor' && !acceptSensorValue(`${system.id}:${metric.id}`, val, metric.min, metric.max)) {
             continue
           }
-          if (system.type === 'sensor') addToSpikeBuffer(metric.id, val)
 
           const oldValue = metric.value
           const trend = val > oldValue ? 'up' : val < oldValue ? 'down' : 'stable'
@@ -372,6 +410,12 @@ async function processSystemMetric(
         // Fall back to the full raw data string for numeric extraction.
         const rawVal = rawParts[displayItem.index] ?? (displayItem.dataMatchConditions?.length ? data.value : undefined)
         if (rawVal === undefined) continue
+        // Drop values corrupted by a decode error (U+FFFD) instead of extracting a
+        // plausible-but-wrong number from a half-decoded string.
+        if (rawVal.includes('�')) {
+          log.warn(`${system.name}:${displayItem.name} dropped corrupt value: ${JSON.stringify(rawVal.slice(0, 32))}`)
+          continue
+        }
         // Extract numeric value from raw part (handles prefixed data like "td25.5")
         const numMatch = rawVal.match(/-?\d+\.?\d*/)
         if (!numMatch) continue
@@ -385,11 +429,10 @@ async function processSystemMetric(
         const metric = system.metrics.find(m => m.name === displayItem.name)
         if (!metric) continue
 
-        // Spike filter for sensor systems
-        if (system.type === 'sensor' && isSpikeValue(metric.id, val, metric.min, metric.max)) {
+        // Spike filter for sensor systems (sustained shifts are adopted, not frozen)
+        if (system.type === 'sensor' && !acceptSensorValue(`${system.id}:${metric.id}`, val, metric.min, metric.max)) {
           continue
         }
-        if (system.type === 'sensor') addToSpikeBuffer(metric.id, val)
 
         const oldValue = metric.value
         const trend = val > oldValue ? 'up' : val < oldValue ? 'down' : 'stable'
@@ -462,11 +505,20 @@ async function processSystemMetric(
             }
             log.debug(`${system.name}:${displayItem.name} critical count ${count}/${CRITICAL_THRESHOLD}`)
           } else {
+            // Symmetric decrement: require CRITICAL_THRESHOLD consecutive non-criticals
+            // to clear, so a single transient or mis-parsed normal reading between
+            // criticals does not reset confirmation and delay/suppress a real alarm.
             const prev = criticalCounters.get(counterKey) ?? 0
             if (prev > 0) {
-              criticalCounters.delete(counterKey)
-              metricCriticalState.delete(counterKey)
-              log.debug(`${system.name}:${displayItem.name} non-critical, counter reset (was ${prev})`)
+              const count = prev - 1
+              if (count > 0) {
+                criticalCounters.set(counterKey, count)
+                log.debug(`${system.name}:${displayItem.name} non-critical, counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
+              } else {
+                criticalCounters.delete(counterKey)
+                metricCriticalState.delete(counterKey)
+                log.debug(`${system.name}:${displayItem.name} non-critical, counter cleared (was ${prev})`)
+              }
             }
           }
         }
@@ -598,24 +650,18 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
       try {
         const processed = await processSystemMetric(system, data, numericValue)
 
-        // Update system's lastDataAt and updatedAt timestamps
-        // For equipment: always update (even unmatched messages count for offline detection)
-        // For sensor/ups: only update if data was actually processed
-        let equipmentConfig: EquipmentConfig | null = null
-        const cachedCfg = getParsedConfig(system.id, system.config)
-        if (cachedCfg && (cachedCfg.normalPatterns || cachedCfg.criticalPatterns)) {
-          equipmentConfig = cachedCfg as unknown as EquipmentConfig
-        }
-
-        if (equipmentConfig || processed) {
-          await prisma.system.update({
-            where: { id: system.id },
-            data: {
-              lastDataAt: new Date(),
-              updatedAt: new Date(),
-            },
-          })
-        }
+        // Advance lastDataAt on EVERY received packet, regardless of whether the
+        // payload parsed. Offline must mean "no bytes arriving on this port", not
+        // "no parseable value" — otherwise an alive device emitting a transiently
+        // malformed or format-changed frame is falsely marked offline after the
+        // threshold. (Equipment already behaved this way; sensor/UPS now match.)
+        await prisma.system.update({
+          where: { id: system.id },
+          data: {
+            lastDataAt: new Date(),
+            updatedAt: new Date(),
+          },
+        })
 
         if (processed) {
           log.debug(`Updated ${system.name}: ${data.value}`)
@@ -1103,7 +1149,7 @@ export async function syncOfflineAlarms(): Promise<void> {
 export function startOfflineDetection(): void {
   if (offlineCheckInterval) return
 
-  log.info(' Starting offline detection (5min threshold)')
+  log.info(` Starting offline detection (default ${Math.round(OFFLINE_THRESHOLD / 60000)}min threshold, per-device overridable)`)
 
   offlineCheckInterval = setInterval(async () => {
     try {
@@ -1120,9 +1166,15 @@ export function startOfflineDetection(): void {
       for (const system of systems) {
         const lastData = system.lastDataAt?.getTime() ?? 0
         const timeSinceLastData = now - lastData
+        // Per-device threshold overrides the global default (slow reporters need a
+        // longer window; fast-critical devices a shorter one).
+        const threshold = (system as { offlineThreshold?: number | null }).offlineThreshold ?? OFFLINE_THRESHOLD
 
-        if (timeSinceLastData > OFFLINE_THRESHOLD) {
-          log.info(` System "${system.name}" offline (${Math.round(timeSinceLastData / 1000)}s since last data)`)
+        if (timeSinceLastData > threshold) {
+          // Message reflects the actual elapsed silence, not a hardcoded constant.
+          const minutesSilent = Math.max(1, Math.round(timeSinceLastData / 60000))
+          const offlineMsg = `${system.name} 오프라인 (${minutesSilent}분 이상 데이터 없음)`
+          log.info(` System "${system.name}" offline (${Math.round(timeSinceLastData / 1000)}s since last data, threshold ${Math.round(threshold / 1000)}s)`)
 
           // Update status to offline
           await prisma.system.update({
@@ -1137,7 +1189,7 @@ export function startOfflineDetection(): void {
             data: {
               systemId: system.id,
               severity,
-              message: `${system.name} 오프라인 (1분 이상 데이터 없음)`,
+              message: offlineMsg,
             },
           })
 
@@ -1147,7 +1199,7 @@ export function startOfflineDetection(): void {
               systemId: system.id,
               systemName: system.name,
               severity,
-              message: `${system.name} 오프라인 (1분 이상 데이터 없음)`,
+              message: offlineMsg,
             },
           })
 
@@ -1158,7 +1210,7 @@ export function startOfflineDetection(): void {
             system.name,
             alarm.id,
             severity,
-            `${system.name} 오프라인 (1분 이상 데이터 없음)`
+            offlineMsg
           )
         }
       }
@@ -1177,6 +1229,26 @@ export function stopOfflineDetection(): void {
     offlineCheckInterval = null
     log.info(' Offline detection stopped')
   }
+}
+
+export interface BindingSystem {
+  name: string
+  type: string
+  port: number | null
+  protocol: string | null
+  encoding: string | null
+}
+
+/**
+ * Fetch enabled+active systems that carry a port, for the dynamic socket binder.
+ * The binder unions these with the static config.ts defaults to decide which
+ * sockets to bind, so a UI-created system actually gets a listener.
+ */
+export async function getEnabledSystemsForBinding(): Promise<BindingSystem[]> {
+  return prisma.system.findMany({
+    where: { isEnabled: true, isActive: true, port: { not: null } },
+    select: { name: true, type: true, port: true, protocol: true, encoding: true },
+  })
 }
 
 /**

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { notifySystemDeleted, notifySystemStatusChanged, notifyAlarmResolution, notifySirenSync } from '@/lib/ws-notify'
+import { notifySystemDeleted, notifySystemStatusChanged, notifyAlarmResolution, notifySirenSync, notifySystemsChanged } from '@/lib/ws-notify'
 import { validateCustomCode } from '@/lib/validate-custom-code'
 import type { MetricsConfig, SystemStatus, DisplayItem } from '@/types'
 import { evaluateSensorStatus } from '@/lib/threshold-evaluator'
 import { syncMetricsFromConfig } from '@/lib/sync-metrics'
+
+// Normalize the wire-encoding field: only 'utf8' | 'buffer' are valid, else null (default).
+function normalizeEncoding(e: unknown): string | null {
+  return e === 'utf8' || e === 'buffer' ? e : null
+}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -138,7 +143,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    const { name, type, port, protocol, config, isEnabled, audioConfig } = body
+    const { name, type, port, protocol, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
     if (!name || !type) {
       return NextResponse.json(
@@ -181,6 +186,19 @@ export async function PUT(request: Request, { params }: RouteParams) {
       )
     }
 
+    // Reject duplicate (port, protocol) against OTHER systems — routing is by port only.
+    const portNum = parseInt(port, 10)
+    const dup = await prisma.system.findFirst({
+      where: { port: portNum, protocol, isActive: true, id: { not: id } },
+      select: { name: true },
+    })
+    if (dup) {
+      return NextResponse.json(
+        { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
+        { status: 409 }
+      )
+    }
+
     if (config?.customCode?.trim()) {
       const result = validateCustomCode(config.customCode)
       if (!result.valid) {
@@ -191,17 +209,27 @@ export async function PUT(request: Request, { params }: RouteParams) {
       }
     }
 
+    const updateData: Record<string, unknown> = {
+      name,
+      type,
+      port: portNum,
+      protocol,
+      config: config ? JSON.stringify(config) : null,
+      audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
+      isEnabled: isEnabled !== false,
+    }
+    // Only touch these when the field is present, so editors that omit them
+    // (legacy full-page editors) don't silently wipe the stored value to null.
+    if (offlineThreshold !== undefined) {
+      updateData.offlineThreshold = offlineThreshold != null ? parseInt(offlineThreshold, 10) : null
+    }
+    if (encoding !== undefined) {
+      updateData.encoding = normalizeEncoding(encoding)
+    }
+
     const system = await prisma.system.update({
       where: { id },
-      data: {
-        name,
-        type,
-        port: parseInt(port, 10),
-        protocol,
-        config: config ? JSON.stringify(config) : null,
-        audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
-        isEnabled: isEnabled !== false,
-      },
+      data: updateData,
     })
 
     // Sync metrics from config and recalculate status for UPS/sensor types
@@ -209,6 +237,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
       await syncMetricsFromConfig(id, config as MetricsConfig)
       await recalculateSystemStatus(id, name)
     }
+
+    // Port/protocol/encoding/enabled may have changed — re-bind sockets.
+    notifySystemsChanged()
 
     // Re-fetch with relations so client gets complete data
     const updatedSystem = await prisma.system.findUnique({
@@ -260,11 +291,17 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (body.audioConfig !== undefined) {
       updateData.audioConfig = body.audioConfig ? JSON.stringify(body.audioConfig) : null
     }
+    if (body.encoding !== undefined) {
+      updateData.encoding = normalizeEncoding(body.encoding)
+    }
 
     const system = await prisma.system.update({
       where: { id },
       data: updateData,
     })
+
+    // isEnabled/encoding may have changed — re-bind sockets.
+    notifySystemsChanged()
 
     // Sync metrics from config and recalculate status for UPS/sensor types
     if (body.config && body.config.displayItems) {

@@ -134,3 +134,15 @@ export function notifySirenSync(): void {
     timestamp: new Date().toISOString(),
   })
 }
+
+/**
+ * Notify the worker that systems changed (created/updated/deleted) so it can
+ * re-bind listening sockets to match the new (port, protocol, encoding) set.
+ */
+export function notifySystemsChanged(): void {
+  sendNotification({
+    type: 'systems-changed',
+    data: {},
+    timestamp: new Date().toISOString(),
+  })
+}

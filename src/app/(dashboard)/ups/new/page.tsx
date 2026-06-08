@@ -18,6 +18,7 @@ import { UpsDataPreview } from "@/components/forms/ups-data-preview"
 import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
 import { UpsAudioConfig } from "@/components/forms/ups-audio-config"
 import { SystemCustomCode } from "@/components/forms/system-custom-code"
+import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
 import type {
   MetricsConfig,
   AudioConfig,
@@ -38,6 +39,8 @@ export default function UpsNewPage() {
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
   const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
+  const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
 
   // Config state
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(
@@ -128,6 +131,7 @@ export default function UpsNewPage() {
         type: "ups" as const,
         port: portNum,
         protocol,
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
         config: metricsConfig,
         audioConfig,
       }
@@ -237,6 +241,13 @@ export default function UpsNewPage() {
                 </SelectContent>
               </Select>
             </div>
+            <IngestOptionsInline
+              compact
+              encoding={encoding}
+              offlineThresholdMin={offlineThresholdMin}
+              onEncodingChange={setEncoding}
+              onOfflineThresholdChange={setOfflineThresholdMin}
+            />
           </div>
 
           {error && (

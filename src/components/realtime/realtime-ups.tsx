@@ -86,28 +86,11 @@ function getMetricStatus(value: number, item: DisplayItem, textValue?: string | 
   return 'normal'
 }
 
-function getStatusDotColor(status: 'normal' | 'warning' | 'critical'): string {
-  switch (status) {
-    case 'critical': return 'bg-[#ef4444]'
-    case 'warning': return 'bg-[#eab308]'
-    default: return 'bg-[#22c55e]'
-  }
-}
-
 function getStatusTextColor(status: 'normal' | 'warning' | 'critical'): string {
   switch (status) {
     case 'critical': return 'text-[#ef4444]'
     case 'warning': return 'text-[#eab308]'
     default: return 'text-[#22c55e]'
-  }
-}
-
-function getSystemStatusColor(status: string): string {
-  switch (status) {
-    case 'normal': return 'bg-[#22c55e]'
-    case 'warning': return 'bg-[#eab308]'
-    case 'critical': return 'bg-[#ef4444]'
-    default: return 'bg-[#71717a]'
   }
 }
 
@@ -357,7 +340,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
   }, [chartsMap, chartGroupNames])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function renderSystemCard(sys: any, config: MetricsConfig | undefined, status: SystemStatus, displayItems: DisplayItem[], colorIndex: number) {
+  function renderSystemCard(sys: any, status: SystemStatus, displayItems: DisplayItem[], colorIndex: number) {
     return (
       <Card className="py-0 gap-0 transition-colors hover:border-primary/50 cursor-pointer">
         <CardHeader className="px-3 py-1.5">
@@ -494,7 +477,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const displayItems = config?.displayItems ?? []
                       return (
                         <Link key={sys.id} href={`/ups/${sys.id}`} className="block">
-                          {renderSystemCard(sys, config, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
+                          {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
                       )
                     })}
@@ -506,7 +489,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const displayItems = config?.displayItems ?? []
                       return (
                         <Link key={sys.id} href={`/ups/${sys.id}`} className="block">
-                          {renderSystemCard(sys, config, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
+                          {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
                       )
                     })}

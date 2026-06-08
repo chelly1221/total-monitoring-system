@@ -17,6 +17,8 @@ model System {
   port        Int?                        // UDP/TCP port (optional for legacy data)
   protocol    String?                     // 'udp' or 'tcp' (optional for legacy data)
   lastDataAt  DateTime?                   // Last data received timestamp for offline detection
+  offlineThreshold Int?                   // Per-device offline threshold in ms (overrides global default)
+  encoding    String?                     // Wire decode mode: 'utf8' | 'buffer' (null = buffer/20-byte default)
   config      String?                     // JSON configuration for type-specific settings
   audioConfig String?                     // JSON: { type: 'tts'|'file'|'none', text?, fileName? }
   createdAt   DateTime  @default(now())

@@ -10,6 +10,13 @@ const WS_PORT = 7778
 let wss: WebSocketServer | null = null
 const clients = new Set<WebSocket>()
 
+// Registered by index.ts to re-bind sockets when the API reports a systems change.
+// Kept as a callback (not a direct import) to avoid a websocket-server ↔ binding cycle.
+let systemsChangedHandler: (() => void) | null = null
+export function setSystemsChangedHandler(fn: () => void): void {
+  systemsChangedHandler = fn
+}
+
 let wsRestartBackoff = 1000
 const WS_BACKOFF_MAX = 30000
 let wsRestartTimer: ReturnType<typeof setTimeout> | null = null
@@ -49,8 +56,15 @@ export function startWebSocketServer(): void {
           syncSirenState()
           return
         }
+        // Handle systems-changed: re-bind sockets to match the updated DB
+        if (message.type === 'systems-changed') {
+          systemsChangedHandler?.()
+          return
+        }
         if (message.type === 'delete' && message.data.systemId) {
           cleanupSystemMaps(message.data.systemId)
+          // A delete also changes the bound set — reconcile.
+          systemsChangedHandler?.()
         }
         // Relay delete, alarm, and settings messages to all OTHER clients
         if (message.type === 'delete' || message.type === 'alarm' || message.type === 'settings') {
@@ -227,23 +241,6 @@ export function broadcastAlarmResolutionByIds(
       systemId,
       systemName,
       alarmIds,
-    },
-    timestamp: new Date().toISOString(),
-  })
-}
-
-/**
- * Broadcast a system deletion
- */
-export function broadcastSystemDelete(
-  systemId: string,
-  systemName: string
-): void {
-  broadcast({
-    type: 'delete',
-    data: {
-      systemId,
-      systemName,
     },
     timestamp: new Date().toISOString(),
   })

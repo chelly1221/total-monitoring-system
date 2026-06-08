@@ -1,9 +1,11 @@
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::watch;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -80,13 +82,31 @@ mod winjob {
     }
 }
 
-struct ManagedProcesses {
-    server: Option<Child>,
-    worker: Option<Child>,
+#[derive(Clone, Copy, PartialEq)]
+enum ProcKind {
+    Server,
+    Worker,
+}
+
+impl ProcKind {
+    fn name(self) -> &'static str {
+        match self {
+            ProcKind::Server => "server",
+            ProcKind::Worker => "worker",
+        }
+    }
+}
+
+// Event payload pushed to the WebView so the UI can show an "ingestion down" banner.
+#[derive(Clone, serde::Serialize)]
+struct ProcessStatus {
+    kind: String,   // "server" | "worker"
+    status: String, // "running" | "down"
 }
 
 struct AppState {
-    processes: Mutex<ManagedProcesses>,
+    // Broadcast channel: set to true once on shutdown to stop supervisors + kill children.
+    shutdown_tx: watch::Sender<bool>,
     #[cfg(windows)]
     job: std::sync::Mutex<Option<winjob::JobHandle>>,
 }
@@ -152,6 +172,27 @@ fn get_database_url(data_dir: &PathBuf) -> String {
     format!("file:{}", db_path.display())
 }
 
+/// Open (append) a log file for a child process under <data_dir>/logs/.
+/// Checked at each (re)spawn and app launch: if the file is already over 5 MB it is
+/// first rotated to <name>.1.log. Rotation is NOT continuous — a single very long
+/// uninterrupted run can exceed 5 MB until the next respawn/launch.
+/// Without this, CREATE_NO_WINDOW means all child stdout/stderr is lost in production.
+fn open_log_file(data_dir: &PathBuf, name: &str) -> Option<std::fs::File> {
+    let log_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&log_dir).ok()?;
+    let path = log_dir.join(format!("{}.log", name));
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 5 * 1024 * 1024 {
+            let _ = std::fs::rename(&path, log_dir.join(format!("{}.1.log", name)));
+        }
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()
+}
+
 fn init_database(resource_dir: &PathBuf, database_url: &str) -> Result<(), String> {
     let schema_path = resource_dir.join("prisma").join("schema.prisma");
     if !schema_path.exists() {
@@ -182,7 +223,21 @@ fn init_database(resource_dir: &PathBuf, database_url: &str) -> Result<(), Strin
     Ok(())
 }
 
-fn spawn_server(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
+/// Attach a log file to a command's stdout+stderr (best effort).
+fn attach_log(cmd: &mut Command, log: Option<std::fs::File>) {
+    if let Some(file) = log {
+        match file.try_clone() {
+            Ok(err_clone) => {
+                cmd.stdout(Stdio::from(file)).stderr(Stdio::from(err_clone));
+            }
+            Err(_) => {
+                cmd.stdout(Stdio::from(file));
+            }
+        }
+    }
+}
+
+fn spawn_server(resource_dir: &PathBuf, database_url: &str, log: Option<std::fs::File>) -> Result<Child, String> {
     let server_script = resource_dir.join("standalone").join("server.js");
 
     let mut cmd = Command::new("node");
@@ -192,13 +247,14 @@ fn spawn_server(resource_dir: &PathBuf, database_url: &str) -> Result<Child, Str
         .env("DATABASE_URL", database_url)
         .current_dir(resource_dir.join("standalone"))
         .kill_on_drop(true);
+    attach_log(&mut cmd, log);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.spawn()
         .map_err(|e| format!("Failed to start server: {}", e))
 }
 
-fn spawn_worker(resource_dir: &PathBuf, database_url: &str) -> Result<Child, String> {
+fn spawn_worker(resource_dir: &PathBuf, database_url: &str, log: Option<std::fs::File>) -> Result<Child, String> {
     let worker_script = resource_dir.join("worker").join("index.js");
 
     let mut cmd = Command::new("node");
@@ -206,27 +262,127 @@ fn spawn_worker(resource_dir: &PathBuf, database_url: &str) -> Result<Child, Str
         .env("DATABASE_URL", database_url)
         .current_dir(resource_dir)
         .kill_on_drop(true);
+    attach_log(&mut cmd, log);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.spawn()
         .map_err(|e| format!("Failed to start worker: {}", e))
 }
 
-async fn kill_processes(state: &AppState) {
-    let mut procs = state.processes.lock().await;
-    if let Some(ref mut child) = procs.server {
-        let _ = child.kill().await;
+fn emit_status(handle: &tauri::AppHandle, kind: ProcKind, status: &str) {
+    let _ = handle.emit(
+        "process-status",
+        ProcessStatus { kind: kind.name().to_string(), status: status.to_string() },
+    );
+}
+
+/// Backoff (seconds) before respawning after a crash: 1,1,2,4,8,16,30(cap).
+fn backoff_secs(restart_count: u32) -> u64 {
+    match restart_count {
+        0 | 1 => 1,
+        n => (1u64 << (n - 1).min(5)).min(30),
     }
-    if let Some(ref mut child) = procs.worker {
-        let _ = child.kill().await;
+}
+
+#[cfg(windows)]
+fn assign_to_job(handle: &tauri::AppHandle, kind: ProcKind, pid: Option<u32>) {
+    let Some(pid) = pid else { return };
+    let state = handle.state::<AppState>();
+    // Copy the raw job handle out under the lock, then release the guard (and the
+    // State borrow) before the FFI call so neither outlives `state`.
+    let job_raw = match state.job.lock() {
+        Ok(slot) => slot.as_ref().map(|j| j.raw()),
+        Err(_) => None,
+    };
+    if let Some(raw) = job_raw {
+        match winjob::assign_pid(raw, pid) {
+            Ok(_) => eprintln!("[tms] {} (pid {}) assigned to job", kind.name(), pid),
+            Err(e) => eprintln!("[tms] {} job-assign failed: {}", kind.name(), e),
+        }
     }
-    procs.server = None;
-    procs.worker = None;
+}
+
+/// Supervise a child process: (re)spawn on unexpected exit with capped backoff and a
+/// crash-loop guard, assign each instance to the Job Object, redirect its output to a
+/// log file, and emit running/down status to the UI. Stops cleanly on shutdown.
+async fn supervise(
+    handle: tauri::AppHandle,
+    kind: ProcKind,
+    resource_dir: PathBuf,
+    database_url: String,
+    data_dir: PathBuf,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let mut restart_count: u32 = 0;
+
+    loop {
+        if *shutdown.borrow() {
+            break;
+        }
+
+        let log = open_log_file(&data_dir, kind.name());
+        let spawn_res = match kind {
+            ProcKind::Server => spawn_server(&resource_dir, &database_url, log),
+            ProcKind::Worker => spawn_worker(&resource_dir, &database_url, log),
+        };
+
+        let mut child = match spawn_res {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[tms] {} spawn failed: {}", kind.name(), e);
+                emit_status(&handle, kind, "down");
+                restart_count = restart_count.saturating_add(1);
+                let secs = backoff_secs(restart_count);
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(secs)) => {}
+                    _ = shutdown.changed() => {}
+                }
+                continue;
+            }
+        };
+
+        let pid = child.id();
+        eprintln!("[tms] {} started (pid {:?})", kind.name(), pid);
+        #[cfg(windows)]
+        assign_to_job(&handle, kind, pid);
+        emit_status(&handle, kind, "running");
+
+        let started = Instant::now();
+
+        tokio::select! {
+            status = child.wait() => {
+                if *shutdown.borrow() {
+                    break;
+                }
+                eprintln!("[tms] {} exited unexpectedly: {:?}", kind.name(), status);
+                emit_status(&handle, kind, "down");
+                // A child that ran healthily for a while is not a crash loop — reset.
+                if started.elapsed() > Duration::from_secs(60) {
+                    restart_count = 0;
+                }
+                restart_count = restart_count.saturating_add(1);
+                let secs = backoff_secs(restart_count);
+                eprintln!("[tms] respawning {} in {}s (restart #{})", kind.name(), secs, restart_count);
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(secs)) => {}
+                    _ = shutdown.changed() => {}
+                }
+            }
+            _ = shutdown.changed() => {
+                eprintln!("[tms] {} shutting down", kind.name());
+                let _ = child.kill().await;
+                break;
+            }
+        }
+    }
 }
 
 #[tauri::command]
 async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, path: String) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window(&label) {
+        // Restore if minimized / hidden, then bring to front and focus.
+        let _ = existing.unminimize();
+        let _ = existing.show();
         existing.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -243,14 +399,13 @@ async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, pa
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![open_sub_window])
         .manage(AppState {
-            processes: Mutex::new(ManagedProcesses {
-                server: None,
-                worker: None,
-            }),
+            shutdown_tx,
             #[cfg(windows)]
             job: std::sync::Mutex::new(None),
         })
@@ -288,53 +443,30 @@ pub fn run() {
                     Err(e) => eprintln!("[tms] Database init error: {}", e),
                 }
 
-                let server = spawn_server(&resource_dir, &database_url);
-                let worker = spawn_worker(&resource_dir, &database_url);
-
+                // Launch supervised server + worker. Each task respawns its child on
+                // unexpected exit and stops when the shutdown signal fires.
                 let state = handle.state::<AppState>();
-                let mut procs = state.processes.lock().await;
+                let rx_server = state.shutdown_tx.subscribe();
+                let rx_worker = state.shutdown_tx.subscribe();
 
-                match server {
-                    Ok(child) => {
-                        eprintln!("[tms] Server started");
-                        procs.server = Some(child);
-                    }
-                    Err(e) => eprintln!("[tms] Server start error: {}", e),
-                }
-                match worker {
-                    Ok(child) => {
-                        eprintln!("[tms] Worker started");
-                        procs.worker = Some(child);
-                    }
-                    Err(e) => eprintln!("[tms] Worker start error: {}", e),
-                }
+                tauri::async_runtime::spawn(supervise(
+                    handle.clone(),
+                    ProcKind::Server,
+                    resource_dir.clone(),
+                    database_url.clone(),
+                    data_dir.clone(),
+                    rx_server,
+                ));
+                tauri::async_runtime::spawn(supervise(
+                    handle.clone(),
+                    ProcKind::Worker,
+                    resource_dir,
+                    database_url,
+                    data_dir,
+                    rx_worker,
+                ));
 
-                #[cfg(windows)]
-                {
-                    if let Ok(slot) = state.job.lock() {
-                        if let Some(job) = slot.as_ref() {
-                            let handle_raw = job.raw();
-                            let server_pid = procs.server.as_ref().and_then(|c| c.id());
-                            let worker_pid = procs.worker.as_ref().and_then(|c| c.id());
-                            if let Some(pid) = server_pid {
-                                match winjob::assign_pid(handle_raw, pid) {
-                                    Ok(_) => eprintln!("[tms] Server (pid {}) assigned to job", pid),
-                                    Err(e) => eprintln!("[tms] Server job-assign failed: {}", e),
-                                }
-                            }
-                            if let Some(pid) = worker_pid {
-                                match winjob::assign_pid(handle_raw, pid) {
-                                    Ok(_) => eprintln!("[tms] Worker (pid {}) assigned to job", pid),
-                                    Err(e) => eprintln!("[tms] Worker job-assign failed: {}", e),
-                                }
-                            }
-                        }
-                    }
-                }
-
-                drop(procs);
-
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                tokio::time::sleep(Duration::from_secs(3)).await;
 
                 if let Some(window) = handle.get_webview_window("main") {
                     let _ = window.eval("window.location.reload()");
@@ -346,11 +478,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
-                    let handle = window.app_handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        let state = handle.state::<AppState>();
-                        kill_processes(&state).await;
-                    });
+                    // Signal supervisors to stop and kill their children. On Windows the
+                    // Job Object also force-kills everything when the parent process exits.
+                    let state = window.app_handle().state::<AppState>();
+                    let _ = state.shutdown_tx.send(true);
                 }
             }
         })

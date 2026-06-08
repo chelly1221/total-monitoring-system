@@ -121,16 +121,6 @@ export interface Alarm {
   system?: System
 }
 
-export interface AlarmLog {
-  id: string
-  systemId: string
-  systemName: string
-  severity: AlarmSeverity
-  message: string
-  value: string | null
-  createdAt: Date
-}
-
 export interface Setting {
   id: string
   key: string
@@ -138,14 +128,6 @@ export interface Setting {
   category: string | null
   createdAt: Date
   updatedAt: Date
-}
-
-export interface SystemWithMetrics extends System {
-  metrics: Metric[]
-}
-
-export interface SystemWithAlarms extends System {
-  alarms: Alarm[]
 }
 
 // Prisma-compatible types (string-based for database compatibility)
@@ -159,6 +141,8 @@ export interface PrismaSystem {
   port: number | null
   protocol: string | null
   lastDataAt: Date | null
+  offlineThreshold: number | null
+  encoding: string | null
   config: string | null
   audioConfig: string | null
   createdAt: Date
@@ -198,7 +182,7 @@ export interface PrismaAlarm {
 }
 
 // WebSocket message types
-export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings'
+export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings' | 'systems-changed'
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -234,34 +218,3 @@ export interface WebSocketMessage {
   timestamp: string
 }
 
-export interface RealtimeState {
-  systems: Map<string, System>
-  metrics: Map<string, Metric>
-  alarms: Alarm[]
-  connected: boolean
-  lastUpdate: Date | null
-}
-
-// Helper to parse config from JSON string
-export function parseSystemConfig(configJson: string | null, type: SystemType): SystemConfig | null {
-  if (!configJson) return null
-  try {
-    const parsed = JSON.parse(configJson)
-    if (type === 'equipment') {
-      return parsed as EquipmentConfig
-    } else {
-      return parsed as MetricsConfig
-    }
-  } catch {
-    return null
-  }
-}
-
-// Type guards
-export function isEquipmentConfig(config: SystemConfig): config is EquipmentConfig {
-  return 'normalPatterns' in config && 'criticalPatterns' in config && !('delimiter' in config)
-}
-
-export function isMetricsConfig(config: SystemConfig): config is MetricsConfig {
-  return ('delimiter' in config || 'customCode' in config) && 'displayItems' in config
-}

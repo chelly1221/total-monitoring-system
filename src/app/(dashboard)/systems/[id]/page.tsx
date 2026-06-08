@@ -13,6 +13,7 @@ import { SensorBasicInfoBar } from "@/components/forms/sensor-basic-info-bar"
 import { SensorAlarmLog } from "@/components/forms/sensor-alarm-log"
 import { SensorSettingsCard } from "@/components/forms/sensor-settings-card"
 import { SensorDataPreviewCard } from "@/components/forms/sensor-data-preview-card"
+import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import type {
   SystemStatus,
@@ -81,6 +82,8 @@ interface SystemWithRelations {
   config: string | null
   audioConfig: string | null
   lastDataAt: string | null
+  offlineThreshold: number | null
+  encoding: string | null
   createdAt: string
   updatedAt: string
   metrics: MetricData[]
@@ -104,6 +107,8 @@ export default function SystemDetailPage() {
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
   const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
+  const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
   const [equipmentConfig, setEquipmentConfig] = React.useState<EquipmentConfig>(DEFAULT_EQUIPMENT_CONFIG)
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>(DEFAULT_AUDIO_CONFIG)
@@ -221,6 +226,8 @@ export default function SystemDetailPage() {
         setName(data.name)
         setPort(data.port?.toString() || "")
         setProtocol((data.protocol as "udp" | "tcp") || "udp")
+        setEncoding(data.encoding === "utf8" ? "utf8" : "buffer")
+        setOfflineThresholdMin(offlineThresholdToMinutes(data.offlineThreshold))
 
         // Parse config based on type
         if (data.config) {
@@ -355,6 +362,7 @@ export default function SystemDetailPage() {
         type: systemType,
         port: portNum,
         protocol,
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
         config: configValue,
       }
 
@@ -483,6 +491,10 @@ export default function SystemDetailPage() {
             onNameChange={setName}
             onPortChange={setPort}
             onProtocolChange={(v) => setProtocol(v)}
+            encoding={encoding}
+            offlineThresholdMin={offlineThresholdMin}
+            onEncodingChange={setEncoding}
+            onOfflineThresholdChange={setOfflineThresholdMin}
           />
 
           {error && (
@@ -523,6 +535,10 @@ export default function SystemDetailPage() {
             onNameChange={setName}
             onPortChange={setPort}
             onProtocolChange={(v) => setProtocol(v)}
+            encoding={encoding}
+            offlineThresholdMin={offlineThresholdMin}
+            onEncodingChange={setEncoding}
+            onOfflineThresholdChange={setOfflineThresholdMin}
           />
 
           {error && (

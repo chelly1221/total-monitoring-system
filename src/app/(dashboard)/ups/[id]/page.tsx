@@ -10,6 +10,7 @@ import { SystemCustomCode } from "@/components/forms/system-custom-code"
 import { UpsDetailHeader } from "@/components/forms/ups-detail-header"
 import { UpsBasicInfoBar } from "@/components/forms/ups-basic-info-bar"
 import { UpsPreviewAlarmSidebar } from "@/components/forms/ups-preview-alarm-sidebar"
+import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import type {
   SystemStatus,
@@ -62,6 +63,8 @@ interface SystemWithRelations {
   config: string | null
   audioConfig: string | null
   lastDataAt: string | null
+  offlineThreshold: number | null
+  encoding: string | null
   createdAt: string
   updatedAt: string
   metrics: MetricData[]
@@ -85,6 +88,8 @@ export default function UpsDetailPage() {
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
   const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
+  const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>(DEFAULT_AUDIO_CONFIG)
 
@@ -204,6 +209,8 @@ export default function UpsDetailPage() {
         setName(data.name)
         setPort(data.port?.toString() || "")
         setProtocol((data.protocol as "udp" | "tcp") || "udp")
+        setEncoding(data.encoding === "utf8" ? "utf8" : "buffer")
+        setOfflineThresholdMin(offlineThresholdToMinutes(data.offlineThreshold))
 
         // Parse config
         if (data.config) {
@@ -331,6 +338,7 @@ export default function UpsDetailPage() {
         type: "ups",
         port: portNum,
         protocol,
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
         config: metricsConfig,
         audioConfig,
       }
@@ -444,6 +452,10 @@ export default function UpsDetailPage() {
           onNameChange={setName}
           onPortChange={setPort}
           onProtocolChange={(v) => setProtocol(v)}
+          encoding={encoding}
+          offlineThresholdMin={offlineThresholdMin}
+          onEncodingChange={setEncoding}
+          onOfflineThresholdChange={setOfflineThresholdMin}
         />
 
         {error && (

@@ -1,9 +1,11 @@
 // Main entry point for the data collector worker
 
-import { startUdpListeners, stopUdpListeners, getUdpListenerCount } from './udp-listener'
-import { startTcpListeners, stopTcpListeners, getTcpListenerCount } from './tcp-listener'
+import { stopUdpListeners, getUdpListenerCount, getUdpStats, getUdpBoundPorts } from './udp-listener'
+import { stopTcpListeners, getTcpListenerCount, getTcpStats, getTcpBoundPorts } from './tcp-listener'
 import { closeDatabase, startOfflineDetection, startHistoryCleanup, syncOfflineAlarms } from './db-updater'
-import { startWebSocketServer, stopWebSocketServer, isWebSocketServerRunning } from './websocket-server'
+import { startWebSocketServer, stopWebSocketServer, isWebSocketServerRunning, setSystemsChangedHandler } from './websocket-server'
+import { startBindingReconciler, stopBindingReconciler, reconcileBindings } from './binding'
+import { getQueueDepth, getIngestCounters, stopIngestQueue } from './ingest-queue'
 import { resetSirens, syncSirenState } from './siren-trigger'
 import { UDP_PORTS, TCP_PORTS } from './config'
 
@@ -14,19 +16,22 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (error) => {
   console.error('[worker] Uncaught exception:', error)
+  // Exit so the Tauri supervisor can cleanly respawn a fresh worker instead of
+  // leaving a half-dead process alive (e.g. a broken DB connection).
+  process.exit(1)
 })
 
 console.log('='.repeat(60))
 console.log('통합알람감시체계 - Data Collector Worker')
 console.log('='.repeat(60))
 
-// Display configuration
-console.log('\nConfigured UDP ports:')
+// Display static default ports (the binder unions these with enabled DB systems)
+console.log('\nDefault UDP ports (config.ts):')
 for (const [port, config] of Object.entries(UDP_PORTS)) {
   console.log(`  ${port}: ${config.system} (${config.type})`)
 }
 
-console.log('\nConfigured TCP ports:')
+console.log('\nDefault TCP ports (config.ts):')
 for (const [port, config] of Object.entries(TCP_PORTS)) {
   console.log(`  ${port}: ${config.system} (${config.type})`)
 }
@@ -34,12 +39,15 @@ for (const [port, config] of Object.entries(TCP_PORTS)) {
 console.log('\n' + '-'.repeat(60))
 console.log('Starting listeners...\n')
 
-// Start all listeners
-startUdpListeners()
-startTcpListeners()
-
-// Start WebSocket server for real-time frontend updates
+// Start WebSocket server first so the binder's sockets can broadcast raw previews
+// and so the systems-changed handler is registered before any reconcile runs.
 startWebSocketServer()
+
+// Re-bind sockets whenever the API reports a systems change (low-latency path).
+setSystemsChangedHandler(() => { void reconcileBindings() })
+
+// Bind sockets from (DB systems ∪ const defaults), then keep them reconciled on a poll.
+startBindingReconciler()
 
 // Start offline detection (checks systems every 10s, marks offline after 30s)
 startOfflineDetection()
@@ -57,15 +65,37 @@ console.log('\n' + '-'.repeat(60))
 console.log('Worker is running. Press Ctrl+C to stop.\n')
 
 const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL || '60000', 10)
-const expectedUdp = Object.keys(UDP_PORTS).length
-const expectedTcp = Object.keys(TCP_PORTS).length
+// A bound socket that has received nothing for this long is "silent" — likely a dead
+// sender / pulled cable / reconfigured gateway, which the listener-count alone cannot see.
+const PORT_SILENT_THRESHOLD = parseInt(process.env.PORT_SILENT_THRESHOLD || '120000', 10)
 
 const healthCheckInterval = setInterval(() => {
   const udpCount = getUdpListenerCount()
   const tcpCount = getTcpListenerCount()
+  // Expected = currently desired (bound) ports; a gap means a port is down/restarting.
+  const expectedUdp = getUdpBoundPorts().length
+  const expectedTcp = getTcpBoundPorts().length
   const wsRunning = isWebSocketServerRunning()
 
-  console.log(`[health] UDP: ${udpCount}/${expectedUdp}, TCP: ${tcpCount}/${expectedTcp}, WebSocket: ${wsRunning ? 'OK' : 'DOWN'}`)
+  // Flag bound-but-silent ports so a dead data flow is visible even while the socket is "up".
+  const now = Date.now()
+  const silent: string[] = []
+  for (const [label, statsMap] of [['UDP', getUdpStats()], ['TCP', getTcpStats()]] as const) {
+    for (const [port, s] of statsMap) {
+      const age = s.lastSeenAt ? now - s.lastSeenAt : Infinity
+      if (age > PORT_SILENT_THRESHOLD) {
+        silent.push(`${label}:${port}=${s.lastSeenAt ? Math.round(age / 1000) + 's' : 'never'}`)
+      }
+    }
+  }
+  const silentNote = silent.length
+    ? ` | SILENT(>${Math.round(PORT_SILENT_THRESHOLD / 1000)}s): ${silent.join(', ')}`
+    : ''
+
+  const { dropped, processed } = getIngestCounters()
+  const queueNote = ` | queue: ${getQueueDepth()} (processed ${processed}, dropped ${dropped})`
+
+  console.log(`[health] UDP: ${udpCount}/${expectedUdp}, TCP: ${tcpCount}/${expectedTcp}, WebSocket: ${wsRunning ? 'OK' : 'DOWN'}${queueNote}${silentNote}`)
 
   // Auto-restart WebSocket if down
   if (!wsRunning) {
@@ -79,9 +109,11 @@ async function shutdown(): Promise<void> {
   console.log('\nShutting down...')
 
   clearInterval(healthCheckInterval)
+  stopBindingReconciler()
   await resetSirens()
   stopUdpListeners()
   stopTcpListeners()
+  await stopIngestQueue()
   stopWebSocketServer()
   await closeDatabase()
 

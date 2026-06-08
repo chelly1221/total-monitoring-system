@@ -25,21 +25,6 @@ export function evaluateCondition(value: number, condition: ThresholdCondition):
 }
 
 /**
- * Evaluate a condition against a raw string value (for status-type metrics)
- */
-export function evaluateStringCondition(rawValue: string, condition: ThresholdCondition): boolean {
-  const compareValue = condition.stringValue ?? String(condition.value1)
-  switch (condition.operator) {
-    case 'eq':
-      return rawValue === compareValue
-    case 'neq':
-      return rawValue !== compareValue
-    default:
-      return false
-  }
-}
-
-/**
  * Evaluate sensor status based on conditions
  * Priority: critical/coldCritical/dryCritical/humidCritical > normal (default)
  * Conditions within each status are OR (any match triggers that status)

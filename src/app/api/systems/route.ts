@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { syncMetricsFromConfig } from '@/lib/sync-metrics'
 import { validateCustomCode } from '@/lib/validate-custom-code'
+import { notifySystemsChanged } from '@/lib/ws-notify'
 import type { MetricsConfig } from '@/types'
+
+// Normalize the wire-encoding field: only 'utf8' | 'buffer' are valid, else null (default).
+function normalizeEncoding(e: unknown): string | null {
+  return e === 'utf8' || e === 'buffer' ? e : null
+}
 
 export async function GET() {
   try {
@@ -25,7 +31,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const { name, type, port, protocol, config, isEnabled, audioConfig } = body
+    const { name, type, port, protocol, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
     if (!name || !type) {
       return NextResponse.json(
@@ -57,6 +63,20 @@ export async function POST(request: Request) {
       )
     }
 
+    // Reject duplicate (port, protocol): routing is by port only, so a second
+    // system on the same socket cannot be disambiguated and silently shadows data.
+    const portNum = parseInt(port, 10)
+    const dup = await prisma.system.findFirst({
+      where: { port: portNum, protocol, isActive: true },
+      select: { name: true },
+    })
+    if (dup) {
+      return NextResponse.json(
+        { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
+        { status: 409 }
+      )
+    }
+
     if (config?.customCode?.trim()) {
       const result = validateCustomCode(config.customCode)
       if (!result.valid) {
@@ -71,8 +91,10 @@ export async function POST(request: Request) {
       data: {
         name,
         type,
-        port: parseInt(port, 10),
+        port: portNum,
         protocol,
+        offlineThreshold: offlineThreshold != null ? parseInt(offlineThreshold, 10) : null,
+        encoding: normalizeEncoding(encoding),
         config: config ? JSON.stringify(config) : null,
         audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
         isEnabled: isEnabled !== false,
@@ -85,6 +107,9 @@ export async function POST(request: Request) {
     if (config && config.displayItems && (type === 'ups' || type === 'sensor')) {
       await syncMetricsFromConfig(system.id, config as MetricsConfig)
     }
+
+    // Tell the worker to bind a socket for this new (port, protocol).
+    notifySystemsChanged()
 
     return NextResponse.json(system, { status: 201 })
   } catch (error) {

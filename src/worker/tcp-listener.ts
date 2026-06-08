@@ -1,27 +1,36 @@
-// TCP socket listeners for data collection
+// TCP socket listeners for data collection.
+// Bindings are reconciled from a desired (port -> config) set computed in binding.ts
+// (const defaults ∪ enabled DB systems). Each framed message is parsed then handed to
+// the ingest queue. Encoding/framing is read from the current config so a reconcile
+// can hot-swap it without rebinding.
 
 import * as net from 'net'
-import { TCP_PORTS, PortConfig } from './config'
+import { PortConfig } from './config'
 import { parseBuffer } from './parser'
-import { updateMetric } from './db-updater'
 import { broadcastRawData } from './websocket-server'
+import { enqueueIngest } from './ingest-queue'
+import { createPortStats } from './port-stats'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('tcp')
 
 const servers = new Map<number, net.Server>()
+const configs = new Map<number, PortConfig>() // desired config per bound port
+const clients = new Map<number, Set<net.Socket>>() // live client sockets per port
 const restartBackoffs = new Map<number, number>()
 const restartTimers = new Map<number, ReturnType<typeof setTimeout>>()
+const portStats = createPortStats()
 
 const BACKOFF_INITIAL = 1000
 const BACKOFF_MAX = 30000
+// EADDRINUSE is usually transient self-contention (the previous server on this port
+// is still closing after a reconcile), so retry fast instead of the long backoff.
+const EADDRINUSE_RETRY = 500
 
-/**
- * Start TCP listeners for all configured ports
- */
-export function startTcpListeners(): void {
-  for (const [portStr, config] of Object.entries(TCP_PORTS)) {
-    const port = Number(portStr)
-    startTcpListener(port, config)
-  }
-}
+// Fixed frame size for the Node-RED buffer protocol (non-utf8 ports).
+const FRAME_SIZE = 20
+// Max bytes to buffer for a utf8 line before force-flushing when no newline arrives.
+const UTF8_MAX_LINE = 256
 
 /**
  * Get the number of active TCP listeners
@@ -31,99 +40,165 @@ export function getTcpListenerCount(): number {
 }
 
 /**
- * Start a single TCP listener on the specified port
+ * Get per-port ingestion stats (last-seen, received/ok/fail/dropped counts)
  */
-function startTcpListener(port: number, config: PortConfig): void {
+export function getTcpStats(): Map<number, import('./port-stats').PortStat> {
+  return portStats.map
+}
+
+/**
+ * Get the set of ports currently bound (desired).
+ */
+export function getTcpBoundPorts(): number[] {
+  return Array.from(configs.keys())
+}
+
+/**
+ * Reconcile bound TCP servers to the desired (port -> config) set:
+ * bind new ports, close removed ports, hot-swap config (e.g. encoding) in place.
+ */
+export function reconcileTcpListeners(desired: Map<number, PortConfig>): void {
+  // Close ports no longer desired
+  for (const port of Array.from(configs.keys())) {
+    if (!desired.has(port)) {
+      // Destroy live client connections first so server.close() completes promptly
+      // (net.Server keeps its listening socket open until all connections end), which
+      // frees the port before any later reconcile/retry tries to rebind it.
+      const set = clients.get(port)
+      if (set) {
+        for (const s of set) s.destroy()
+        clients.delete(port)
+      }
+      const server = servers.get(port)
+      if (server) {
+        try { server.close() } catch { /* already closed */ }
+        servers.delete(port)
+      }
+      const timer = restartTimers.get(port)
+      if (timer) { clearTimeout(timer); restartTimers.delete(port) }
+      restartBackoffs.delete(port)
+      configs.delete(port)
+      portStats.remove(port)
+      log.info(`[${port}] unbound (no longer configured)`)
+    }
+  }
+  // Add new ports / hot-swap config on existing ones
+  for (const [port, cfg] of desired) {
+    configs.set(port, cfg)
+    portStats.ensure(port)
+    if (!servers.has(port) && !restartTimers.has(port)) {
+      bindTcpServer(port)
+    }
+  }
+}
+
+function bindTcpServer(port: number): void {
   const server = net.createServer((socket) => {
     const clientAddr = `${socket.remoteAddress}:${socket.remotePort}`
-    console.log(`[TCP:${port}] Client connected: ${clientAddr}`)
+    log.info(`[${port}] Client connected: ${clientAddr}`)
+
+    // Track the connection so unbind can force it closed.
+    let set = clients.get(port)
+    if (!set) { set = new Set(); clients.set(port, set) }
+    set.add(socket)
+    socket.on('close', () => { clients.get(port)?.delete(socket) })
 
     let buffer = Buffer.alloc(0)
 
-    socket.on('data', async (data) => {
-      try {
-        console.log(`[TCP:${port}] Received ${data.length} bytes from ${clientAddr}`)
+    const handleFrame = (message: Buffer) => {
+      const config = configs.get(port)
+      if (!config) return
+      const parsed = parseBuffer(message, config)
+      broadcastRawData(port, parsed.value)
+      enqueueIngest({ config, data: parsed, port, protocol: 'tcp', stats: portStats })
+    }
 
-        // Accumulate data in buffer
+    socket.on('data', (data) => {
+      portStats.received(port)
+      try {
+        const isUtf8 = configs.get(port)?.encoding === 'utf8'
+        log.debug(`[${port}] Received ${data.length} bytes from ${clientAddr}`)
+
         buffer = Buffer.concat([buffer, data])
 
-        // Process complete messages (20 bytes each for buffer protocol)
-        while (buffer.length >= 20 || (config.encoding === 'utf8' && buffer.length > 0)) {
+        while (buffer.length >= FRAME_SIZE || (isUtf8 && buffer.length > 0)) {
           let messageLength: number
 
-          if (config.encoding === 'utf8') {
-            // For UTF-8, look for newline or process entire buffer
+          if (isUtf8) {
             const newlineIndex = buffer.indexOf('\n')
             if (newlineIndex !== -1) {
               messageLength = newlineIndex + 1
             } else {
-              // Wait for more data unless buffer is getting large
-              if (buffer.length < 256) break
+              if (buffer.length < UTF8_MAX_LINE) break
+              log.warn(`[${port}] utf8 line exceeded ${UTF8_MAX_LINE} bytes with no newline — force-flushing (value may be split)`)
               messageLength = buffer.length
             }
           } else {
-            // For buffer protocol, process 20 bytes at a time
-            messageLength = 20
+            messageLength = FRAME_SIZE
           }
 
           const message = buffer.subarray(0, messageLength)
           buffer = buffer.subarray(messageLength)
-
-          const parsed = parseBuffer(message, config)
-
-          // Broadcast raw data for preview in config UI
-          broadcastRawData(port, parsed.value)
-
-          await updateMetric(config, parsed, port, 'tcp')
+          handleFrame(message)
         }
       } catch (error) {
-        console.error(`[TCP:${port}] Error processing data from ${clientAddr}:`, error)
+        portStats.fail(port)
+        log.error(`[${port}] Error processing data from ${clientAddr}:`, error)
       }
     })
 
     socket.on('error', (err) => {
-      console.error(`[TCP:${port}] Socket error from ${clientAddr}:`, err.message)
+      log.error(`[${port}] Socket error from ${clientAddr}:`, err.message)
     })
 
-    socket.on('close', async () => {
+    socket.on('close', () => {
       try {
-        console.log(`[TCP:${port}] Client disconnected: ${clientAddr}`)
+        log.info(`[${port}] Client disconnected: ${clientAddr}`)
+        if (buffer.length === 0) return
 
-        // Process any remaining data in buffer when connection closes
-        if (buffer.length > 0) {
-          console.log(`[TCP:${port}] Processing remaining ${buffer.length} bytes`)
-          const parsed = parseBuffer(buffer, config)
-          broadcastRawData(port, parsed.value)
-          await updateMetric(config, parsed, port, 'tcp')
-          buffer = Buffer.alloc(0)
+        const isUtf8 = configs.get(port)?.encoding === 'utf8'
+        if (isUtf8) {
+          // A final line that arrived without a trailing newline — process it.
+          log.debug(`[${port}] Processing final ${buffer.length} bytes`)
+          handleFrame(buffer)
+        } else {
+          // Buffer protocol: any leftover is a PARTIAL frame (< 20 bytes). Parsing
+          // it as a value would manufacture a bogus reading and indicates the stream
+          // was not a clean multiple of the 20-byte frame size (misalignment).
+          log.warn(`[${port}] Discarding ${buffer.length}-byte partial frame on close (stream not aligned to ${FRAME_SIZE}-byte frames)`)
         }
+        buffer = Buffer.alloc(0)
       } catch (error) {
-        console.error(`[TCP:${port}] Error processing remaining data from ${clientAddr}:`, error)
+        log.error(`[${port}] Error processing remaining data from ${clientAddr}:`, error)
       }
     })
   })
 
   server.on('error', (err: NodeJS.ErrnoException) => {
-    console.error(`[TCP:${port}] Server error:`, err.message)
+    log.error(`[${port}] Server error:`, err.message)
     servers.delete(port)
 
-    // Auto-restart with exponential backoff
-    const currentBackoff = restartBackoffs.get(port) ?? BACKOFF_INITIAL
-    console.log(`[TCP:${port}] Restarting in ${currentBackoff}ms...`)
+    if (!configs.has(port)) return // unbound during the error — don't restart
+
+    // EADDRINUSE: retry fast (transient self-contention or, if it persists, a port
+    // owned by another process — surfaced via this warn + the health count gap).
+    const inUse = err.code === 'EADDRINUSE'
+    const delay = inUse ? EADDRINUSE_RETRY : (restartBackoffs.get(port) ?? BACKOFF_INITIAL)
+    log.warn(inUse
+      ? `[${port}] Address in use — retrying in ${delay}ms (still closing, or owned by another process)`
+      : `[${port}] Restarting in ${delay}ms...`)
 
     const timer = setTimeout(() => {
       restartTimers.delete(port)
-      console.log(`[TCP:${port}] Attempting restart...`)
-      startTcpListener(port, config)
-    }, currentBackoff)
-
+      if (!configs.has(port)) return // unbound while waiting to restart
+      bindTcpServer(port)
+    }, delay)
     restartTimers.set(port, timer)
-    restartBackoffs.set(port, Math.min(currentBackoff * 2, BACKOFF_MAX))
+    if (!inUse) restartBackoffs.set(port, Math.min(delay * 2, BACKOFF_MAX))
   })
 
   server.listen(port, () => {
-    console.log(`[TCP:${port}] Listening for ${config.system}`)
-    // Reset backoff on successful listen
+    log.info(`[${port}] Listening for ${configs.get(port)?.system ?? '?'}`)
     restartBackoffs.delete(port)
   })
 
@@ -134,16 +209,15 @@ function startTcpListener(port: number, config: PortConfig): void {
  * Stop all TCP listeners
  */
 export function stopTcpListeners(): void {
-  // Clear pending restart timers
-  for (const timer of restartTimers.values()) {
-    clearTimeout(timer)
-  }
+  for (const timer of restartTimers.values()) clearTimeout(timer)
   restartTimers.clear()
   restartBackoffs.clear()
-
-  for (const server of servers.values()) {
-    server.close()
+  for (const set of clients.values()) {
+    for (const s of set) s.destroy()
   }
+  clients.clear()
+  for (const server of servers.values()) server.close()
   servers.clear()
-  console.log('[TCP] All listeners stopped')
+  configs.clear()
+  log.info('All listeners stopped')
 }
