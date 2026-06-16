@@ -2,9 +2,10 @@
 
 import { stopUdpListeners, getUdpListenerCount, getUdpStats, getUdpBoundPorts } from './udp-listener'
 import { stopTcpListeners, getTcpListenerCount, getTcpStats, getTcpBoundPorts } from './tcp-listener'
-import { closeDatabase, startOfflineDetection, startHistoryCleanup, syncOfflineAlarms } from './db-updater'
+import { closeDatabase, startOfflineDetection, startHistoryCleanup, syncOfflineAlarms, initDatabasePragmas } from './db-updater'
 import { startWebSocketServer, stopWebSocketServer, isWebSocketServerRunning, setSystemsChangedHandler } from './websocket-server'
 import { startBindingReconciler, stopBindingReconciler, reconcileBindings } from './binding'
+import { stopMqttListeners, getMqttSubscriptionCount, isMqttConnected } from './mqtt-listener'
 import { getQueueDepth, getIngestCounters, stopIngestQueue } from './ingest-queue'
 import { resetSirens, syncSirenState } from './siren-trigger'
 import { UDP_PORTS, TCP_PORTS } from './config'
@@ -41,25 +42,34 @@ console.log('Starting listeners...\n')
 
 // Start WebSocket server first so the binder's sockets can broadcast raw previews
 // and so the systems-changed handler is registered before any reconcile runs.
+// (No DB access — safe to start before the pragmas below.)
 startWebSocketServer()
 
-// Re-bind sockets whenever the API reports a systems change (low-latency path).
-setSystemsChangedHandler(() => { void reconcileBindings() })
+// Apply SQLite pragmas (WAL + busy_timeout) BEFORE any DB-touching startup, then
+// kick off the DB-dependent subsystems. Awaited so the first real query runs with
+// the pragmas in force. (Top-level await is unavailable in the CJS worker bundle,
+// so this is an async IIFE.)
+void (async () => {
+  await initDatabasePragmas()
 
-// Bind sockets from (DB systems ∪ const defaults), then keep them reconciled on a poll.
-startBindingReconciler()
+  // Re-bind sockets whenever the API reports a systems change (low-latency path).
+  setSystemsChangedHandler(() => { void reconcileBindings() })
 
-// Start offline detection (checks systems every 10s, marks offline after 30s)
-startOfflineDetection()
+  // Bind sockets from (DB systems ∪ const defaults), then keep them reconciled on a poll.
+  startBindingReconciler()
 
-// Start metric history cleanup (25h retention, runs every hour)
-startHistoryCleanup()
+  // Start offline detection (checks systems every 10s; per-device threshold, 5min default)
+  startOfflineDetection()
 
-// Sync siren state on startup (activate if unresolved critical alarms exist)
-syncSirenState()
+  // Start metric history cleanup (tiered retention, runs every hour)
+  startHistoryCleanup()
 
-// Create alarms for systems already offline at startup
-syncOfflineAlarms()
+  // Sync siren state on startup (activate if unresolved critical alarms exist)
+  syncSirenState()
+
+  // Create alarms for systems already offline at startup
+  syncOfflineAlarms()
+})()
 
 console.log('\n' + '-'.repeat(60))
 console.log('Worker is running. Press Ctrl+C to stop.\n')
@@ -95,7 +105,10 @@ const healthCheckInterval = setInterval(() => {
   const { dropped, processed } = getIngestCounters()
   const queueNote = ` | queue: ${getQueueDepth()} (processed ${processed}, dropped ${dropped})`
 
-  console.log(`[health] UDP: ${udpCount}/${expectedUdp}, TCP: ${tcpCount}/${expectedTcp}, WebSocket: ${wsRunning ? 'OK' : 'DOWN'}${queueNote}${silentNote}`)
+  const mqttSubs = getMqttSubscriptionCount()
+  const mqttNote = mqttSubs > 0 ? ` | MQTT: ${mqttSubs} sub(s) ${isMqttConnected() ? 'connected' : 'DISCONNECTED'}` : ''
+
+  console.log(`[health] UDP: ${udpCount}/${expectedUdp}, TCP: ${tcpCount}/${expectedTcp}, WebSocket: ${wsRunning ? 'OK' : 'DOWN'}${queueNote}${mqttNote}${silentNote}`)
 
   // Auto-restart WebSocket if down
   if (!wsRunning) {
@@ -113,6 +126,7 @@ async function shutdown(): Promise<void> {
   await resetSirens()
   stopUdpListeners()
   stopTcpListeners()
+  stopMqttListeners()
   await stopIngestQueue()
   stopWebSocketServer()
   await closeDatabase()

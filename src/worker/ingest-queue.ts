@@ -19,8 +19,9 @@ export interface IngestItem {
   config: PortConfig
   data: ParsedData
   port: number
-  protocol: 'udp' | 'tcp'
+  protocol: 'udp' | 'tcp' | 'mqtt'
   stats: PortStats
+  topic?: string // MQTT only: the topic this message arrived on (routing key)
 }
 
 const queue: IngestItem[] = []
@@ -35,7 +36,8 @@ let totalProcessed = 0
 let drainPromise: Promise<void> | null = null
 
 function keyOf(item: IngestItem): string {
-  return `${item.protocol}:${item.port}`
+  // MQTT shares a synthetic port id per topic; bucket the per-source cap by topic.
+  return item.protocol === 'mqtt' ? `mqtt:${item.topic}` : `${item.protocol}:${item.port}`
 }
 
 /**
@@ -67,7 +69,7 @@ async function drain(): Promise<void> {
         if (item.protocol === 'udp' && item.config.type === 'alarm') {
           await processAlarm(item.config, item.data)
         } else {
-          await updateMetric(item.config, item.data, item.port, item.protocol)
+          await updateMetric(item.config, item.data, item.port, item.protocol, item.topic)
         }
         totalProcessed++
         item.stats.ok(item.port)

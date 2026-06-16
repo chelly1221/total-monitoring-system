@@ -10,6 +10,16 @@ function normalizeEncoding(e: unknown): string | null {
   return e === 'utf8' || e === 'buffer' ? e : null
 }
 
+// Normalize the per-device offline threshold (ms): floor at 1 minute and reject
+// non-positive/garbage values so a tiny/zero threshold can never force a system
+// into permanent instant-offline. null = use the global default.
+function normalizeOfflineThreshold(v: unknown): number | null {
+  if (v == null) return null
+  const n = typeof v === 'number' ? v : parseInt(String(v), 10)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.max(60000, n)
+}
+
 export async function GET() {
   try {
     const systems = await prisma.system.findMany({
@@ -31,18 +41,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const { name, type, port, protocol, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
+    const { name, type, port, protocol, topic, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
     if (!name || !type) {
       return NextResponse.json(
         { error: 'Name and type are required' },
-        { status: 400 }
-      )
-    }
-
-    if (!port || !protocol) {
-      return NextResponse.json(
-        { error: 'Port and protocol are required' },
         { status: 400 }
       )
     }
@@ -56,25 +59,53 @@ export async function POST(request: Request) {
     }
 
     // Validate protocol
-    if (!['udp', 'tcp'].includes(protocol)) {
+    if (!['udp', 'tcp', 'mqtt'].includes(protocol)) {
       return NextResponse.json(
-        { error: 'Invalid protocol. Must be udp or tcp' },
+        { error: 'Invalid protocol. Must be udp, tcp, or mqtt' },
         { status: 400 }
       )
     }
 
-    // Reject duplicate (port, protocol): routing is by port only, so a second
-    // system on the same socket cannot be disambiguated and silently shadows data.
-    const portNum = parseInt(port, 10)
-    const dup = await prisma.system.findFirst({
-      where: { port: portNum, protocol, isActive: true },
-      select: { name: true },
-    })
-    if (dup) {
-      return NextResponse.json(
-        { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
-        { status: 409 }
-      )
+    // MQTT is addressed by topic; UDP/TCP by port. Require the right one and reject
+    // the matching duplicate so two systems can't silently shadow the same source.
+    const isMqtt = protocol === 'mqtt'
+    let portNum: number | null = null
+    let topicStr: string | null = null
+
+    if (isMqtt) {
+      topicStr = typeof topic === 'string' ? topic.trim() : ''
+      if (!topicStr) {
+        return NextResponse.json({ error: 'MQTT 토픽을 입력하세요' }, { status: 400 })
+      }
+      // Routing is by exact topic, so wildcard subscriptions would silently never match.
+      if (topicStr.includes('+') || topicStr.includes('#')) {
+        return NextResponse.json({ error: 'MQTT 토픽에 와일드카드(+, #)는 사용할 수 없습니다' }, { status: 400 })
+      }
+      const dup = await prisma.system.findFirst({
+        where: { protocol: 'mqtt', topic: topicStr, isActive: true },
+        select: { name: true },
+      })
+      if (dup) {
+        return NextResponse.json(
+          { error: `토픽 충돌: MQTT 토픽 "${topicStr}"은 이미 "${dup.name}"에서 사용 중입니다` },
+          { status: 409 }
+        )
+      }
+    } else {
+      if (!port) {
+        return NextResponse.json({ error: 'Port and protocol are required' }, { status: 400 })
+      }
+      portNum = parseInt(port, 10)
+      const dup = await prisma.system.findFirst({
+        where: { port: portNum, protocol, isActive: true },
+        select: { name: true },
+      })
+      if (dup) {
+        return NextResponse.json(
+          { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
+          { status: 409 }
+        )
+      }
     }
 
     if (config?.customCode?.trim()) {
@@ -93,7 +124,8 @@ export async function POST(request: Request) {
         type,
         port: portNum,
         protocol,
-        offlineThreshold: offlineThreshold != null ? parseInt(offlineThreshold, 10) : null,
+        topic: topicStr,
+        offlineThreshold: normalizeOfflineThreshold(offlineThreshold),
         encoding: normalizeEncoding(encoding),
         config: config ? JSON.stringify(config) : null,
         audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,

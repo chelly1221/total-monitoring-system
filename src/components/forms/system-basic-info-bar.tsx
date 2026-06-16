@@ -12,15 +12,17 @@ import { IngestOptionsInline } from "./ingest-options-inline"
 interface SystemBasicInfoBarProps {
   name: string
   port: string
-  protocol: "udp" | "tcp"
+  protocol: "udp" | "tcp" | "mqtt"
   isEditMode: boolean
   onNameChange: (value: string) => void
   onPortChange: (value: string) => void
-  onProtocolChange: (value: "udp" | "tcp") => void
+  onProtocolChange: (value: "udp" | "tcp" | "mqtt") => void
   encoding?: "buffer" | "utf8"
   offlineThresholdMin?: string
   onEncodingChange?: (value: "buffer" | "utf8") => void
   onOfflineThresholdChange?: (value: string) => void
+  topic?: string
+  onTopicChange?: (value: string) => void
 }
 
 export function SystemBasicInfoBar({
@@ -35,6 +37,8 @@ export function SystemBasicInfoBar({
   offlineThresholdMin,
   onEncodingChange,
   onOfflineThresholdChange,
+  topic,
+  onTopicChange,
 }: SystemBasicInfoBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded border bg-card px-2 py-1.5 shrink-0">
@@ -50,25 +54,27 @@ export function SystemBasicInfoBar({
           required
         />
       </div>
-      <div className="flex items-center gap-1.5">
-        <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
-        <Input
-          id="port"
-          type="number"
-          value={port}
-          onChange={(e) => onPortChange(e.target.value)}
-          placeholder="1892"
-          className="w-20 h-7 text-xs"
-          disabled={!isEditMode}
-          min={1}
-          max={65535}
-        />
-      </div>
+      {protocol !== "mqtt" && (
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
+          <Input
+            id="port"
+            type="number"
+            value={port}
+            onChange={(e) => onPortChange(e.target.value)}
+            placeholder="1892"
+            className="w-20 h-7 text-xs"
+            disabled={!isEditMode}
+            min={1}
+            max={65535}
+          />
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <Label className="whitespace-nowrap text-xs text-muted-foreground">프로토콜</Label>
         <Select
           value={protocol}
-          onValueChange={(value) => onProtocolChange(value as "udp" | "tcp")}
+          onValueChange={(value) => onProtocolChange(value as "udp" | "tcp" | "mqtt")}
           disabled={!isEditMode}
         >
           <SelectTrigger className="w-20 h-7 text-xs">
@@ -77,6 +83,7 @@ export function SystemBasicInfoBar({
           <SelectContent>
             <SelectItem value="udp">UDP</SelectItem>
             <SelectItem value="tcp">TCP</SelectItem>
+            <SelectItem value="mqtt">MQTT</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -88,6 +95,9 @@ export function SystemBasicInfoBar({
           offlineThresholdMin={offlineThresholdMin ?? ""}
           onEncodingChange={onEncodingChange}
           onOfflineThresholdChange={onOfflineThresholdChange}
+          protocol={protocol}
+          topic={topic}
+          onTopicChange={onTopicChange}
         />
       )}
     </div>

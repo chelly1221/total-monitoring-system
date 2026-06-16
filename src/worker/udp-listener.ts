@@ -9,6 +9,7 @@ import { parseBuffer } from './parser'
 import { broadcastRawData } from './websocket-server'
 import { enqueueIngest } from './ingest-queue'
 import { createPortStats } from './port-stats'
+import { markSeen, clearLiveness, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('udp')
@@ -64,6 +65,7 @@ export function reconcileUdpListeners(desired: Map<number, PortConfig>): void {
       restartBackoffs.delete(port)
       configs.delete(port)
       portStats.remove(port)
+      clearLiveness(livenessKey('udp', port))
       log.info(`[${port}] unbound (no longer configured)`)
     }
   }
@@ -82,6 +84,9 @@ function bindUdpSocket(port: number): void {
 
   socket.on('message', (msg, rinfo) => {
     portStats.received(port)
+    // Record liveness BEFORE the queue so offline detection sees the bytes even if
+    // the drainer is stalled / the DB write is delayed.
+    markSeen(livenessKey('udp', port))
     const config = configs.get(port)
     if (!config) return
     try {

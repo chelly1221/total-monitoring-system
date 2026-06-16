@@ -140,6 +140,7 @@ export interface PrismaSystem {
   isEnabled: boolean
   port: number | null
   protocol: string | null
+  topic: string | null
   lastDataAt: Date | null
   offlineThreshold: number | null
   encoding: string | null

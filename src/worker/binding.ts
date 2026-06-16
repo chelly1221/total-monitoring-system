@@ -10,6 +10,7 @@
 import { UDP_PORTS, TCP_PORTS, PortConfig } from './config'
 import { reconcileUdpListeners } from './udp-listener'
 import { reconcileTcpListeners } from './tcp-listener'
+import { reconcileMqttListeners } from './mqtt-listener'
 import { getEnabledSystemsForBinding } from './db-updater'
 import { createLogger } from '@/lib/logger'
 
@@ -37,9 +38,10 @@ function normalizeEncoding(e: string | null | undefined): 'utf8' | 'buffer' | un
  * Compute the desired UDP/TCP (port -> config) sets from const defaults overlaid
  * with enabled DB systems. DB systems win on encoding; const fills the gap.
  */
-async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Map<number, PortConfig> }> {
+async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Map<number, PortConfig>; mqtt: Map<string, PortConfig> }> {
   const udp = new Map<number, PortConfig>()
   const tcp = new Map<number, PortConfig>()
+  const mqtt = new Map<string, PortConfig>()
 
   // Seed from static defaults (preserves existing behavior).
   for (const [p, c] of Object.entries(UDP_PORTS)) udp.set(Number(p), { ...c })
@@ -48,6 +50,19 @@ async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Ma
   // Overlay enabled DB systems.
   const systems = await getEnabledSystemsForBinding()
   for (const s of systems) {
+    // MQTT systems are addressed by topic, not port.
+    if (s.protocol === 'mqtt') {
+      if (!s.topic) {
+        log.warn(`System "${s.name}" is mqtt but has no topic — not subscribed`)
+        continue
+      }
+      mqtt.set(s.topic, {
+        system: s.name,
+        type: mapSystemType(s.type),
+        encoding: normalizeEncoding(s.encoding),
+      })
+      continue
+    }
     if (s.port == null) continue
     if (s.protocol !== 'udp' && s.protocol !== 'tcp') {
       log.warn(`System "${s.name}" has port ${s.port} but invalid protocol ${JSON.stringify(s.protocol)} — not bound`)
@@ -63,7 +78,7 @@ async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Ma
     })
   }
 
-  return { udp, tcp }
+  return { udp, tcp, mqtt }
 }
 
 /**
@@ -79,10 +94,11 @@ export async function reconcileBindings(): Promise<void> {
   try {
     do {
       pending = false
-      const { udp, tcp } = await computeDesired()
+      const { udp, tcp, mqtt } = await computeDesired()
       reconcileUdpListeners(udp)
       reconcileTcpListeners(tcp)
-      log.info(`Bindings reconciled: ${udp.size} UDP, ${tcp.size} TCP ports`)
+      reconcileMqttListeners(mqtt)
+      log.info(`Bindings reconciled: ${udp.size} UDP, ${tcp.size} TCP ports, ${mqtt.size} MQTT topic(s)`)
     } while (pending)
   } catch (error) {
     log.error('Reconcile failed:', error)

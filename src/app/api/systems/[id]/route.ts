@@ -11,6 +11,15 @@ function normalizeEncoding(e: unknown): string | null {
   return e === 'utf8' || e === 'buffer' ? e : null
 }
 
+// Normalize the per-device offline threshold (ms): floor at 1 minute, reject
+// non-positive/garbage. null = use the global default.
+function normalizeOfflineThreshold(v: unknown): number | null {
+  if (v == null) return null
+  const n = typeof v === 'number' ? v : parseInt(String(v), 10)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.max(60000, n)
+}
+
 interface RouteParams {
   params: Promise<{ id: string }>
 }
@@ -143,7 +152,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    const { name, type, port, protocol, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
+    const { name, type, port, protocol, topic, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
     if (!name || !type) {
       return NextResponse.json(
@@ -152,9 +161,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
       )
     }
 
-    if (!port || !protocol) {
+    if (!protocol) {
       return NextResponse.json(
-        { error: 'Port and protocol are required' },
+        { error: 'Protocol is required' },
         { status: 400 }
       )
     }
@@ -168,9 +177,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
     }
 
     // Validate protocol
-    if (!['udp', 'tcp'].includes(protocol)) {
+    if (!['udp', 'tcp', 'mqtt'].includes(protocol)) {
       return NextResponse.json(
-        { error: 'Invalid protocol. Must be udp or tcp' },
+        { error: 'Invalid protocol. Must be udp, tcp, or mqtt' },
         { status: 400 }
       )
     }
@@ -186,17 +195,46 @@ export async function PUT(request: Request, { params }: RouteParams) {
       )
     }
 
-    // Reject duplicate (port, protocol) against OTHER systems — routing is by port only.
-    const portNum = parseInt(port, 10)
-    const dup = await prisma.system.findFirst({
-      where: { port: portNum, protocol, isActive: true, id: { not: id } },
-      select: { name: true },
-    })
-    if (dup) {
-      return NextResponse.json(
-        { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
-        { status: 409 }
-      )
+    // MQTT is addressed by topic; UDP/TCP by port. Require the right one and reject
+    // the matching duplicate against OTHER systems.
+    const isMqtt = protocol === 'mqtt'
+    let portNum: number | null = null
+    let topicStr: string | null = null
+
+    if (isMqtt) {
+      topicStr = typeof topic === 'string' ? topic.trim() : ''
+      if (!topicStr) {
+        return NextResponse.json({ error: 'MQTT 토픽을 입력하세요' }, { status: 400 })
+      }
+      // Routing is by exact topic, so wildcard subscriptions would silently never match.
+      if (topicStr.includes('+') || topicStr.includes('#')) {
+        return NextResponse.json({ error: 'MQTT 토픽에 와일드카드(+, #)는 사용할 수 없습니다' }, { status: 400 })
+      }
+      const dup = await prisma.system.findFirst({
+        where: { protocol: 'mqtt', topic: topicStr, isActive: true, id: { not: id } },
+        select: { name: true },
+      })
+      if (dup) {
+        return NextResponse.json(
+          { error: `토픽 충돌: MQTT 토픽 "${topicStr}"은 이미 "${dup.name}"에서 사용 중입니다` },
+          { status: 409 }
+        )
+      }
+    } else {
+      if (!port) {
+        return NextResponse.json({ error: 'Port and protocol are required' }, { status: 400 })
+      }
+      portNum = parseInt(port, 10)
+      const dup = await prisma.system.findFirst({
+        where: { port: portNum, protocol, isActive: true, id: { not: id } },
+        select: { name: true },
+      })
+      if (dup) {
+        return NextResponse.json(
+          { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
+          { status: 409 }
+        )
+      }
     }
 
     if (config?.customCode?.trim()) {
@@ -214,6 +252,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       type,
       port: portNum,
       protocol,
+      topic: topicStr,
       config: config ? JSON.stringify(config) : null,
       audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
       isEnabled: isEnabled !== false,
@@ -221,7 +260,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     // Only touch these when the field is present, so editors that omit them
     // (legacy full-page editors) don't silently wipe the stored value to null.
     if (offlineThreshold !== undefined) {
-      updateData.offlineThreshold = offlineThreshold != null ? parseInt(offlineThreshold, 10) : null
+      updateData.offlineThreshold = normalizeOfflineThreshold(offlineThreshold)
     }
     if (encoding !== undefined) {
       updateData.encoding = normalizeEncoding(encoding)

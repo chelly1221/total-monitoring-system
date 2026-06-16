@@ -8,6 +8,7 @@ import { HeaderWithStatus } from './header-with-status'
 import { Sidebar } from './sidebar'
 import { AutoOpenWindows } from './auto-open-windows'
 import { IngestionStatusBanner } from './ingestion-status-banner'
+import { WindowHighlightOverlay } from './window-highlight-overlay'
 import type { PrismaSystem, PrismaAlarm } from '@/types'
 
 interface DashboardLayoutClientProps {
@@ -29,6 +30,7 @@ function DashboardShell({
     <RealtimeProvider initialSystems={initialSystems} initialAlarms={initialAlarms}>
       {pathname === '/' && <AudioAlertManager />}
       {!isStandalone && <AutoOpenWindows />}
+      {isStandalone && <WindowHighlightOverlay />}
       <div className="flex h-screen flex-col">
         {!isStandalone && <IngestionStatusBanner />}
         <HeaderWithStatus />

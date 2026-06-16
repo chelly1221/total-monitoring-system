@@ -11,6 +11,7 @@ interface UpsDetailHeaderProps {
   displayName: string
   displayPort: string
   displayProtocol: string
+  displayTopic?: string
   status: SystemStatus
   isEnabled: boolean
   isEditMode: boolean
@@ -27,6 +28,7 @@ export function UpsDetailHeader({
   displayName,
   displayPort,
   displayProtocol,
+  displayTopic,
   status,
   isEnabled,
   isEditMode,
@@ -46,9 +48,9 @@ export function UpsDetailHeader({
         <h1 className="text-lg font-bold">{displayName}</h1>
         <span className="text-xs text-muted-foreground">
           {getTypeLabel(system.type)}
-          {displayPort && (
-            <> | 포트:{displayPort} ({displayProtocol.toUpperCase()})</>
-          )}
+          {displayProtocol === 'mqtt'
+            ? displayTopic && <> | 토픽:{displayTopic} (MQTT)</>
+            : displayPort && <> | 포트:{displayPort} ({displayProtocol.toUpperCase()})</>}
         </span>
         <Badge className={`text-[10px] px-1.5 py-0 ${getStatusBadgeClass(status, isEnabled)}`}>
           {getStatusLabel(status, isEnabled)}

@@ -43,6 +43,8 @@ next-env.d.ts
 /src/generated/prisma
 prisma/dev.db
 prisma/dev.db-journal
+prisma/dev.db-shm
+prisma/dev.db-wal
 dev.db
 .claude/
 

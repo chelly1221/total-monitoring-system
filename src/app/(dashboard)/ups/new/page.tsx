@@ -38,7 +38,8 @@ export default function UpsNewPage() {
   // Form state
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
-  const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [protocol, setProtocol] = React.useState<"udp" | "tcp" | "mqtt">("udp")
+  const [topic, setTopic] = React.useState("")
   const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
   const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
 
@@ -117,13 +118,21 @@ export default function UpsNewPage() {
       if (!name.trim()) {
         throw new Error("시설명을 입력하세요")
       }
-      if (!port.trim()) {
-        throw new Error("포트 번호를 입력하세요")
-      }
 
-      const portNum = parseInt(port, 10)
-      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+      let portNum: number | null = null
+      if (protocol === "mqtt") {
+        if (!topic.trim()) {
+          throw new Error("MQTT 토픽을 입력하세요")
+        }
+      } else {
+        if (!port.trim()) {
+          throw new Error("포트 번호를 입력하세요")
+        }
+
+        portNum = parseInt(port, 10)
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+          throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+        }
       }
 
       const payload = {
@@ -131,7 +140,7 @@ export default function UpsNewPage() {
         type: "ups" as const,
         port: portNum,
         protocol,
-        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin, topic),
         config: metricsConfig,
         audioConfig,
       }
@@ -213,24 +222,26 @@ export default function UpsNewPage() {
                 required
               />
             </div>
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
-              <Input
-                id="port"
-                type="number"
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                placeholder="1892"
-                className="w-20 h-7 text-xs"
-                min={1}
-                max={65535}
-              />
-            </div>
+            {protocol !== "mqtt" && (
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
+                <Input
+                  id="port"
+                  type="number"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  placeholder="1892"
+                  className="w-20 h-7 text-xs"
+                  min={1}
+                  max={65535}
+                />
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
               <Label className="whitespace-nowrap text-xs text-muted-foreground">프로토콜</Label>
               <Select
                 value={protocol}
-                onValueChange={(value) => setProtocol(value as "udp" | "tcp")}
+                onValueChange={(value) => setProtocol(value as "udp" | "tcp" | "mqtt")}
               >
                 <SelectTrigger className="w-20 h-7 text-xs">
                   <SelectValue />
@@ -238,11 +249,15 @@ export default function UpsNewPage() {
                 <SelectContent>
                   <SelectItem value="udp">UDP</SelectItem>
                   <SelectItem value="tcp">TCP</SelectItem>
+                  <SelectItem value="mqtt">MQTT</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <IngestOptionsInline
               compact
+              protocol={protocol}
+              topic={topic}
+              onTopicChange={setTopic}
               encoding={encoding}
               offlineThresholdMin={offlineThresholdMin}
               onEncodingChange={setEncoding}

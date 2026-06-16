@@ -384,6 +384,11 @@ async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, pa
         let _ = existing.unminimize();
         let _ = existing.show();
         existing.set_focus().map_err(|e| e.to_string())?;
+        // The window was already open — flash a locator overlay on it so the user can
+        // spot which window/monitor it is. The event is broadcast (Tauri's JS listen is
+        // a catch-all, so target scoping is unreliable); the payload carries the target
+        // window label and each overlay shows itself only if it matches its own label.
+        let _ = app.emit("window-highlight", (label.clone(), title.clone()));
         return Ok(());
     }
 
@@ -478,9 +483,17 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
+                    let app = window.app_handle();
+                    // Closing the main window tears down the whole app: close every other
+                    // window (UPS/온습도 sub-windows) so none linger behind a dead server.
+                    for (label, w) in app.webview_windows() {
+                        if label != "main" {
+                            let _ = w.close();
+                        }
+                    }
                     // Signal supervisors to stop and kill their children. On Windows the
                     // Job Object also force-kills everything when the parent process exits.
-                    let state = window.app_handle().state::<AppState>();
+                    let state = app.state::<AppState>();
                     let _ = state.shutdown_tx.send(true);
                 }
             }

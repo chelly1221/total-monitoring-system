@@ -65,6 +65,7 @@ interface SystemWithRelations {
   lastDataAt: string | null
   offlineThreshold: number | null
   encoding: string | null
+  topic: string | null
   createdAt: string
   updatedAt: string
   metrics: MetricData[]
@@ -87,7 +88,8 @@ export default function UpsDetailPage() {
   // Form state for edit mode
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
-  const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [protocol, setProtocol] = React.useState<"udp" | "tcp" | "mqtt">("udp")
+  const [topic, setTopic] = React.useState("")
   const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
   const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
@@ -208,7 +210,8 @@ export default function UpsDetailPage() {
         // Initialize form state
         setName(data.name)
         setPort(data.port?.toString() || "")
-        setProtocol((data.protocol as "udp" | "tcp") || "udp")
+        setProtocol((data.protocol as "udp" | "tcp" | "mqtt") || "udp")
+        setTopic(data.topic ?? "")
         setEncoding(data.encoding === "utf8" ? "utf8" : "buffer")
         setOfflineThresholdMin(offlineThresholdToMinutes(data.offlineThreshold))
 
@@ -324,13 +327,21 @@ export default function UpsDetailPage() {
       if (!name.trim()) {
         throw new Error("시설명을 입력하세요")
       }
-      if (!port.trim()) {
-        throw new Error("포트 번호를 입력하세요")
-      }
 
-      const portNum = parseInt(port, 10)
-      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+      let portNum: number | null = null
+      if (protocol !== "mqtt") {
+        if (!port.trim()) {
+          throw new Error("포트 번호를 입력하세요")
+        }
+
+        portNum = parseInt(port, 10)
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+          throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+        }
+      } else {
+        if (!topic.trim()) {
+          throw new Error("MQTT 토픽을 입력하세요")
+        }
       }
 
       const payload: Record<string, unknown> = {
@@ -338,7 +349,7 @@ export default function UpsDetailPage() {
         type: "ups",
         port: portNum,
         protocol,
-        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin, topic),
         config: metricsConfig,
         audioConfig,
       }
@@ -371,7 +382,8 @@ export default function UpsDetailPage() {
     if (system) {
       setName(system.name)
       setPort(system.port?.toString() || "")
-      setProtocol((system.protocol as "udp" | "tcp") || "udp")
+      setProtocol((system.protocol as "udp" | "tcp" | "mqtt") || "udp")
+      setTopic(system.topic ?? "")
       if (system.config) {
         try {
           const parsed = JSON.parse(system.config)
@@ -428,6 +440,7 @@ export default function UpsDetailPage() {
         displayName={isEditMode ? name : system.name}
         displayPort={String(isEditMode ? port : system.port ?? "")}
         displayProtocol={(isEditMode ? protocol : system.protocol) ?? "udp"}
+        displayTopic={isEditMode ? topic : system.topic ?? ""}
         status={status}
         isEnabled={isEnabled}
         isEditMode={isEditMode}
@@ -448,10 +461,12 @@ export default function UpsDetailPage() {
           name={name}
           port={port}
           protocol={protocol}
+          topic={topic}
           isEditMode={isEditMode}
           onNameChange={setName}
           onPortChange={setPort}
           onProtocolChange={(v) => setProtocol(v)}
+          onTopicChange={setTopic}
           encoding={encoding}
           offlineThresholdMin={offlineThresholdMin}
           onEncodingChange={setEncoding}

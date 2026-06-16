@@ -15,11 +15,44 @@ import type { EquipmentConfig, MetricsConfig, SystemStatus, DisplayItem } from '
 import { evaluateSensorStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
 import { executeCustomCode } from './custom-code-executor'
+import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('db-updater')
 
-export const prisma = new PrismaClient()
+// Pin a single SQLite connection so the per-connection pragmas below (busy_timeout,
+// synchronous) actually apply to every query — Prisma's default SQLite pool would
+// otherwise leave most pooled connections without busy_timeout (=fail instantly).
+// The worker already serializes its writes through the ingest drainer, so a single
+// connection costs nothing here.
+function withConnectionLimit(url: string): string {
+  if (/[?&]connection_limit=/.test(url)) return url
+  return url + (url.includes('?') ? '&' : '?') + 'connection_limit=1'
+}
+
+export const prisma = new PrismaClient({
+  datasourceUrl: withConnectionLimit(process.env.DATABASE_URL || 'file:./dev.db'),
+})
+
+/**
+ * Apply SQLite pragmas for safe concurrent access. WAL lets the Next.js server
+ * read while the worker writes (instead of blocking each other on the rollback
+ * journal's exclusive lock); busy_timeout makes a contended writer wait-and-retry
+ * instead of failing; synchronous=NORMAL is the recommended durability/throughput
+ * balance under WAL. journal_mode is persistent in the DB file; busy_timeout is
+ * per-connection (hence the connection_limit=1 above). Awaited at worker startup
+ * before any other DB query.
+ */
+export async function initDatabasePragmas(): Promise<void> {
+  try {
+    await prisma.$executeRawUnsafe('PRAGMA journal_mode=WAL;')
+    await prisma.$executeRawUnsafe('PRAGMA busy_timeout=5000;')
+    await prisma.$executeRawUnsafe('PRAGMA synchronous=NORMAL;')
+    log.info('SQLite pragmas applied (journal_mode=WAL, busy_timeout=5000, synchronous=NORMAL)')
+  } catch (error) {
+    log.error('Failed to apply SQLite pragmas:', error)
+  }
+}
 
 // Critical signal must occur CRITICAL_THRESHOLD consecutive times before triggering fault
 const criticalCounters = new Map<string, number>()
@@ -283,7 +316,7 @@ async function processSystemMetric(
           }
 
           // Sync siren state after alarm resolution
-          await syncSirenState()
+          void syncSirenState()
         }
 
         // Create alarm when status changes to warning or critical
@@ -321,7 +354,7 @@ async function processSystemMetric(
           log.info(`Alarm created for ${system.name}: ${statusLabel}`)
 
           // Sync siren state after alarm creation
-          await syncSirenState()
+          void syncSirenState()
         }
       }
     }
@@ -626,21 +659,20 @@ async function processSystemMetric(
  * Update metric in database based on incoming data.
  * Finds all systems registered on the given port/protocol and processes each.
  */
-export async function updateMetric(config: PortConfig, data: ParsedData, port: number, protocol: 'udp' | 'tcp'): Promise<void> {
+export async function updateMetric(config: PortConfig, data: ParsedData, port: number, protocol: 'udp' | 'tcp' | 'mqtt', topic?: string): Promise<void> {
   try {
-    // Find all systems registered on this port/protocol
+    // Find all systems for this source. MQTT systems are matched by topic (they have
+    // no bound port); UDP/TCP systems by port+protocol.
+    const where = protocol === 'mqtt'
+      ? { protocol: 'mqtt', topic, isEnabled: true, isActive: true }
+      : { port, protocol, isEnabled: true, isActive: true }
     const systems = await prisma.system.findMany({
-      where: {
-        port,
-        protocol,
-        isEnabled: true,
-        isActive: true,
-      },
+      where,
       include: { metrics: true },
     })
 
     if (systems.length === 0) {
-      log.debug(`No systems found for port ${port}/${protocol}`)
+      log.debug(protocol === 'mqtt' ? `No systems found for topic ${topic}` : `No systems found for port ${port}/${protocol}`)
       return
     }
 
@@ -751,7 +783,7 @@ async function updateSystemStatus(
       }
 
       // Sync siren state after alarm resolution
-      await syncSirenState()
+      void syncSirenState()
     }
 
     // Create alarm when status changes to warning or critical
@@ -791,7 +823,7 @@ async function updateSystemStatus(
       log.info(`Alarm created for ${systemName}: ${statusLabel}`)
 
       // Sync siren state after alarm creation
-      await syncSirenState()
+      void syncSirenState()
     }
   }
   } catch (error) {
@@ -833,7 +865,7 @@ async function updateSensorSystemStatus(
     if (staleAlarms.count > 0) {
       log.info(` Cleaned up ${staleAlarms.count} stale alarm(s) for ${systemName}`)
       broadcastAlarmResolution(systemId, systemName)
-      await syncSirenState()
+      void syncSirenState()
     }
     return
   }
@@ -860,7 +892,7 @@ async function updateSensorSystemStatus(
       broadcastAlarmResolution(systemId, systemName)
     }
 
-    await syncSirenState()
+    void syncSirenState()
   }
 
   // Create one alarm per triggered type (warning or critical)
@@ -958,7 +990,7 @@ async function updateSensorSystemStatus(
       broadcastAlarmResolutionByIds(systemId, systemName, resolvedAlarmIds)
     }
 
-    if (created || resolvedAlarmIds.length > 0) await syncSirenState()
+    if (created || resolvedAlarmIds.length > 0) void syncSirenState()
   }
   } catch (error) {
     log.error(` Error in updateSensorSystemStatus for ${systemName}:`, error)
@@ -1164,11 +1196,21 @@ export function startOfflineDetection(): void {
       const now = Date.now()
 
       for (const system of systems) {
-        const lastData = system.lastDataAt?.getTime() ?? 0
+        const dbLast = system.lastDataAt?.getTime() ?? 0
+        // Fall back to the in-memory receive timestamp (recorded synchronously on the
+        // socket/MQTT receive path, before the queue). A stalled drainer or a briefly
+        // locked DB delays the lastDataAt write but must NOT manufacture a false
+        // offline — liveness reflects bytes on the wire. Use whichever is more recent.
+        const memLast = getLastSeen(
+          livenessKey(system.protocol, system.port, (system as { topic?: string | null }).topic),
+        )
+        const lastData = Math.max(dbLast, memLast)
         const timeSinceLastData = now - lastData
         // Per-device threshold overrides the global default (slow reporters need a
-        // longer window; fast-critical devices a shorter one).
-        const threshold = (system as { offlineThreshold?: number | null }).offlineThreshold ?? OFFLINE_THRESHOLD
+        // longer window; fast-critical devices a shorter one). Guard with > 0 (not
+        // ??) so a stored 0/garbage value can never force permanent instant offline.
+        const t = (system as { offlineThreshold?: number | null }).offlineThreshold
+        const threshold = (typeof t === 'number' && t > 0) ? t : OFFLINE_THRESHOLD
 
         if (timeSinceLastData > threshold) {
           // Message reflects the actual elapsed silence, not a hardcoded constant.
@@ -1237,17 +1279,26 @@ export interface BindingSystem {
   port: number | null
   protocol: string | null
   encoding: string | null
+  topic: string | null
 }
 
 /**
- * Fetch enabled+active systems that carry a port, for the dynamic socket binder.
- * The binder unions these with the static config.ts defaults to decide which
- * sockets to bind, so a UI-created system actually gets a listener.
+ * Fetch enabled+active systems the dynamic binder should listen for: those with a
+ * port (UDP/TCP) or an MQTT topic. The binder unions UDP/TCP ports with the static
+ * config.ts defaults and subscribes the MQTT topics, so a UI-created system actually
+ * gets a listener/subscription.
  */
 export async function getEnabledSystemsForBinding(): Promise<BindingSystem[]> {
   return prisma.system.findMany({
-    where: { isEnabled: true, isActive: true, port: { not: null } },
-    select: { name: true, type: true, port: true, protocol: true, encoding: true },
+    where: {
+      isEnabled: true,
+      isActive: true,
+      OR: [
+        { port: { not: null } },
+        { protocol: 'mqtt', topic: { not: null } },
+      ],
+    },
+    select: { name: true, type: true, port: true, protocol: true, encoding: true, topic: true },
   })
 }
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicktomlin/tauri-settings-schema/refs/heads/main/schema/capability.json",
+  "identifier": "sub-windows",
+  "description": "Lets the temperature/UPS sub-windows receive the window-highlight locator event.",
+  "windows": ["temperature", "ups"],
+  "remote": {
+    "urls": ["http://localhost:7777/*"]
+  },
+  "permissions": [
+    "core:event:default"
+  ]
+}

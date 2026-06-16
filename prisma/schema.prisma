@@ -14,8 +14,9 @@ model System {
   status      String    @default("offline") // normal, warning, critical, offline
   isActive    Boolean   @default(true)
   isEnabled   Boolean   @default(true)   // User toggle for enable/disable
-  port        Int?                        // UDP/TCP port (optional for legacy data)
-  protocol    String?                     // 'udp' or 'tcp' (optional for legacy data)
+  port        Int?                        // UDP/TCP port (optional for legacy data; unused for mqtt)
+  protocol    String?                     // 'udp' | 'tcp' | 'mqtt' (optional for legacy data)
+  topic       String?                     // MQTT topic to subscribe to (mqtt protocol only)
   lastDataAt  DateTime?                   // Last data received timestamp for offline detection
   offlineThreshold Int?                   // Per-device offline threshold in ms (overrides global default)
   encoding    String?                     // Wire decode mode: 'utf8' | 'buffer' (null = buffer/20-byte default)

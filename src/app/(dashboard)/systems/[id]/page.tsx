@@ -83,6 +83,7 @@ interface SystemWithRelations {
   audioConfig: string | null
   lastDataAt: string | null
   offlineThreshold: number | null
+  topic: string | null
   encoding: string | null
   createdAt: string
   updatedAt: string
@@ -106,7 +107,8 @@ export default function SystemDetailPage() {
   // Form state for edit mode
   const [name, setName] = React.useState("")
   const [port, setPort] = React.useState("")
-  const [protocol, setProtocol] = React.useState<"udp" | "tcp">("udp")
+  const [protocol, setProtocol] = React.useState<"udp" | "tcp" | "mqtt">("udp")
+  const [topic, setTopic] = React.useState("")
   const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
   const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
@@ -225,7 +227,8 @@ export default function SystemDetailPage() {
         // Initialize form state
         setName(data.name)
         setPort(data.port?.toString() || "")
-        setProtocol((data.protocol as "udp" | "tcp") || "udp")
+        setProtocol((data.protocol as "udp" | "tcp" | "mqtt") || "udp")
+        setTopic(data.topic ?? "")
         setEncoding(data.encoding === "utf8" ? "utf8" : "buffer")
         setOfflineThresholdMin(offlineThresholdToMinutes(data.offlineThreshold))
 
@@ -345,13 +348,21 @@ export default function SystemDetailPage() {
       if (!name.trim()) {
         throw new Error("시설명을 입력하세요")
       }
-      if (!port.trim()) {
-        throw new Error("포트 번호를 입력하세요")
-      }
 
-      const portNum = parseInt(port, 10)
-      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+      let portNum: number | null = null
+      if (protocol !== "mqtt") {
+        if (!port.trim()) {
+          throw new Error("포트 번호를 입력하세요")
+        }
+
+        portNum = parseInt(port, 10)
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+          throw new Error("유효한 포트 번호를 입력하세요 (1-65535)")
+        }
+      } else {
+        if (!topic.trim()) {
+          throw new Error("MQTT 토픽을 입력하세요")
+        }
       }
 
       const systemType = system?.type
@@ -362,7 +373,7 @@ export default function SystemDetailPage() {
         type: systemType,
         port: portNum,
         protocol,
-        ...buildIngestPayloadFields(encoding, offlineThresholdMin),
+        ...buildIngestPayloadFields(encoding, offlineThresholdMin, topic),
         config: configValue,
       }
 
@@ -401,7 +412,8 @@ export default function SystemDetailPage() {
     if (system) {
       setName(system.name)
       setPort(system.port?.toString() || "")
-      setProtocol((system.protocol as "udp" | "tcp") || "udp")
+      setProtocol((system.protocol as "udp" | "tcp" | "mqtt") || "udp")
+      setTopic(system.topic ?? "")
       if (system.config) {
         try {
           const parsed = JSON.parse(system.config)
@@ -466,6 +478,7 @@ export default function SystemDetailPage() {
         displayName={isEditMode ? name : system.name}
         displayPort={String(isEditMode ? port : system.port ?? "")}
         displayProtocol={(isEditMode ? protocol : system.protocol) ?? "udp"}
+        displayTopic={isEditMode ? topic : system.topic ?? ""}
         status={status}
         isEnabled={isEnabled}
         isEditMode={isEditMode}
@@ -495,6 +508,8 @@ export default function SystemDetailPage() {
             offlineThresholdMin={offlineThresholdMin}
             onEncodingChange={setEncoding}
             onOfflineThresholdChange={setOfflineThresholdMin}
+            topic={topic}
+            onTopicChange={setTopic}
           />
 
           {error && (
@@ -531,10 +546,12 @@ export default function SystemDetailPage() {
             name={name}
             port={port}
             protocol={protocol}
+            topic={topic}
             isEditMode={isEditMode}
             onNameChange={setName}
             onPortChange={setPort}
             onProtocolChange={(v) => setProtocol(v)}
+            onTopicChange={setTopic}
             encoding={encoding}
             offlineThresholdMin={offlineThresholdMin}
             onEncodingChange={setEncoding}

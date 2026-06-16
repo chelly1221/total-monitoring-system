@@ -1,7 +1,9 @@
 import net from 'net'
 import dgram from 'dgram'
 
-const TIMEOUT_MS = 5000
+// Keep this short: siren sends run off the ingest path now, but an unreachable
+// siren should still fail fast so siren reconciliation doesn't pile up.
+const TIMEOUT_MS = 1500
 
 export async function sendTcp(ip: string, port: number, data: string): Promise<void> {
   return new Promise((resolve, reject) => {
