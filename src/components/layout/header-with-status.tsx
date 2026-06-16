@@ -1,6 +1,6 @@
 'use client'
 
-import { Settings, Volume2, VolumeX, DoorClosed, DoorOpen, Loader2, Maximize2, Minimize2 } from 'lucide-react'
+import { Settings, Volume2, VolumeX, DoorClosed, DoorOpen, Loader2, Maximize2, Minimize2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import {
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { toast } from 'sonner'
 import { useRealtime } from '@/components/realtime/realtime-provider'
+import type { Window as TauriWindow } from '@tauri-apps/api/window'
 
 const MUTE_DURATIONS = [
   { label: '1분', minutes: 1 },
@@ -28,7 +29,9 @@ export function HeaderWithStatus() {
   const [remainingTime, setRemainingTime] = useState<string>('')
   const [gateLoading, setGateLoading] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isTauri, setIsTauri] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const tauriWindowRef = useRef<TauriWindow | null>(null)
   const { connected } = useWebSocket()
 
   useEffect(() => {
@@ -38,6 +41,71 @@ export function HeaderWithStatus() {
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
+
+  // The native title bar is disabled (decorations: false) inside Tauri — this header IS
+  // the title bar. Only show the window close button when running in the desktop app;
+  // in a plain browser the browser supplies its own window controls. Cache the window
+  // handle up front so the drag handler can act synchronously within the mouse gesture.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    setIsTauri(true)
+    import('@tauri-apps/api/window')
+      .then((m) => { tauriWindowRef.current = m.getCurrentWindow() })
+      .catch(() => {})
+  }, [])
+
+  const handleClose = async () => {
+    try {
+      await tauriWindowRef.current?.close()
+    } catch {
+      // window already gone / not in Tauri
+    }
+  }
+
+  // Header acts as the title bar: press-and-drag moves the window, double-click toggles
+  // maximize. If the window is in (browser) fullscreen, exit it first — a fullscreen
+  // window can't be moved, and exiting flips the header's fullscreen toggle back so the
+  // user can reposition the window and re-enter fullscreen. Presses that land on a
+  // button/link are ignored so the controls keep working.
+  const handleDragMouseDown = async (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const win = tauriWindowRef.current
+    if (!win) return
+    if ((e.target as HTMLElement).closest('button, a')) return
+
+    if (document.fullscreenElement) {
+      // Where the cursor sat within the window before the size/position changed.
+      const grabX = e.clientX
+      const grabY = e.clientY
+      const screenX = e.screenX
+      const screenY = e.screenY
+      try {
+        await document.exitFullscreen()
+        // Let the native restore settle before we re-anchor the window.
+        await new Promise((r) => requestAnimationFrame(() => r(null)))
+        // Re-anchor so the grabbed point stays exactly under the cursor — otherwise the
+        // restore repositions the window and the grab point visibly jumps. Clamp the
+        // horizontal grab to the restored width so a far-right grab on a wide monitor
+        // doesn't leave the cursor off the window edge.
+        const { LogicalPosition } = await import('@tauri-apps/api/dpi')
+        const factor = await win.scaleFactor()
+        const innerW = (await win.innerSize()).width / factor
+        const anchorX = Math.min(grabX, Math.max(0, innerW - 8))
+        await win.setPosition(new LogicalPosition(screenX - anchorX, screenY - grabY))
+      } catch {
+        // ignore — fall through to drag anyway
+      }
+    }
+    try {
+      if (e.detail === 2) {
+        await win.toggleMaximize()
+      } else {
+        await win.startDragging()
+      }
+    } catch {
+      // not draggable in this state — ignore
+    }
+  }
 
   const unmute = useCallback(async () => {
     setAudioMute(false)
@@ -141,7 +209,10 @@ export function HeaderWithStatus() {
   const disabledSystems = allSystems.filter(s => s.isEnabled === false)
 
   return (
-    <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-background px-4">
+    <header
+      onMouseDown={handleDragMouseDown}
+      className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-background px-4"
+    >
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold text-foreground">통합알람감시체계</h1>
           {allSystems.length > 0 && (
@@ -251,6 +322,18 @@ export function HeaderWithStatus() {
             <Maximize2 className="h-5 w-5" />
           )}
         </Button>
+
+        {isTauri && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleClose}
+            title="닫기"
+            className="hover:bg-[#ef4444] hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        )}
       </div>
     </header>
   )

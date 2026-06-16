@@ -1,12 +1,17 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicktomlin/tauri-settings-schema/refs/heads/main/schema/capability.json",
   "identifier": "sub-windows",
-  "description": "Lets the temperature/UPS sub-windows receive the window-highlight locator event.",
+  "description": "Lets the temperature/UPS sub-windows receive the window-highlight locator event, drag via the header, and close themselves.",
   "windows": ["temperature", "ups"],
   "remote": {
     "urls": ["http://localhost:7777/*"]
   },
   "permissions": [
-    "core:event:default"
+    "core:event:default",
+    "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-set-position"
   ]
 }

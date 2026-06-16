@@ -396,6 +396,9 @@ async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, pa
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url.parse().unwrap()))
         .title(&title)
         .inner_size(1920.0, 1080.0)
+        // No native title bar — the in-app header acts as the title bar (drag region +
+        // close button), matching the main window (decorations: false in tauri.conf.json).
+        .decorations(false)
         .build()
         .map_err(|e| e.to_string())?;
 

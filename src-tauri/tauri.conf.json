@@ -17,6 +17,7 @@
         "height": 1080,
         "fullscreen": false,
         "resizable": true,
+        "decorations": false,
         "url": "http://localhost:7777"
       }
     ],
