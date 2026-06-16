@@ -346,7 +346,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
         <CardHeader className="px-3 py-1.5">
           <div className="flex items-center gap-2">
             <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: UPS_COLORS[colorIndex % UPS_COLORS.length] }} />
-            <CardTitle className="text-sm font-medium">{sys.name}</CardTitle>
+            <CardTitle className="text-sm font-semibold">{sys.name}</CardTitle>
             <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${
               status === 'normal' ? 'bg-[#22c55e]/20 text-[#22c55e]' :
               status === 'warning' ? 'bg-[#eab308]/20 text-[#eab308]' :

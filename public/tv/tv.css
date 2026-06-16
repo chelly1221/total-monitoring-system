@@ -2,6 +2,14 @@
    Pixel-close port of the dashboard / temperature / UPS / alarms pages.
    Chromium 68+ compatible: no @layer, no color-mix, no :has, no oklch, no native CSS nesting. */
 
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
+}
+
 :root {
   --bg: #0a0a0a;
   --bg-elev: #141414;
@@ -37,7 +45,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }

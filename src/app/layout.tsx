@@ -1,11 +1,16 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
+import { Geist_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
+// Pretendard Variable, self-hosted so the offline-packaged app has full Korean glyphs.
+// Single variable woff2 covers the whole weight axis (45-920).
+const pretendard = localFont({
+  src: '../../public/fonts/PretendardVariable.woff2',
+  variable: '--font-pretendard',
+  display: 'swap',
+  weight: '45 920',
 })
 
 const geistMono = Geist_Mono({
@@ -33,7 +38,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${pretendard.variable} ${geistMono.variable} antialiased`}
       >
         {children}
         <Toaster position="top-right" richColors />

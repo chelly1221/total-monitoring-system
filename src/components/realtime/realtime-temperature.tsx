@@ -367,7 +367,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
                   /* 4개 모드: 시설명 상단 + 온도/습도 가로 배치 + 조건 텍스트 */
                   <>
                     <CardHeader className="px-2 py-1">
-                      <CardTitle className="text-sm font-medium text-center">{sys.name}</CardTitle>
+                      <CardTitle className="text-sm font-semibold text-center">{sys.name}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-2 pb-2 pt-0 flex-1 min-h-0">
                       <div className="flex flex-row gap-2 h-full">
@@ -454,7 +454,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
                   /* 8개/16개 모드: 기존 세로 스택 */
                   <>
                 <CardHeader className="px-2 py-1">
-                  <CardTitle className="text-sm font-medium text-center">{sys.name}</CardTitle>
+                  <CardTitle className="text-sm font-semibold text-center">{sys.name}</CardTitle>
                 </CardHeader>
                 <CardContent className="px-2 pb-2 pt-0 flex-1 min-h-0">
                   <div className="flex flex-col gap-3 h-full">
