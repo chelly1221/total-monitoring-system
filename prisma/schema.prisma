@@ -75,10 +75,17 @@ model Alarm {
   acknowledgedBy String?
   createdAt    DateTime  @default(now())
   resolvedAt   DateTime?
+  // Flap-coalescing: a re-firing alarm reuses its open (or recently-resolved) row and
+  // bumps occurrenceCount instead of inserting a duplicate. firstSeenAt is the original
+  // raise; lastSeenAt is the most recent re-fire.
+  occurrenceCount Int      @default(1)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
 
   system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
 
   @@index([systemId, resolvedAt])
+  @@index([systemId, severity, acknowledged, resolvedAt])
   @@map("alarms")
 }
 
@@ -91,6 +98,7 @@ model AlarmLog {
   value     String?
   createdAt DateTime @default(now())
 
+  @@index([createdAt])
   @@map("alarm_logs")
 }
 

@@ -22,7 +22,49 @@ interface AlarmData {
   createdAt: Date
   resolvedAt: Date | null
   systemId: string
+  occurrenceCount?: number
+  lastSeenAt?: Date | null
   system?: { id: string; name: string } | null
+}
+
+/** A collapsed display group: one representative row + every underlying alarm id. */
+interface AlarmGroup {
+  rep: AlarmData
+  ids: string[]
+}
+
+// Equipment messages embed the live value, e.g. "장비 심각 상태 (123)". Strip the trailing
+// "(...)" so the same alarm with different readings collapses into one group.
+function groupKeyMessage(message: string): string {
+  return message.replace(/\s*\([^)]*\)\s*$/, '')
+}
+
+/**
+ * Collapse repeated alarms (same system + severity + base message) into one row carrying
+ * the summed occurrence count. The DB already coalesces flapping at the source; this is the
+ * presentation-side safety net that also folds residual/pre-existing duplicates.
+ */
+function groupAlarms(alarms: AlarmData[]): AlarmGroup[] {
+  const map = new Map<string, { rep: AlarmData; ids: string[]; count: number; lastTs: number }>()
+  for (const a of alarms) {
+    const key = `${a.systemId}|${a.severity}|${groupKeyMessage(a.message)}`
+    const ts = new Date(a.lastSeenAt ?? a.createdAt).getTime()
+    const occ = a.occurrenceCount ?? 1
+    const g = map.get(key)
+    if (g) {
+      g.ids.push(a.id)
+      g.count += occ
+      if (ts >= g.lastTs) {
+        g.rep = a
+        g.lastTs = ts
+      }
+    } else {
+      map.set(key, { rep: a, ids: [a.id], count: occ, lastTs: ts })
+    }
+  }
+  return [...map.values()]
+    .sort((x, y) => y.lastTs - x.lastTs)
+    .map((g) => ({ rep: { ...g.rep, occurrenceCount: g.count }, ids: g.ids }))
 }
 
 interface SystemOption {
@@ -74,7 +116,7 @@ export function AlarmsClient({
 
   // Unfiltered counts for summary stats
   const criticalCount = activeAlarms.filter((a) => a.severity === 'critical').length
-  const warningCount = activeAlarms.filter((a) => a.severity === 'warning').length
+  const offlineCount = activeAlarms.filter((a) => a.severity !== 'critical').length
 
   // Filter function
   const applyFilters = useCallback(
@@ -118,6 +160,10 @@ export function AlarmsClient({
     return result
   }, [applyFilters, acknowledgedAlarms, sensorSystemIds])
 
+  // Collapse repeated alarms into one row each (with an occurrence count badge).
+  const groupedActive = useMemo(() => groupAlarms(filteredActive), [filteredActive])
+  const groupedAcknowledged = useMemo(() => groupAlarms(filteredAcknowledged), [filteredAcknowledged])
+
   // Handle WebSocket messages
   const handleMessage = useCallback((message: WebSocketMessage) => {
     const { type, data } = message
@@ -158,21 +204,52 @@ export function AlarmsClient({
       return
     }
 
-    // Handle new alarm
+    // Handle new (or re-fired) alarm
     if (type === 'alarm' && data.alarmId && data.severity && data.message && data.systemId) {
-      const newAlarm: AlarmData = {
-        id: data.alarmId,
-        systemId: data.systemId,
-        severity: data.severity,
-        message: data.message,
-        value: data.alarmValue ?? null,
-        acknowledged: data.acknowledged ?? false,
-        acknowledgedAt: null,
-        createdAt: new Date(message.timestamp),
-        resolvedAt: null,
-        system: { id: data.systemId, name: data.systemName || '' },
-      }
-      setActiveAlarms((prev) => [newAlarm, ...prev])
+      const incomingId = data.alarmId
+      const sev = data.severity
+      const msg = data.message
+      const sysId = data.systemId
+      const val = data.alarmValue ?? null
+      const sysName = data.systemName || ''
+      const ts = new Date(message.timestamp)
+
+      // A re-fired alarm reuses its id; drop any stale history copy so it isn't shown twice.
+      setAcknowledgedAlarms((prev) => prev.filter((a) => a.id !== incomingId))
+      setActiveAlarms((prev) => {
+        const idx = prev.findIndex((a) => a.id === incomingId)
+        if (idx !== -1) {
+          // Reused alarm rebroadcast: refresh in place and bump the occurrence count.
+          const next = [...prev]
+          const cur = next[idx]
+          next[idx] = {
+            ...cur,
+            severity: sev,
+            message: msg,
+            value: val ?? cur.value,
+            resolvedAt: null,
+            acknowledged: false,
+            occurrenceCount: (cur.occurrenceCount ?? 1) + 1,
+            lastSeenAt: ts,
+          }
+          return next
+        }
+        const newAlarm: AlarmData = {
+          id: incomingId,
+          systemId: sysId,
+          severity: sev,
+          message: msg,
+          value: val,
+          acknowledged: data.acknowledged ?? false,
+          acknowledgedAt: null,
+          createdAt: ts,
+          resolvedAt: null,
+          occurrenceCount: 1,
+          lastSeenAt: ts,
+          system: { id: sysId, name: sysName },
+        }
+        return [newAlarm, ...prev]
+      })
     } else if (type === 'alarm-resolved' && data.systemId) {
       const systemId = data.systemId as string
       setActiveAlarms((prev) => {
@@ -238,6 +315,39 @@ export function AlarmsClient({
     }
   }, [activeAlarms])
 
+  // Acknowledge every underlying alarm of a collapsed group in one action.
+  const handleAcknowledgeGroup = useCallback(async (ids: string[]) => {
+    if (ids.length === 1) {
+      void handleAcknowledge(ids[0])
+      return
+    }
+    const idSet = new Set(ids)
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/alarms/${id}/acknowledge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ acknowledgedBy: 'operator' }),
+          })
+        )
+      )
+      if (results.some((r) => !r.ok)) throw new Error('Failed to acknowledge alarms')
+
+      const now = new Date()
+      const moved = activeAlarms.filter((a) => idSet.has(a.id))
+      setActiveAlarms((prev) => prev.filter((a) => !idSet.has(a.id)))
+      setAcknowledgedAlarms((prev) => [
+        ...moved.map((a) => ({ ...a, acknowledged: true, acknowledgedAt: now })),
+        ...prev,
+      ])
+      toast.success(`${ids.length}개 알람이 확인되었습니다`)
+    } catch (error) {
+      console.error('Failed to acknowledge alarm group:', error)
+      toast.error('알람 확인에 실패했습니다')
+    }
+  }, [activeAlarms, handleAcknowledge])
+
   const handleAcknowledgeAll = useCallback(async () => {
     if (activeAlarms.length === 0) return
 
@@ -282,7 +392,7 @@ export function AlarmsClient({
           <div className="flex items-center gap-2">
             <AlertCircle className="h-7 w-7 text-[#f87171]" />
             <div>
-              <p className="text-xs text-muted-foreground">경고</p>
+              <p className="text-xs text-muted-foreground">심각</p>
               <p className="text-xl font-bold text-[#f87171]">{criticalCount}</p>
             </div>
           </div>
@@ -290,7 +400,7 @@ export function AlarmsClient({
             <AlertTriangle className="h-7 w-7 text-[#facc15]" />
             <div>
               <p className="text-xs text-muted-foreground">오프라인</p>
-              <p className="text-xl font-bold text-[#facc15]">{warningCount}</p>
+              <p className="text-xl font-bold text-[#facc15]">{offlineCount}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -312,31 +422,31 @@ export function AlarmsClient({
             ) : (
               <div>
                 {/* Active alarms section */}
-                {filteredActive.length > 0 && (
+                {groupedActive.length > 0 && (
                   <>
                     <div className="sticky top-0 z-10 bg-card border-b px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center gap-2">
                       활성 알람
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                        {filteredActive.length}
+                        {groupedActive.length}
                       </Badge>
                     </div>
-                    {filteredActive.map((alarm) => (
+                    {groupedActive.map(({ rep, ids }) => (
                       <AlarmCard
-                        key={alarm.id}
-                        alarm={alarm}
-                        onAcknowledge={handleAcknowledge}
+                        key={rep.id}
+                        alarm={rep}
+                        onAcknowledge={() => handleAcknowledgeGroup(ids)}
                       />
                     ))}
                   </>
                 )}
 
                 {/* Acknowledged alarms section */}
-                {filteredAcknowledged.length > 0 && (
+                {groupedAcknowledged.length > 0 && (
                   <>
                     <div className="sticky top-0 z-10 bg-card border-b px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center gap-2">
                       알람 이력
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {filteredAcknowledged.length}
+                        {groupedAcknowledged.length}
                       </Badge>
                       {activeAlarms.length > 0 && (
                         <Button
@@ -350,8 +460,8 @@ export function AlarmsClient({
                         </Button>
                       )}
                     </div>
-                    {filteredAcknowledged.map((alarm) => (
-                      <AlarmCard key={alarm.id} alarm={alarm} showAcknowledgedLabel={false} />
+                    {groupedAcknowledged.map(({ rep }) => (
+                      <AlarmCard key={rep.id} alarm={rep} showAcknowledgedLabel={false} />
                     ))}
                   </>
                 )}

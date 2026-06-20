@@ -112,7 +112,23 @@ export function RealtimeProvider({
   }, [])
 
   const addAlarm = useCallback((alarm: PrismaAlarm) => {
-    setAlarms((prev) => [alarm, ...prev].slice(0, 100)) // Keep max 100 alarms
+    setAlarms((prev) => {
+      const idx = prev.findIndex((a) => a.id === alarm.id)
+      if (idx !== -1) {
+        // Re-fired alarm (same id rebroadcast): refresh in place + bump count, don't duplicate.
+        const next = [...prev]
+        const cur = next[idx]
+        next[idx] = {
+          ...cur,
+          ...alarm,
+          resolvedAt: null,
+          acknowledged: false,
+          occurrenceCount: (cur.occurrenceCount ?? 1) + 1,
+        }
+        return next
+      }
+      return [alarm, ...prev].slice(0, 100) // Keep max 100 alarms
+    })
     setLastUpdate(new Date())
   }, [])
 

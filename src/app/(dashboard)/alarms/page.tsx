@@ -4,28 +4,10 @@ import { AlarmsClient } from '@/components/alarms/alarms-client'
 export const dynamic = 'force-dynamic'
 
 async function getAlarms() {
-  // Create alarm records for offline systems that have no active alarm
-  const offlineSystemsWithoutAlarm = await prisma.system.findMany({
-    where: {
-      isEnabled: true,
-      isActive: true,
-      status: 'offline',
-      alarms: { none: { resolvedAt: null } },
-    },
-  })
-
-  for (const sys of offlineSystemsWithoutAlarm) {
-    // UPS type: always use 'critical' severity
-    const severity = sys.type === 'ups' ? 'critical' : 'warning'
-    await prisma.alarm.create({
-      data: {
-        systemId: sys.id,
-        severity,
-        message: `${sys.name} 오프라인`,
-      },
-    })
-  }
-
+  // NOTE: alarm creation for offline systems is owned entirely by the worker
+  // (syncOfflineAlarms, run on the offline-detection interval). A GET/render must not
+  // mutate the DB — doing so here previously duplicated alarms across concurrent tabs and
+  // raced the worker.
   const [activeAlarms, acknowledgedAlarms, systems] = await Promise.all([
     prisma.alarm.findMany({
       where: { acknowledged: false, resolvedAt: null },

@@ -179,6 +179,9 @@ export interface PrismaAlarm {
   acknowledgedBy: string | null
   createdAt: Date
   resolvedAt: Date | null
+  occurrenceCount?: number
+  firstSeenAt?: Date
+  lastSeenAt?: Date
   system?: PrismaSystem
 }
 

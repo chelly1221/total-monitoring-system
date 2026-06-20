@@ -75,6 +75,83 @@ const SPIKE_Z_THRESHOLD = 3.5
 // adopt it as the new baseline instead of rejecting forever against a stale median.
 const SPIKE_REJECT_LIMIT = 3
 
+// Flap re-arm window: a fault that clears and re-fires within this window is treated as
+// the SAME ongoing alarm (occurrenceCount++ on the existing row) rather than a brand-new
+// alarm + AlarmLog entry. This is what stops a value oscillating across a threshold from
+// flooding the alarm log with one row per crossing.
+const ALARM_REARM_MS = 5 * 60 * 1000
+
+// AlarmLog had no retention (unlike MetricHistory) and grew forever. Prune on the same
+// hourly cleanup interval.
+const ALARM_LOG_RETENTION_DAYS = 365
+
+/**
+ * Raise an alarm with flap-coalescing semantics.
+ *
+ * Instead of inserting a fresh Alarm + AlarmLog row on every fault transition, this reuses
+ * an existing OPEN alarm — or one RESOLVED within ALARM_REARM_MS — for the same
+ * (system, severity), bumping occurrenceCount + lastSeenAt and reopening it if needed. A new
+ * AlarmLog row is written ONLY for a genuinely new alarm episode, so chronic flapping no
+ * longer floods the permanent log. It also resolves any open alarm of a DIFFERENT severity
+ * for the system, fixing the previous warning<->critical accumulation (resolution used to
+ * fire only on a return to 'normal'). Acknowledged alarms are never reused or superseded — a
+ * re-fire after the operator has acknowledged is a genuinely new, actionable event.
+ */
+async function raiseAlarm(opts: {
+  systemId: string
+  systemName: string
+  severity: 'warning' | 'critical' | 'offline'
+  message: string
+  value?: string | null
+}): Promise<{ alarmId: string; isNew: boolean }> {
+  const { systemId, systemName, severity, message } = opts
+  const value = opts.value ?? null
+  const now = new Date()
+
+  // Supersede: a different-severity open alarm for this system no longer reflects reality.
+  await prisma.alarm.updateMany({
+    where: { systemId, resolvedAt: null, acknowledged: false, severity: { not: severity } },
+    data: { resolvedAt: now },
+  })
+
+  // Coalesce: reuse an open alarm, or one resolved within the re-arm window, for this
+  // (system, severity) instead of minting a new row per crossing.
+  const rearmCutoff = new Date(now.getTime() - ALARM_REARM_MS)
+  const existing = await prisma.alarm.findFirst({
+    where: {
+      systemId,
+      severity,
+      acknowledged: false,
+      OR: [{ resolvedAt: null }, { resolvedAt: { gte: rearmCutoff } }],
+    },
+    orderBy: { lastSeenAt: 'desc' },
+  })
+
+  if (existing) {
+    await prisma.alarm.update({
+      where: { id: existing.id },
+      data: {
+        resolvedAt: null,
+        lastSeenAt: now,
+        occurrenceCount: { increment: 1 },
+        message,
+        value,
+      },
+    })
+    broadcastAlarm(systemId, systemName, existing.id, severity, message, value)
+    return { alarmId: existing.id, isNew: false }
+  }
+
+  const alarm = await prisma.alarm.create({
+    data: { systemId, severity, message, value, firstSeenAt: now, lastSeenAt: now },
+  })
+  await prisma.alarmLog.create({
+    data: { systemId, systemName, severity, message, value },
+  })
+  broadcastAlarm(systemId, systemName, alarm.id, severity, message, value)
+  return { alarmId: alarm.id, isNew: true }
+}
+
 // Parsed config cache to avoid repeated JSON.parse on every data point
 const configCache = new Map<string, { raw: string; parsed: Record<string, unknown> }>()
 
@@ -319,39 +396,20 @@ async function processSystemMetric(
           void syncSirenState()
         }
 
-        // Create alarm when status changes to warning or critical
+        // Create/refresh alarm when status changes to warning or critical (flap-coalesced)
         if (newStatus === 'warning' || newStatus === 'critical') {
           const severity = newStatus === 'critical' ? 'critical' : 'warning'
           const statusLabel = newStatus === 'critical' ? '심각' : '오프라인'
+          const message = `${system.name} ${statusLabel} 상태 (${data.value})`
 
-          const alarm = await prisma.alarm.create({
-            data: {
-              systemId: system.id,
-              severity,
-              message: `${system.name} ${statusLabel} 상태 (${data.value})`,
-            },
-          })
-
-          // Log the alarm
-          await prisma.alarmLog.create({
-            data: {
-              systemId: system.id,
-              systemName: system.name,
-              severity,
-              message: `${system.name} ${statusLabel} 상태 (${data.value})`,
-            },
-          })
-
-          // Broadcast alarm via WebSocket
-          broadcastAlarm(
-            system.id,
-            system.name,
-            alarm.id,
+          const { isNew } = await raiseAlarm({
+            systemId: system.id,
+            systemName: system.name,
             severity,
-            `${system.name} ${statusLabel} 상태 (${data.value})`
-          )
+            message,
+          })
 
-          log.info(`Alarm created for ${system.name}: ${statusLabel}`)
+          if (isNew) log.info(`Alarm created for ${system.name}: ${statusLabel}`)
 
           // Sync siren state after alarm creation
           void syncSirenState()
@@ -786,41 +844,21 @@ async function updateSystemStatus(
       void syncSirenState()
     }
 
-    // Create alarm when status changes to warning or critical
+    // Create/refresh alarm when status changes to warning or critical (flap-coalesced)
     if (status === 'warning' || status === 'critical') {
       const severity = 'critical' as const
       const statusLabel = '임계치 초과'
       const alarmValue = `${value}${unit}`
 
-      const alarm = await prisma.alarm.create({
-        data: {
-          systemId,
-          severity,
-          message: `${systemName} ${statusLabel} 상태`,
-          value: alarmValue,
-        },
-      })
-
-      await prisma.alarmLog.create({
-        data: {
-          systemId,
-          systemName,
-          severity,
-          message: `${systemName} ${statusLabel} 상태`,
-          value: alarmValue,
-        },
-      })
-
-      broadcastAlarm(
+      const { isNew } = await raiseAlarm({
         systemId,
         systemName,
-        alarm.id,
         severity,
-        `${systemName} ${statusLabel} 상태`,
-        alarmValue
-      )
+        message: `${systemName} ${statusLabel} 상태`,
+        value: alarmValue,
+      })
 
-      log.info(`Alarm created for ${systemName}: ${statusLabel}`)
+      if (isNew) log.info(`Alarm created for ${systemName}: ${statusLabel}`)
 
       // Sync siren state after alarm creation
       void syncSirenState()
@@ -1018,46 +1056,44 @@ export async function processAlarm(config: PortConfig, data: ParsedData): Promis
 
     // Parse alarm data (implementation depends on actual alarm format)
     const alarmValue = data.value.trim()
+    const isAlarm = alarmValue !== '' && alarmValue !== '0' && alarmValue.toLowerCase() !== 'ok'
+    const newStatus = isAlarm ? 'warning' : 'normal'
 
-    if (alarmValue && alarmValue !== '0' && alarmValue.toLowerCase() !== 'ok') {
-      // Create new alarm
-      const alarm = await prisma.alarm.create({
-        data: {
-          systemId: system.id,
-          severity: 'warning',
-          message: `Alarm triggered: ${alarmValue}`,
-        },
+    // Edge-triggered: only act on an actual status transition. Previously this fired on
+    // EVERY non-OK packet (level-triggered), inserting one Alarm + AlarmLog row per packet.
+    const current = await prisma.system.findUnique({
+      where: { id: system.id },
+      select: { status: true },
+    })
+    if (!current || current.status === newStatus) return
+
+    await prisma.system.update({
+      where: { id: system.id },
+      data: { status: newStatus },
+    })
+    broadcastSystemStatus(system.id, system.name, newStatus)
+
+    if (isAlarm) {
+      const { isNew } = await raiseAlarm({
+        systemId: system.id,
+        systemName: system.name,
+        severity: 'warning',
+        message: `Alarm triggered: ${alarmValue}`,
       })
-
-      // Log the alarm
-      await prisma.alarmLog.create({
-        data: {
-          systemId: system.id,
-          systemName: system.name,
-          severity: 'warning',
-          message: `Alarm triggered: ${alarmValue}`,
-        },
+      if (isNew) log.info(` Alarm created for ${config.system}: ${alarmValue}`)
+      void syncSirenState()
+    } else {
+      // Cleared: resolve any open alarms for this system. Previously processAlarm never
+      // resolved, so an alarm it raised stayed active until offline detection or restart.
+      const resolved = await prisma.alarm.updateMany({
+        where: { systemId: system.id, resolvedAt: null },
+        data: { resolvedAt: new Date() },
       })
-
-      // Update system status
-      await prisma.system.update({
-        where: { id: system.id },
-        data: { status: 'warning' },
-      })
-
-      // Broadcast alarm via WebSocket
-      broadcastAlarm(
-        system.id,
-        system.name,
-        alarm.id,
-        'warning',
-        `Alarm triggered: ${alarmValue}`
-      )
-
-      // Broadcast status change
-      broadcastSystemStatus(system.id, system.name, 'warning')
-
-      log.info(` Alarm created for ${config.system}: ${alarmValue}`)
+      if (resolved.count > 0) {
+        broadcastAlarmResolution(system.id, system.name)
+        log.info(` Alarm cleared for ${config.system}`)
+      }
+      void syncSirenState()
     }
   } catch (error) {
     log.error(` Error processing alarm for ${config.system}:`, error)
@@ -1256,6 +1292,12 @@ export function startOfflineDetection(): void {
           )
         }
       }
+
+      // Backfill alarms for systems that are ALREADY offline (or UPS critical) but have no
+      // open alarm — e.g. systems created after worker startup, which default to 'offline'
+      // and are skipped by the transition loop above. This replaces the DB-write that used
+      // to live (incorrectly) in the /alarms page GET render.
+      await syncOfflineAlarms()
     } catch (error) {
       log.error(' Offline detection error:', error)
     }
@@ -1338,6 +1380,15 @@ async function cleanOldHistory(): Promise<void> {
     })
     if (deleted.count > 0) {
       log.info(` Deleted ${deleted.count} records older than 365 days`)
+    }
+
+    // 1b. Prune permanent alarm log (previously unbounded).
+    const alarmLogCutoff = new Date(now - ALARM_LOG_RETENTION_DAYS * DAY)
+    const prunedAlarmLogs = await prisma.alarmLog.deleteMany({
+      where: { createdAt: { lt: alarmLogCutoff } },
+    })
+    if (prunedAlarmLogs.count > 0) {
+      log.info(` Deleted ${prunedAlarmLogs.count} alarm logs older than ${ALARM_LOG_RETENTION_DAYS} days`)
     }
 
     if (isFirstCleanupRun) {

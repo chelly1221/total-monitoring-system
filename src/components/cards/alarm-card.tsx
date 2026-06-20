@@ -11,6 +11,7 @@ interface AlarmData {
   value?: string | null
   acknowledged: boolean
   createdAt: Date
+  occurrenceCount?: number
   system?: { name: string } | null
 }
 
@@ -59,6 +60,7 @@ export function AlarmCard({ alarm, onAcknowledge, className, compact = false, sh
   const Icon = isCritical ? AlertCircle : AlertTriangle
 
   const itemName = getItemName(alarm)
+  const occurrences = alarm.occurrenceCount ?? 1
 
   if (compact) {
     return (
@@ -78,6 +80,7 @@ export function AlarmCard({ alarm, onAcknowledge, className, compact = false, sh
         {showSystemName && <span className="text-white shrink-0">{alarm.system?.name || '알 수 없음'}</span>}
         {itemName && <span className="text-muted-foreground shrink-0">{itemName}</span>}
         {alarm.value && <span className="text-muted-foreground shrink-0">({alarm.value})</span>}
+        {occurrences > 1 && <span className={cn('shrink-0 font-semibold', theme.color)}>×{occurrences}</span>}
         <span className="text-muted-foreground shrink-0 ml-auto">{formatTime(alarm.createdAt)}</span>
       </Card>
     )
@@ -106,6 +109,11 @@ export function AlarmCard({ alarm, onAcknowledge, className, compact = false, sh
         {showSystemName && <span className="text-white shrink-0">{alarm.system?.name || '알 수 없음'}</span>}
         {itemName && <span className="text-muted-foreground shrink-0">{itemName}</span>}
         {alarm.value && <span className="text-muted-foreground shrink-0">({alarm.value})</span>}
+        {occurrences > 1 && (
+          <span className={cn('shrink-0 font-semibold', theme.color)} title={`${occurrences}회 발생`}>
+            ×{occurrences}
+          </span>
+        )}
         <span className="text-muted-foreground/70 shrink-0 ml-auto">
           {formatTime(alarm.createdAt)}
         </span>
