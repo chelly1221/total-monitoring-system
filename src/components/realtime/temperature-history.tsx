@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { LineChart } from '@/components/charts/line-chart'
 import { ArrowLeft, Thermometer, Droplets } from 'lucide-react'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
@@ -206,11 +207,10 @@ export function TemperatureHistory() {
 
         {/* Custom range */}
         <div className="flex items-center gap-2">
-          <input
-            type="date"
+          <DatePicker
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground [color-scheme:dark]"
+            onChange={setDateFrom}
+            className="h-7 px-2 text-xs"
           />
           <input
             type="text"
@@ -220,11 +220,10 @@ export function TemperatureHistory() {
             className="h-7 w-[4.5rem] rounded border border-border bg-background px-2 text-xs text-foreground"
           />
           <span className="text-xs text-muted-foreground">~</span>
-          <input
-            type="date"
+          <DatePicker
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground [color-scheme:dark]"
+            onChange={setDateTo}
+            className="h-7 px-2 text-xs"
           />
           <input
             type="text"

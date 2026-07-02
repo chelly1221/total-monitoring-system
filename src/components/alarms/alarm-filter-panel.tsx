@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DatePicker } from '@/components/ui/date-picker'
 import { cn } from '@/lib/utils'
 import { Filter, RotateCcw } from 'lucide-react'
 
@@ -101,10 +102,9 @@ export function AlarmFilterPanel({
       <CardContent className="flex-1 min-h-0 space-y-6 overflow-auto">
         {/* Date range filter */}
         <div className="flex items-center gap-2 mb-0 w-fit">
-          <Input
-            type="date"
+          <DatePicker
             value={dateFrom}
-            onChange={(e) => onDateFromChange(e.target.value)}
+            onChange={onDateFromChange}
             className="text-sm"
           />
           <Input
@@ -115,10 +115,9 @@ export function AlarmFilterPanel({
             className="text-sm w-[4.5rem] shrink-0"
           />
           <span className="text-muted-foreground text-sm shrink-0">~</span>
-          <Input
-            type="date"
+          <DatePicker
             value={dateTo}
-            onChange={(e) => onDateToChange(e.target.value)}
+            onChange={onDateToChange}
             className="text-sm"
           />
           <Input
