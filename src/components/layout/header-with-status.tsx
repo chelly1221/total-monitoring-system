@@ -71,7 +71,15 @@ export function HeaderWithStatus() {
     if (e.button !== 0) return
     const win = tauriWindowRef.current
     if (!win) return
-    if ((e.target as HTMLElement).closest('button, a')) return
+    // Radix menus/popovers (e.g. the mute dropdown) render into a portal at
+    // document.body, but React still bubbles their synthetic events up through this
+    // header — the portal's React parent. Without this check, clicking a menu item
+    // (a <div role="menuitem">, which the button/link guard below doesn't catch) would
+    // exit fullscreen and start a window drag that swallows the click. Only act on
+    // events that physically originate inside the header element.
+    const target = e.target as HTMLElement
+    if (!e.currentTarget.contains(target)) return
+    if (target.closest('button, a')) return
 
     if (document.fullscreenElement) {
       // Where the cursor sat within the window before the size/position changed.
