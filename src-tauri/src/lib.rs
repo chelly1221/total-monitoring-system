@@ -474,10 +474,29 @@ pub fn run() {
                     rx_worker,
                 ));
 
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                // The main window boots on the bundled splash page, which polls the
+                // server itself and navigates to localhost:7777 when it answers. This
+                // TCP poll is a fallback: if the splash script ever fails, navigate the
+                // window from here once the server accepts connections. The port guard
+                // makes it a no-op when the splash already switched over.
+                let deadline = Instant::now() + Duration::from_secs(120);
+                loop {
+                    if tokio::net::TcpStream::connect(("127.0.0.1", 7777)).await.is_ok() {
+                        break;
+                    }
+                    if Instant::now() >= deadline {
+                        eprintln!("[tms] server not reachable after 120s — giving up on fallback navigation");
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
 
+                // Give the splash a moment to do its own (animated) hand-off first.
+                tokio::time::sleep(Duration::from_secs(3)).await;
                 if let Some(window) = handle.get_webview_window("main") {
-                    let _ = window.eval("window.location.reload()");
+                    let _ = window.eval(
+                        "if (window.location.port !== '7777') { window.location.replace('http://localhost:7777/'); }",
+                    );
                 }
             });
 

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>통합알람감시체계</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #09090b;
+    color: #fafafa;
+    font-family: 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+
+  .root {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity .35s ease;
+  }
+  .root.fade { opacity: 0; }
+
+  .bg-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(34, 197, 94, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 197, 94, 0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+  .vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, .55) 100%);
+    pointer-events: none;
+  }
+
+  /* radar scope */
+  .scope { position: relative; width: 200px; height: 200px; margin-bottom: 44px; }
+  .face {
+    position: absolute; inset: 0; border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid rgba(34, 197, 94, .35);
+    background: radial-gradient(circle, rgba(34, 197, 94, .07) 0%, rgba(34, 197, 94, .02) 70%, transparent 100%);
+    box-shadow: 0 0 44px rgba(34, 197, 94, .12), inset 0 0 30px rgba(34, 197, 94, .05);
+  }
+  .ring { position: absolute; border-radius: 50%; border: 1px solid rgba(34, 197, 94, .16); }
+  .ring.r1 { inset: 17%; }
+  .ring.r2 { inset: 34%; }
+  .axis-h { position: absolute; left: 4px; right: 4px; top: 50%; height: 1px; background: rgba(34, 197, 94, .14); }
+  .axis-v { position: absolute; top: 4px; bottom: 4px; left: 50%; width: 1px; background: rgba(34, 197, 94, .14); }
+  .sweep {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(34, 197, 94, .5), rgba(34, 197, 94, .1) 55deg, transparent 80deg);
+    animation: sweep 2.6s linear infinite;
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .center-dot {
+    position: absolute; left: 50%; top: 50%; width: 5px; height: 5px;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: #22c55e; box-shadow: 0 0 10px #22c55e;
+  }
+  .blip {
+    position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    background: #22c55e; box-shadow: 0 0 8px #22c55e;
+    opacity: 0; animation: blip 2.6s linear infinite;
+  }
+  .blip.b1 { left: 63%; top: 27%; animation-delay: .35s; }
+  .blip.b2 { left: 72%; top: 62%; animation-delay: 1.05s; }
+  .blip.b3 { left: 28%; top: 58%; animation-delay: 1.75s; }
+  @keyframes blip { 0% { opacity: 1; } 45% { opacity: .15; } 100% { opacity: 0; } }
+
+  .title {
+    font-size: 34px; font-weight: 700;
+    letter-spacing: .35em; text-indent: .35em;
+    margin-bottom: 12px;
+    text-shadow: 0 0 26px rgba(34, 197, 94, .3);
+  }
+  .subtitle {
+    font-size: 12px; letter-spacing: .55em; text-indent: .55em;
+    color: #71717a; text-transform: uppercase;
+    margin-bottom: 76px;
+  }
+
+  .loader { width: 460px; max-width: 80vw; display: flex; flex-direction: column; gap: 10px; }
+  .bar {
+    width: 100%; height: 6px; border-radius: 3px;
+    background: #1c1c1f; border: 1px solid #27272a; overflow: hidden;
+  }
+  .fill {
+    height: 100%; width: 0%; border-radius: 3px;
+    background: linear-gradient(90deg, #15803d, #22c55e);
+    position: relative;
+  }
+  .fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, .25) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+
+  .meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: #a1a1aa; }
+  .status.delayed #status-text { color: #eab308; }
+  .dots span { animation: dot 1.4s infinite; opacity: 0; }
+  .dots span:nth-child(2) { animation-delay: .2s; }
+  .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes dot { 0%, 60%, 100% { opacity: 0; } 30% { opacity: 1; } }
+  .pct { font-family: Consolas, 'Courier New', monospace; color: #22c55e; }
+
+  .version {
+    position: absolute; bottom: 20px; right: 24px;
+    font-size: 11px; color: #3f3f46;
+    font-family: Consolas, monospace;
+  }
+  .close {
+    position: absolute; top: 14px; right: 14px; z-index: 10;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; color: #52525b; font-size: 18px; line-height: 1;
+    cursor: pointer;
+  }
+  .close:hover { background: #27272a; color: #fafafa; }
+</style>
+</head>
+<body>
+<div class="root" id="root" data-tauri-drag-region>
+  <div class="bg-grid"></div>
+  <div class="vignette"></div>
+  <div class="close" id="close" title="닫기">✕</div>
+
+  <div class="scope">
+    <div class="face">
+      <div class="ring r1"></div>
+      <div class="ring r2"></div>
+      <div class="axis-h"></div>
+      <div class="axis-v"></div>
+      <div class="sweep"></div>
+      <div class="blip b1"></div>
+      <div class="blip b2"></div>
+      <div class="blip b3"></div>
+      <div class="center-dot"></div>
+    </div>
+  </div>
+
+  <div class="title">통합알람감시체계</div>
+  <div class="subtitle">Unified Alarm Monitoring System</div>
+
+  <div class="loader">
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="meta">
+      <span class="status" id="status">
+        <span id="status-text">리소스 준비 중</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+      <span class="pct" id="pct">0%</span>
+    </div>
+  </div>
+
+  <div class="version">v0.1.0</div>
+</div>
+
+<script>
+  const APP_URL = 'http://localhost:7777/';
+  const root = document.getElementById('root');
+  const fill = document.getElementById('fill');
+  const pct = document.getElementById('pct');
+  const status = document.getElementById('status');
+  const statusText = document.getElementById('status-text');
+
+  // Progress is cosmetic: it eases toward 90% while waiting, then snaps to 100%
+  // once the server actually answers. Stage labels are keyed to progress only.
+  const stages = [
+    [0,  '리소스 준비 중'],
+    [22, '데이터베이스 초기화 중'],
+    [45, '서버 시작 중'],
+    [68, '모듈 로딩 중'],
+    [88, '서버 연결 대기 중'],
+  ];
+  let progress = 0;
+  let target = 90;
+  let ready = false;
+  let navigated = false;
+  const started = performance.now();
+
+  function stageLabel(p) {
+    let label = stages[0][1];
+    for (const [threshold, text] of stages) if (p >= threshold) label = text;
+    return label;
+  }
+
+  function frame() {
+    progress += (target - progress) * (ready ? 0.1 : 0.012);
+    if (ready && progress > 99.4) progress = 100;
+    fill.style.width = progress + '%';
+    pct.textContent = Math.floor(progress) + '%';
+    if (!ready) statusText.textContent = stageLabel(progress);
+    if (progress >= 100 && !navigated) {
+      navigated = true;
+      statusText.textContent = '시작 중';
+      root.classList.add('fade');
+      setTimeout(() => location.replace(APP_URL), 380);
+      return;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // no-cors probe: rejects while the port is closed, resolves (opaque) once
+  // the Next.js server is listening — CORS headers are irrelevant for this.
+  let polling = false;
+  const pollTimer = setInterval(async () => {
+    if (polling || ready) return;
+    polling = true;
+    try {
+      await fetch(APP_URL, { mode: 'no-cors', cache: 'no-store' });
+      ready = true;
+      target = 100;
+      status.classList.remove('delayed');
+      statusText.textContent = '연결됨';
+      clearInterval(pollTimer);
+    } catch (_) {
+      if (performance.now() - started > 60000) {
+        status.classList.add('delayed');
+        statusText.textContent = '서버 시작이 지연되고 있습니다 — 계속 시도 중';
+      }
+    } finally {
+      polling = false;
+    }
+  }, 300);
+
+  // Close button needs the injected Tauri API (withGlobalTauri) — the window
+  // has no native title bar. Hidden if the page is opened in a plain browser.
+  const closeBtn = document.getElementById('close');
+  if (window.__TAURI__ && window.__TAURI__.window) {
+    closeBtn.addEventListener('click', () => window.__TAURI__.window.getCurrentWindow().close());
+  } else {
+    closeBtn.style.display = 'none';
+  }
+</script>
+</body>
+</html>

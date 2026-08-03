@@ -12,7 +12,8 @@ Tauri 앱이 두 개의 Node.js 자식 프로세스를 spawn하고, WebView가 l
 
 ```
 Tauri (Rust) — tms-portable.exe
-├── WebView → http://localhost:7777
+├── WebView → 스플래시(번들 splash/index.html) → http://localhost:7777
+│             (스플래시가 서버 준비를 폴링 후 자동 전환, Rust 측 TCP 폴링은 fallback)
 ├── spawns: node resources/standalone/server.js  (Next.js 서버)
 └── spawns: node resources/worker/index.js       (데이터 수집기)
 ```
@@ -76,7 +77,6 @@ npx tsx prisma/seed.ts   # 시드 데이터
 **빌드 전 필수 조건:**
 - `.env` 파일에 `DATABASE_URL="file:./dev.db"` 설정 (Prisma가 빌드 시점에 DB 접근)
 - `npx prisma db push` 로 DB 스키마 적용
-- `out/index.html` 존재 (Tauri가 `frontendDist: "../out"` 검증 — 실제로는 localhost URL 사용)
 
 ## Project Structure
 
@@ -121,15 +121,16 @@ tms-portable/
 ├── scripts/
 │   └── build-standalone.js       # Next.js standalone + worker 패키징
 ├── prisma/                       # DB 스키마 + 마이그레이션
-├── out/index.html                # Tauri frontendDist 더미 (gitignore)
+├── splash/index.html             # 부팅 스플래시 (frontendDist) — 서버 폴링 + 프로그레스바
 ├── next.config.ts                # output: 'standalone'
 └── package.json                  # tauri:dev, tauri:build, tauri:build-frontend
 ```
 
 ## Tauri 핵심 파일
 
-- **`src-tauri/src/lib.rs`** — `tokio::sync::Mutex`로 자식 프로세스 관리. `spawn_server()`, `spawn_worker()`는 동기 spawn, `kill_processes()`는 async. `setup()`에서 spawn 후 3초 대기 → WebView reload.
-- **`src-tauri/tauri.conf.json`** — `url: "http://localhost:7777"`, `csp: null`, NSIS `installMode: "currentUser"`, `resources: ["resources/"]`
+- **`src-tauri/src/lib.rs`** — 자식 프로세스 supervise(재시작 + backoff), Job Object로 강제 정리. `setup()`에서 포트 7777 TCP 폴링 → 스플래시가 전환 실패 시 fallback으로 앱 전환.
+- **`splash/index.html`** — 부팅 로딩 화면 (레이더 애니메이션 + 프로그레스바). no-cors fetch로 서버 준비 폴링 → `location.replace`로 앱 전환. 60초 초과 시 지연 경고 표시.
+- **`src-tauri/tauri.conf.json`** — 메인 윈도우는 `url: "/"`로 스플래시(`frontendDist: "../splash"`) 먼저 로드, `withGlobalTauri: true` (스플래시 닫기 버튼용), `csp: null`, NSIS `installMode: "currentUser"`, `resources: ["resources/"]`
 - **`scripts/build-standalone.js`** — `execSync`으로 `next build` + `esbuild` 실행, `fs.cpSync`으로 리소스 복사
 
 ## Supported System Types

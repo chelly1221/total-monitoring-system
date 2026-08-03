@@ -5,10 +5,11 @@
   "identifier": "kr.chelly.tms-portable",
   "build": {
     "beforeBuildCommand": "npm run tauri:build-frontend",
-    "frontendDist": "../out",
+    "frontendDist": "../splash",
     "devUrl": "http://localhost:7777"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
@@ -18,7 +19,7 @@
         "fullscreen": false,
         "resizable": true,
         "decorations": false,
-        "url": "http://localhost:7777"
+        "url": "/"
       }
     ],
     "security": {
