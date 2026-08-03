@@ -47,8 +47,13 @@ async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Ma
   for (const [p, c] of Object.entries(UDP_PORTS)) udp.set(Number(p), { ...c })
   for (const [p, c] of Object.entries(TCP_PORTS)) tcp.set(Number(p), { ...c })
 
-  // Overlay enabled DB systems.
+  // Overlay enabled DB systems. Multiple systems MAY share one (port, protocol):
+  // devices all send TO us, one socket receives, and the ingest path fans each
+  // datagram out to every system on the port. The port-level config here only
+  // carries the wire encoding and a log label, so sharing needs no extra state —
+  // but conflicting encodings on one port can't both be honored (warned below).
   const systems = await getEnabledSystemsForBinding()
+  const dbNames = new Map<string, string[]>() // `${protocol}:${port}` -> DB system names sharing it
   for (const s of systems) {
     // MQTT systems are addressed by topic, not port.
     if (s.protocol === 'mqtt') {
@@ -70,10 +75,20 @@ async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Ma
     }
     const target = s.protocol === 'udp' ? udp : tcp
     const existing = target.get(s.port)
+    const shareKey = `${s.protocol}:${s.port}`
+    const sharedNames = dbNames.get(shareKey) ?? []
+    const enc = normalizeEncoding(s.encoding)
+    // Encoding is port-scoped (one decode per datagram). If DB systems sharing
+    // this port disagree, the last one wins — surface it instead of failing.
+    if (enc && existing?.encoding && enc !== existing.encoding && sharedNames.length > 0) {
+      log.warn(`Port ${s.port}/${s.protocol}: encoding conflict — "${s.name}" wants ${enc} but sharing system(s) [${sharedNames.join(', ')}] set ${existing.encoding}; using ${enc}`)
+    }
+    sharedNames.push(s.name)
+    dbNames.set(shareKey, sharedNames)
     target.set(s.port, {
-      system: s.name,
+      system: sharedNames.length > 1 ? sharedNames.join(' + ') : s.name,
       type: mapSystemType(s.type),
-      encoding: normalizeEncoding(s.encoding) ?? existing?.encoding,
+      encoding: enc ?? existing?.encoding,
       description: existing?.description,
     })
   }

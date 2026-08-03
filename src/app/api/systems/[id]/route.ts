@@ -195,8 +195,10 @@ export async function PUT(request: Request, { params }: RouteParams) {
       )
     }
 
-    // MQTT is addressed by topic; UDP/TCP by port. Require the right one and reject
-    // the matching duplicate against OTHER systems.
+    // MQTT is addressed by topic (kept unique against OTHER systems); UDP/TCP by
+    // port. Ports MAY be shared by multiple systems — devices all send TO us, and
+    // the ingest path fans each datagram out to every system on the port,
+    // attributing data by each system's own parse config.
     const isMqtt = protocol === 'mqtt'
     let portNum: number | null = null
     let topicStr: string | null = null
@@ -225,16 +227,6 @@ export async function PUT(request: Request, { params }: RouteParams) {
         return NextResponse.json({ error: 'Port and protocol are required' }, { status: 400 })
       }
       portNum = parseInt(port, 10)
-      const dup = await prisma.system.findFirst({
-        where: { port: portNum, protocol, isActive: true, id: { not: id } },
-        select: { name: true },
-      })
-      if (dup) {
-        return NextResponse.json(
-          { error: `포트 충돌: ${protocol.toUpperCase()} ${portNum} 포트는 이미 "${dup.name}"에서 사용 중입니다` },
-          { status: 409 }
-        )
-      }
     }
 
     if (config?.customCode?.trim()) {

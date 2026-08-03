@@ -330,6 +330,10 @@ async function processSystemMetric(
   if (equipmentConfig) {
     // Equipment type: use pattern matching
     let newStatus = calculateEquipmentStatus(data.value, equipmentConfig)
+    // Whether the message matched any of this system's patterns, captured BEFORE
+    // the critical counter rewrites newStatus to null for suppression. The return
+    // value feeds shared-port attribution (lastDataAt) in updateMetric.
+    const patternMatched = newStatus !== null
 
     // Critical threshold: require CRITICAL_THRESHOLD consecutive critical signals
     if (newStatus === 'critical') {
@@ -416,7 +420,7 @@ async function processSystemMetric(
         }
       }
     }
-    return true
+    return patternMatched
   }
 
   // UPS/Sensor type: check for condition-based config
@@ -736,22 +740,28 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
 
     const numericValue = extractNumericValue(data)
 
+    // Sole owner: advance lastDataAt on EVERY received packet, regardless of
+    // whether the payload parsed. Offline must mean "no bytes arriving on this
+    // port", not "no parseable value" — otherwise an alive device emitting a
+    // transiently malformed or format-changed frame is falsely marked offline.
+    // Shared port: bytes can't be attributed to one device, so lastDataAt
+    // advances only for systems whose config actually matched the payload —
+    // else a chatty neighbor would keep a dead device looking alive forever.
+    const sharedSource = systems.length > 1
+
     for (const system of systems) {
       try {
         const processed = await processSystemMetric(system, data, numericValue)
 
-        // Advance lastDataAt on EVERY received packet, regardless of whether the
-        // payload parsed. Offline must mean "no bytes arriving on this port", not
-        // "no parseable value" — otherwise an alive device emitting a transiently
-        // malformed or format-changed frame is falsely marked offline after the
-        // threshold. (Equipment already behaved this way; sensor/UPS now match.)
-        await prisma.system.update({
-          where: { id: system.id },
-          data: {
-            lastDataAt: new Date(),
-            updatedAt: new Date(),
-          },
-        })
+        if (!sharedSource || processed) {
+          await prisma.system.update({
+            where: { id: system.id },
+            data: {
+              lastDataAt: new Date(),
+              updatedAt: new Date(),
+            },
+          })
+        }
 
         if (processed) {
           log.debug(`Updated ${system.name}: ${data.value}`)
@@ -1221,25 +1231,39 @@ export function startOfflineDetection(): void {
 
   offlineCheckInterval = setInterval(async () => {
     try {
+      // Fetch ALL enabled systems (offline ones too): the per-source share count
+      // below must see every system on a port, or a port would look "sole-owned"
+      // as soon as its neighbor goes offline.
       const systems = await prisma.system.findMany({
         where: {
           isEnabled: true,
           isActive: true,
-          status: { not: 'offline' },
         },
       })
+
+      // Systems per ingest source. On a shared port the port-level in-memory
+      // liveness cannot attribute bytes to one device, so it is only trusted
+      // when exactly one system owns the source.
+      const sourceCounts = new Map<string, number>()
+      for (const s of systems) {
+        const k = livenessKey(s.protocol, s.port, (s as { topic?: string | null }).topic)
+        sourceCounts.set(k, (sourceCounts.get(k) ?? 0) + 1)
+      }
 
       const now = Date.now()
 
       for (const system of systems) {
+        if (system.status === 'offline') continue
         const dbLast = system.lastDataAt?.getTime() ?? 0
         // Fall back to the in-memory receive timestamp (recorded synchronously on the
         // socket/MQTT receive path, before the queue). A stalled drainer or a briefly
         // locked DB delays the lastDataAt write but must NOT manufacture a false
         // offline — liveness reflects bytes on the wire. Use whichever is more recent.
-        const memLast = getLastSeen(
-          livenessKey(system.protocol, system.port, (system as { topic?: string | null }).topic),
-        )
+        // On a SHARED source, skip this fallback: bytes from a live neighbor would
+        // mask this device being dead. There, lastDataAt (advanced only on a
+        // config-matched payload) is the source of truth.
+        const key = livenessKey(system.protocol, system.port, (system as { topic?: string | null }).topic)
+        const memLast = (sourceCounts.get(key) ?? 1) > 1 ? 0 : getLastSeen(key)
         const lastData = Math.max(dbLast, memLast)
         const timeSinceLastData = now - lastData
         // Per-device threshold overrides the global default (slow reporters need a
@@ -1341,6 +1365,9 @@ export async function getEnabledSystemsForBinding(): Promise<BindingSystem[]> {
       ],
     },
     select: { name: true, type: true, port: true, protocol: true, encoding: true, topic: true },
+    // Deterministic overlay order so shared-port last-wins fields (encoding,
+    // type) don't flip between reconciles on unordered query results.
+    orderBy: { name: 'asc' },
   })
 }
 
