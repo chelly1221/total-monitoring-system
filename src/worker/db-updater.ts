@@ -282,6 +282,12 @@ function acceptSensorValue(metricId: string, value: number, metricMin: number | 
 const OFFLINE_CHECK_INTERVAL = parseInt(process.env.OFFLINE_CHECK_INTERVAL || '10000', 10)
 const OFFLINE_THRESHOLD = parseInt(process.env.OFFLINE_THRESHOLD || '300000', 10)
 
+// Floor for silence calculations: time the app was NOT running must not count as
+// device silence, or every slow-reporting device gets a false offline alarm right
+// after boot (persisted lastDataAt is frozen at shutdown time). Each device gets a
+// full threshold window from worker start before it can be declared offline.
+const workerStartedAt = Date.now()
+
 let offlineCheckInterval: ReturnType<typeof setInterval> | null = null
 let historyCleanupInterval: ReturnType<typeof setInterval> | null = null
 let isFirstCleanupRun = true
@@ -1264,7 +1270,7 @@ export function startOfflineDetection(): void {
         // config-matched payload) is the source of truth.
         const key = livenessKey(system.protocol, system.port, (system as { topic?: string | null }).topic)
         const memLast = (sourceCounts.get(key) ?? 1) > 1 ? 0 : getLastSeen(key)
-        const lastData = Math.max(dbLast, memLast)
+        const lastData = Math.max(dbLast, memLast, workerStartedAt)
         const timeSinceLastData = now - lastData
         // Per-device threshold overrides the global default (slow reporters need a
         // longer window; fast-critical devices a shorter one). Guard with > 0 (not
