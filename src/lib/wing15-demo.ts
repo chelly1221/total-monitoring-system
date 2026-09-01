@@ -10,6 +10,8 @@ export function buildDemoState(
 ): Wing15State {
   const now = Date.now()
   const min = 60_000
+  // 2분마다 "경보 진행 중" ↔ "해제됨(확인 가능)" 상태를 번갈아 표시
+  const active = !confirmed && Math.floor(now / (2 * min)) % 2 === 0
   // computeSig와 동일 규칙: 미확인 항목 key 정렬 후 '|' 결합
   const sig = confirmed ? '' : 'demo:strikes|demo:warning'
   return {
@@ -22,8 +24,8 @@ export function buildDemoState(
         kind: 'warning',
         title: '뇌전특보',
         startAt: new Date(now - 30 * min).toISOString(),
-        endAt: new Date(now + 90 * min).toISOString(),
-        active: true,
+        endAt: new Date(now + (active ? 90 : -5) * min).toISOString(),
+        active,
         cancelled: false,
         confirmed,
       },
@@ -32,8 +34,8 @@ export function buildDemoState(
         kind: 'strikes',
         title: '낙뢰 7건',
         startAt: new Date(now - 25 * min).toISOString(),
-        endAt: new Date(now - 3 * min).toISOString(),
-        active: true,
+        endAt: new Date(now - (active ? 3 : 70) * min).toISOString(),
+        active,
         strikeCount: 7,
         confirmed,
       },

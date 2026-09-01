@@ -41,6 +41,8 @@ export function LightningAlertPanel() {
   const items = wing15?.items ?? []
   const hasUnconfirmed = items.some((i) => !i.confirmed)
   const anyActive = items.some((i) => i.active && !i.cancelled)
+  // 경보 진행 중에는 점검 체크/확인 불가 — 해제(종료) 후 활성화
+  const inProgress = items.some((i) => !i.confirmed && i.active)
   // 앱/워커 시작 직후 첫 폴링 전에는 오류가 아니라 연결 중 상태
   const connecting = !wing15 || (!wing15.ok && !wing15.updatedAt)
 
@@ -164,18 +166,29 @@ export function LightningAlertPanel() {
 
       {hasUnconfirmed ? (
         <div className="flex flex-col gap-1 pt-0.5">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-200">
+          {inProgress && (
+            <div className="text-[10px] font-medium text-amber-400/90">
+              경보 해제 후 확인할 수 있습니다
+            </div>
+          )}
+          <label
+            className={`flex items-center gap-1.5 text-[11px] text-neutral-200 ${inProgress ? 'opacity-50' : 'cursor-pointer'}`}
+          >
             <Checkbox
               className="size-3.5"
               checked={special}
+              disabled={inProgress}
               onCheckedChange={(v) => saveChecklist(v === true, maintenance)}
             />
             특별점검
           </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-200">
+          <label
+            className={`flex items-center gap-1.5 text-[11px] text-neutral-200 ${inProgress ? 'opacity-50' : 'cursor-pointer'}`}
+          >
             <Checkbox
               className="size-3.5"
               checked={maintenance}
+              disabled={inProgress}
               onCheckedChange={(v) => saveChecklist(special, v === true)}
             />
             유지보수일지
@@ -183,7 +196,7 @@ export function LightningAlertPanel() {
           <Button
             size="sm"
             className="mt-0.5 h-6 w-full text-xs"
-            disabled={!special || !maintenance || confirming}
+            disabled={inProgress || !special || !maintenance || confirming}
             onClick={confirm}
           >
             {confirming ? '처리 중...' : '확인'}
