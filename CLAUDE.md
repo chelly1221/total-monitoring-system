@@ -155,7 +155,16 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## WebSocket Message Types
 
-포트 7778. 타입: `metric`, `alarm`, `alarm-resolved`, `system`, `init`, `ping`, `delete`, `raw`, `siren-sync`, `settings`
+포트 7778. 타입: `metric`, `alarm`, `alarm-resolved`, `system`, `init`, `ping`, `delete`, `raw`, `siren-sync`, `settings`, `systems-changed`, `wing15`
+
+## wing15 뇌전 감시 연동
+
+김포공항 반경 5km 낙뢰/뇌전특보를 wing15.lovable.app(Supabase 백엔드)에서 1분 주기로 폴링해 대시보드 좌측 장비 리스트 하단에 표시한다. TX(송신소) 계정으로 인증하며, 확인 버튼은 wing15의 `inspection_status`에 기록되어 "현장별 확인 현황"의 송신소 항목이 확인됨으로 바뀐다.
+
+- **`src/lib/wing15.ts`** — Supabase REST 클라이언트 (로그인 `TX@lightning-system.local`, 상태 계산, 현장 확인). 판정 규칙은 wing15 앱과 동일: 낙뢰는 `distance_km <= 5` + 지상낙뢰(`type 'G'`), 특보는 `wrng_type '5'`, 발효 전 해제된 특보(무효)는 제외
+- **`src/worker/wing15-monitor.ts`** — 60초 폴러 (`WING15_POLL_INTERVAL`, `WING15_LOOKBACK_HOURS` env로 조정). Setting `wing15State`/`wing15Checklist`에 저장 + `wing15` 타입 WS 브로드캐스트
+- **`src/app/api/wing15/`** — GET 상태 조회, PUT `/checklist` 체크 저장, POST `/confirm` 현장 확인
+- **`src/components/wing15/lightning-alert-panel.tsx`** — 경보 카드: 시작/종료 시각(KST), 특별점검·유지보수일지 체크리스트, 둘 다 체크 시 확인 버튼 활성화
 
 ## Code Style
 

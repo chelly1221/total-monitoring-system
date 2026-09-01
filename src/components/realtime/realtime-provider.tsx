@@ -7,6 +7,7 @@ import type {
   PrismaMetric,
   PrismaAlarm,
   WebSocketMessage,
+  Wing15State,
 } from '@/types'
 
 interface FeatureFlags {
@@ -39,6 +40,8 @@ interface RealtimeContextValue {
   audioMuted: boolean
   muteEndTime: number | null
   featureFlags: FeatureFlags
+  wing15: Wing15State | null
+  syncWing15: () => Promise<void>
   setAudioMute: (muted: boolean, endTime?: number | null) => void
   updateSystem: (systemId: string, updates: Partial<PrismaSystem>) => void
   updateMetric: (metricId: string, updates: Partial<PrismaMetric>) => void
@@ -64,6 +67,7 @@ export function RealtimeProvider({
   const [audioMuted, setAudioMuted] = useState(false)
   const [muteEndTime, setMuteEndTime] = useState<number | null>(null)
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS)
+  const [wing15, setWing15] = useState<Wing15State | null>(null)
 
   // Ref to avoid handleMessage depending on systems state (prevents recreation on every metric update)
   const systemsRef = useRef<PrismaSystem[]>(initialSystems)
@@ -142,6 +146,20 @@ export function RealtimeProvider({
     setAudioMuted(muted)
     setMuteEndTime(endTime ?? null)
   }, [])
+
+  // wing15 뇌전 감시 상태 동기화 (초기 로드 + 체크/확인 직후 갱신용)
+  const syncWing15 = useCallback(async () => {
+    try {
+      const res = await fetch('/api/wing15')
+      if (res.ok) setWing15(await res.json())
+    } catch {
+      // 워커 브로드캐스트로 복구됨
+    }
+  }, [])
+
+  useEffect(() => {
+    syncWing15()
+  }, [syncWing15])
 
   // Fetch initial audio mute state and feature flags from settings
   useEffect(() => {
@@ -287,6 +305,12 @@ export function RealtimeProvider({
           }
           break
 
+        case 'wing15':
+          if (data.wing15) {
+            setWing15(data.wing15)
+          }
+          break
+
         default:
           console.log('[realtime] Unknown message type:', type)
       }
@@ -377,12 +401,14 @@ export function RealtimeProvider({
       audioMuted,
       muteEndTime,
       featureFlags,
+      wing15,
+      syncWing15,
       setAudioMute,
       updateSystem,
       updateMetric,
       addAlarm,
     }),
-    [systems, metrics, alarms, connected, reconnecting, lastUpdate, audioMuted, muteEndTime, featureFlags, setAudioMute, updateSystem, updateMetric, addAlarm]
+    [systems, metrics, alarms, connected, reconnecting, lastUpdate, audioMuted, muteEndTime, featureFlags, wing15, syncWing15, setAudioMute, updateSystem, updateMetric, addAlarm]
   )
 
   return (

@@ -185,8 +185,38 @@ export interface PrismaAlarm {
   system?: PrismaSystem
 }
 
+// WING(wing15.lovable.app) 뇌전 감시 상태
+export interface Wing15Item {
+  key: string
+  kind: 'warning' | 'strikes'
+  title: string
+  startAt: string
+  endAt: string | null
+  active: boolean
+  cancelled?: boolean
+  strikeCount?: number
+  confirmed: boolean
+}
+
+export interface Wing15Checklist {
+  special: boolean
+  maintenance: boolean
+  // Signature of the unconfirmed alert set the checklist belongs to; a new
+  // alert set invalidates previously checked boxes.
+  sig: string
+}
+
+export interface Wing15State {
+  ok: boolean
+  error?: string
+  updatedAt: string
+  sig: string
+  items: Wing15Item[]
+  checklist: Wing15Checklist
+}
+
 // WebSocket message types
-export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings' | 'systems-changed'
+export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings' | 'systems-changed' | 'wing15'
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -218,6 +248,8 @@ export interface WebSocketMessage {
     temperatureEnabled?: string
     upsEnabled?: string
     gateEnabled?: string
+    // For wing15 lightning monitor
+    wing15?: Wing15State
   }
   timestamp: string
 }

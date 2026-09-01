@@ -8,6 +8,7 @@ import { startBindingReconciler, stopBindingReconciler, reconcileBindings } from
 import { stopMqttListeners, getMqttSubscriptionCount, isMqttConnected } from './mqtt-listener'
 import { getQueueDepth, getIngestCounters, stopIngestQueue } from './ingest-queue'
 import { resetSirens, syncSirenState } from './siren-trigger'
+import { startWing15Monitor, stopWing15Monitor } from './wing15-monitor'
 import { UDP_PORTS, TCP_PORTS } from './config'
 
 // Global error handlers — log but don't crash (systemd handles real crashes)
@@ -69,6 +70,9 @@ void (async () => {
 
   // Create alarms for systems already offline at startup
   syncOfflineAlarms()
+
+  // wing15 뇌전 감시 (김포공항 5km, 1분 주기)
+  startWing15Monitor()
 })()
 
 console.log('\n' + '-'.repeat(60))
@@ -122,6 +126,7 @@ async function shutdown(): Promise<void> {
   console.log('\nShutting down...')
 
   clearInterval(healthCheckInterval)
+  stopWing15Monitor()
   stopBindingReconciler()
   await resetSirens()
   stopUdpListeners()

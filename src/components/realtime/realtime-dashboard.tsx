@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { SensorAlarmEffects, getSensorAlarms } from './sensor-alarm-effects'
+import { LightningAlertPanel } from '@/components/wing15/lightning-alert-panel'
 import { useCompactScreen } from '@/hooks/useCompactScreen'
 
 export function RealtimeDashboard() {
@@ -71,25 +72,29 @@ export function RealtimeDashboard() {
     <>
     <div className="flex h-full gap-4">
       {/* LEFT: System status cards */}
-      <div className="hidden lg:flex w-48 flex-shrink-0 flex-col gap-1 overflow-y-auto">
-        {equipmentSystems.map((system) => (
-          <HealthCheckCard
-            key={system.id}
-            id={system.id}
-            name={system.name}
-            status={system.status}
-            isEnabled={system.isEnabled !== false}
-          />
-        ))}
-        {/* Add system button */}
-        <Card
-          onClick={() => router.push('/systems/new?type=equipment')}
-          className="border-l-4 border-r-0 border-t-0 border-b-0 py-0 gap-0 rounded-md shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:brightness-110 cursor-pointer border-l-[#525252] !bg-[#404040]/50"
-        >
-          <CardContent className="flex items-center justify-center py-1 px-2">
-            <Plus className="h-3.5 w-3.5 text-neutral-400" />
-          </CardContent>
-        </Card>
+      <div className="hidden lg:flex w-48 flex-shrink-0 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          {equipmentSystems.map((system) => (
+            <HealthCheckCard
+              key={system.id}
+              id={system.id}
+              name={system.name}
+              status={system.status}
+              isEnabled={system.isEnabled !== false}
+            />
+          ))}
+          {/* Add system button */}
+          <Card
+            onClick={() => router.push('/systems/new?type=equipment')}
+            className="border-l-4 border-r-0 border-t-0 border-b-0 py-0 gap-0 rounded-md shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:brightness-110 cursor-pointer border-l-[#525252] !bg-[#404040]/50"
+          >
+            <CardContent className="flex items-center justify-center py-1 px-2">
+              <Plus className="h-3.5 w-3.5 text-neutral-400" />
+            </CardContent>
+          </Card>
+        </div>
+        {/* 뇌전경보 (wing15 연동) — 리스트 하단 고정 */}
+        <LightningAlertPanel />
       </div>
 
       {/* RIGHT: Alert area or normal image */}
