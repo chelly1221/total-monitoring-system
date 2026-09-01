@@ -165,43 +165,39 @@ export function LightningAlertPanel() {
       ))}
 
       {hasUnconfirmed ? (
-        <div className="flex flex-col gap-1 pt-0.5">
-          {inProgress && (
-            <div className="text-[10px] font-medium text-amber-400/90">
-              경보 해제 후 확인할 수 있습니다
-            </div>
-          )}
-          <label
-            className={`flex items-center gap-1.5 text-[11px] text-neutral-200 ${inProgress ? 'opacity-50' : 'cursor-pointer'}`}
-          >
-            <Checkbox
-              className="size-3.5"
-              checked={special}
-              disabled={inProgress}
-              onCheckedChange={(v) => saveChecklist(v === true, maintenance)}
-            />
-            특별점검
-          </label>
-          <label
-            className={`flex items-center gap-1.5 text-[11px] text-neutral-200 ${inProgress ? 'opacity-50' : 'cursor-pointer'}`}
-          >
-            <Checkbox
-              className="size-3.5"
-              checked={maintenance}
-              disabled={inProgress}
-              onCheckedChange={(v) => saveChecklist(special, v === true)}
-            />
-            유지보수일지
-          </label>
-          <Button
-            size="sm"
-            className="mt-0.5 h-6 w-full text-xs"
-            disabled={inProgress || !special || !maintenance || confirming}
-            onClick={confirm}
-          >
-            {confirming ? '처리 중...' : '확인'}
-          </Button>
-        </div>
+        inProgress ? (
+          // 경보 진행 중에는 점검 항목을 숨기고 해제 후 표시
+          <div className="text-[10px] font-medium text-amber-400/90">
+            경보 해제 후 점검 항목이 표시됩니다
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 pt-0.5">
+            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-200">
+              <Checkbox
+                className="size-3.5"
+                checked={special}
+                onCheckedChange={(v) => saveChecklist(v === true, maintenance)}
+              />
+              특별점검
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-200">
+              <Checkbox
+                className="size-3.5"
+                checked={maintenance}
+                onCheckedChange={(v) => saveChecklist(special, v === true)}
+              />
+              유지보수일지
+            </label>
+            <Button
+              size="sm"
+              className="mt-0.5 h-6 w-full text-xs"
+              disabled={!special || !maintenance || confirming}
+              onClick={confirm}
+            >
+              {confirming ? '처리 중...' : '확인'}
+            </Button>
+          </div>
+        )
       ) : (
         <div className="flex items-center gap-1 text-[11px] font-medium text-green-500">
           <Check className="h-3 w-3" />
