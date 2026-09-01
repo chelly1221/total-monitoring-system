@@ -38,11 +38,11 @@ export function LightningAlertPanel() {
     setMaintenance(savedMaintenance)
   }, [sig, savedSpecial, savedMaintenance])
 
-  if (!wing15) return null
-
-  const items = wing15.items
+  const items = wing15?.items ?? []
   const hasUnconfirmed = items.some((i) => !i.confirmed)
   const anyActive = items.some((i) => i.active && !i.cancelled)
+  // 앱/워커 시작 직후 첫 폴링 전에는 오류가 아니라 연결 중 상태
+  const connecting = !wing15 || (!wing15.ok && !wing15.updatedAt)
 
   const saveChecklist = (nextSpecial: boolean, nextMaintenance: boolean) => {
     setSpecial(nextSpecial)
@@ -72,22 +72,61 @@ export function LightningAlertPanel() {
     }
   }
 
-  // 경보 없음 — 한 줄 상태 표시
+  // 경보 없음 — 상태 카드 (장비 카드와 동일한 색 언어: 정상=초록, 연결 중=회색, 오류=노랑)
   if (items.length === 0) {
+    const status = connecting ? 'connecting' : wing15!.ok ? 'normal' : 'error'
+    const cardClass = {
+      normal: 'border-l-[#4ade80] !bg-[#22c55e]',
+      connecting: 'border-l-[#525252] !bg-[#404040]',
+      error: 'border-l-[#facc15] !bg-[#eab308]',
+    }[status]
+    const textClass = {
+      normal: 'text-green-900',
+      connecting: 'text-neutral-300',
+      error: 'text-yellow-900',
+    }[status]
+    const subTextClass = {
+      normal: 'text-green-900/75',
+      connecting: 'text-neutral-400',
+      error: 'text-yellow-900/75',
+    }[status]
+    const badge = {
+      normal: { text: '정상', className: 'bg-green-900/80 text-green-100' },
+      connecting: { text: '연결 중', className: 'bg-neutral-900/80 text-neutral-300' },
+      error: { text: '오류', className: 'bg-yellow-900/80 text-yellow-100' },
+    }[status]
+    const detail = {
+      normal: `갱신 ${fmtKst(wing15?.updatedAt ?? null)}`,
+      connecting: '상태 수집 대기 중...',
+      error: `마지막 갱신 ${fmtKst(wing15?.updatedAt || null)}`,
+    }[status]
+
     return (
       <div
-        className="mt-1 flex flex-shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1"
+        className={`mt-1 flex-shrink-0 rounded-md border-l-4 border-r-0 border-t-0 border-b-0 shadow-md ${cardClass}`}
         title={
-          wing15.ok
-            ? `김포공항 반경 5km 뇌전 감시 중 (갱신 ${fmtKst(wing15.updatedAt)})`
-            : `wing15 연결 오류: ${wing15.error ?? '알 수 없음'}`
+          status === 'error'
+            ? `wing15 연결 오류: ${wing15?.error ?? '알 수 없음'}`
+            : '김포공항 반경 5km 낙뢰/뇌전특보 감시 (wing15)'
         }
       >
-        <Zap className="h-3 w-3 text-yellow-500/80" />
-        <span className="text-[11px] text-neutral-400">뇌전감시 김포5km</span>
-        <span className={`ml-auto text-[10px] font-medium ${wing15.ok ? 'text-green-500' : 'text-amber-500'}`}>
-          {wing15.ok ? '정상' : '오류'}
-        </span>
+        <div className="px-2.5 py-2">
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <Zap className={`h-4 w-4 ${textClass}`} />
+              <span className={`text-sm font-bold drop-shadow-sm ${textClass}`}>뇌전감시</span>
+            </div>
+            <span
+              className={`flex-shrink-0 rounded-full border border-white/20 px-1.5 py-0.5 text-[10px] font-bold shadow-inner backdrop-blur-sm ${badge.className}`}
+            >
+              {badge.text}
+            </span>
+          </div>
+          <div className={`mt-1 text-[11px] font-medium leading-4 ${subTextClass}`}>
+            <div>김포공항 반경 5km</div>
+            <div>{detail}</div>
+          </div>
+        </div>
       </div>
     )
   }
