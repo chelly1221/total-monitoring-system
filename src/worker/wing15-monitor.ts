@@ -5,6 +5,7 @@
 import { prisma } from './db-updater'
 import { broadcast } from './websocket-server'
 import { getWing15Status } from '@/lib/wing15'
+import { buildDemoState } from '@/lib/wing15-demo'
 import { createLogger } from '@/lib/logger'
 import type { Wing15Checklist, Wing15State } from '@/types'
 
@@ -41,25 +42,44 @@ async function saveSetting(key: string, value: string): Promise<void> {
   })
 }
 
+async function publishState(
+  state: Wing15State,
+  priorChecklist: Wing15Checklist | null
+): Promise<void> {
+  // 미확인 알림 구성이 바뀌어 체크리스트가 리셋됐으면 반영
+  if (!priorChecklist || priorChecklist.sig !== state.checklist.sig) {
+    await saveSetting(CHECKLIST_KEY, JSON.stringify(state.checklist))
+  }
+  lastState = state
+  await saveSetting(STATE_KEY, JSON.stringify(state))
+  broadcast({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
+}
+
 async function poll(): Promise<void> {
   if (polling) return // 이전 폴링이 늦어지면 겹치지 않게 스킵
   polling = true
   try {
     const checklist = await readChecklist()
-    const state = await getWing15Status(checklist)
 
-    // 미확인 알림 구성이 바뀌어 체크리스트가 리셋됐으면 반영
-    if (!checklist || checklist.sig !== state.checklist.sig) {
-      await saveSetting(CHECKLIST_KEY, JSON.stringify(state.checklist))
+    // 데모 모드: 카드 디자인 확인용 가짜 경보 (실제 wing15 조회/기록 없음)
+    const demo = await prisma.setting.findUnique({ where: { key: 'wing15Demo' } })
+    if (demo?.value === 'true') {
+      const demoConfirmed = await prisma.setting.findUnique({
+        where: { key: 'wing15DemoConfirmed' },
+      })
+      await publishState(buildDemoState(checklist, demoConfirmed?.value === 'true'), checklist)
+      return
     }
+    // 데모 종료 시 확인 흔적 정리
+    await prisma.setting.deleteMany({ where: { key: 'wing15DemoConfirmed' } })
+
+    const state = await getWing15Status(checklist)
 
     const hadItems = (lastState?.items.length ?? 0) > 0
     if (state.items.length > 0 && !hadItems) {
       log.info(`뇌전경보 감지: ${state.items.map((i) => i.title).join(', ')}`)
     }
-    lastState = state
-    await saveSetting(STATE_KEY, JSON.stringify(state))
-    broadcast({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
+    await publishState(state, checklist)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error('폴링 실패:', message)

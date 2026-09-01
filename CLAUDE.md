@@ -165,6 +165,7 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **`src/worker/wing15-monitor.ts`** — 60초 폴러 (`WING15_POLL_INTERVAL`, `WING15_LOOKBACK_HOURS` env로 조정). Setting `wing15State`/`wing15Checklist`에 저장 + `wing15` 타입 WS 브로드캐스트
 - **`src/app/api/wing15/`** — GET 상태 조회, PUT `/checklist` 체크 저장, POST `/confirm` 현장 확인
 - **`src/components/wing15/lightning-alert-panel.tsx`** — 경보 카드: 시작/종료 시각(KST), 특별점검·유지보수일지 체크리스트, 둘 다 체크 시 확인 버튼 활성화
+- **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(≤60초)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 기록 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
 
 ## Code Style
 
