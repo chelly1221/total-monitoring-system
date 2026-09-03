@@ -12,7 +12,7 @@ import { useCompactScreen } from '@/hooks/useCompactScreen'
 
 export function RealtimeDashboard() {
   const router = useRouter()
-  const { systems, alarms } = useRealtime()
+  const { systems, alarms, featureFlags } = useRealtime()
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const compact = useCompactScreen()
   // Filter to only show 장비상태 (equipment) type systems
@@ -93,8 +93,8 @@ export function RealtimeDashboard() {
             </CardContent>
           </Card>
         </div>
-        {/* 뇌전경보 (wing15 연동) — 리스트 하단 고정 */}
-        <LightningAlertPanel />
+        {/* 뇌전경보 (wing15 연동) — 리스트 하단 고정. 설정에서 OFF 시 숨김 */}
+        {featureFlags.wing15Enabled && <LightningAlertPanel />}
       </div>
 
       {/* RIGHT: Alert area or normal image */}

@@ -39,6 +39,7 @@ export default async function SettingsPage() {
             initialTemperatureEnabled={settings.temperatureEnabled !== 'false'}
             initialUpsEnabled={settings.upsEnabled !== 'false'}
             initialGateEnabled={settings.gateEnabled !== 'false'}
+            initialWing15Enabled={settings.wing15Enabled !== 'false'}
           />
           <DataManagementCard />
         </div>

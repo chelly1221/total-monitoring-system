@@ -14,12 +14,16 @@ interface FeatureFlags {
   temperatureEnabled: boolean
   upsEnabled: boolean
   gateEnabled: boolean
+  wing15Enabled: boolean // 뇌전감시 패널 표시 + 워커 폴링 ON/OFF
 }
+
+const FEATURE_KEYS = ['temperatureEnabled', 'upsEnabled', 'gateEnabled', 'wing15Enabled'] as const
 
 const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   temperatureEnabled: true,
   upsEnabled: true,
   gateEnabled: true,
+  wing15Enabled: true,
 }
 
 function parseFeatureFlags(settings: Record<string, string>): FeatureFlags {
@@ -27,6 +31,7 @@ function parseFeatureFlags(settings: Record<string, string>): FeatureFlags {
     temperatureEnabled: settings.temperatureEnabled !== 'false',
     upsEnabled: settings.upsEnabled !== 'false',
     gateEnabled: settings.gateEnabled !== 'false',
+    wing15Enabled: settings.wing15Enabled !== 'false',
   }
 }
 
@@ -296,12 +301,14 @@ export function RealtimeProvider({
               setMuteEndTime(end || null)
             }
           }
-          if (data.temperatureEnabled !== undefined || data.upsEnabled !== undefined || data.gateEnabled !== undefined) {
-            setFeatureFlags((prev) => ({
-              temperatureEnabled: data.temperatureEnabled !== undefined ? data.temperatureEnabled !== 'false' : prev.temperatureEnabled,
-              upsEnabled: data.upsEnabled !== undefined ? data.upsEnabled !== 'false' : prev.upsEnabled,
-              gateEnabled: data.gateEnabled !== undefined ? data.gateEnabled !== 'false' : prev.gateEnabled,
-            }))
+          if (FEATURE_KEYS.some((key) => data[key] !== undefined)) {
+            setFeatureFlags((prev) => {
+              const next = { ...prev }
+              for (const key of FEATURE_KEYS) {
+                if (data[key] !== undefined) next[key] = data[key] !== 'false'
+              }
+              return next
+            })
           }
           break
 

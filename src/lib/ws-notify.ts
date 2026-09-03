@@ -124,6 +124,20 @@ export function notifyAudioSettingsChanged(audioEnabled: string, muteEndTime: st
   })
 }
 
+export type FeatureSettingKey = 'temperatureEnabled' | 'upsEnabled' | 'gateEnabled' | 'wing15Enabled'
+
+/**
+ * Notify all browsers (and the worker) that feature toggles changed
+ * (tab/button visibility, wing15 lightning monitor ON/OFF)
+ */
+export function notifyFeatureSettingsChanged(changed: Partial<Record<FeatureSettingKey, string>>): void {
+  sendNotification({
+    type: 'settings',
+    data: changed,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 /**
  * Notify worker to re-sync siren state (e.g., after mute toggle or alarm acknowledge)
  */

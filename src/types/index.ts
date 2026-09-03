@@ -248,6 +248,7 @@ export interface WebSocketMessage {
     temperatureEnabled?: string
     upsEnabled?: string
     gateEnabled?: string
+    wing15Enabled?: string
     // For wing15 lightning monitor
     wing15?: Wing15State
   }

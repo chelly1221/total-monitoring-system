@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { notifySirenSync, notifyAudioSettingsChanged } from '@/lib/ws-notify'
+import {
+  notifySirenSync,
+  notifyAudioSettingsChanged,
+  notifyFeatureSettingsChanged,
+  type FeatureSettingKey,
+} from '@/lib/ws-notify'
+
+const FEATURE_KEYS: FeatureSettingKey[] = ['temperatureEnabled', 'upsEnabled', 'gateEnabled', 'wing15Enabled']
 
 export async function GET() {
   try {
@@ -47,6 +54,15 @@ export async function PUT(request: Request) {
         settingsObj.audioEnabled ?? 'true',
         settingsObj.muteEndTime ?? ''
       )
+    }
+
+    // Feature toggles (tabs/buttons, wing15 ON/OFF): push to browsers + worker immediately
+    const changedFeatures: Partial<Record<FeatureSettingKey, string>> = {}
+    for (const key of FEATURE_KEYS) {
+      if (key in body) changedFeatures[key] = settingsObj[key]
+    }
+    if (Object.keys(changedFeatures).length > 0) {
+      notifyFeatureSettingsChanged(changedFeatures)
     }
 
     return NextResponse.json(settingsObj)

@@ -15,10 +15,19 @@ const POLL_INTERVAL_MS = parseInt(process.env.WING15_POLL_INTERVAL || '60000', 1
 
 const STATE_KEY = 'wing15State'
 const CHECKLIST_KEY = 'wing15Checklist'
+const ENABLED_KEY = 'wing15Enabled'
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let polling = false
 let lastState: Wing15State | null = null
+// 직전 폴링에서 본 ON/OFF 값 (전환 로그용). 시작 시 켜짐으로 가정해 첫 로그와 중복되지 않게 한다
+let lastEnabled = true
+
+// 설정 화면의 "뇌전감시" 스위치 (미설정이면 켜짐)
+async function isEnabled(): Promise<boolean> {
+  const row = await prisma.setting.findUnique({ where: { key: ENABLED_KEY } })
+  return row?.value !== 'false'
+}
 
 async function readChecklist(): Promise<Wing15Checklist | null> {
   try {
@@ -59,6 +68,18 @@ async function poll(): Promise<void> {
   if (polling) return // 이전 폴링이 늦어지면 겹치지 않게 스킵
   polling = true
   try {
+    // ON/OFF는 매 주기 DB에서 확인 — WS 알림이 유실돼도 늦어도 다음 주기에 반영된다
+    const enabled = await isEnabled()
+    if (enabled !== lastEnabled) {
+      log.info(enabled ? '뇌전 감시 켜짐 (설정)' : '뇌전 감시 꺼짐 (설정)')
+      lastEnabled = enabled
+    }
+    if (!enabled) {
+      // 꺼짐: wing15 조회/기록 없이 대기. 다시 켜지면 첫 폴링에서 경보 감지 로그가 나오도록 리셋
+      lastState = null
+      return
+    }
+
     const checklist = await readChecklist()
 
     // 데모 모드: 카드 디자인 확인용 가짜 경보 (실제 wing15 조회/기록 없음)
@@ -116,4 +137,10 @@ export function stopWing15Monitor(): void {
     clearInterval(pollTimer)
     pollTimer = null
   }
+}
+
+// 설정(ON/OFF) 변경을 다음 주기까지 기다리지 않고 즉시 반영한다
+export function triggerWing15Poll(): void {
+  if (!pollTimer) return
+  void poll()
 }

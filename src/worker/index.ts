@@ -3,12 +3,12 @@
 import { stopUdpListeners, getUdpListenerCount, getUdpStats, getUdpBoundPorts } from './udp-listener'
 import { stopTcpListeners, getTcpListenerCount, getTcpStats, getTcpBoundPorts } from './tcp-listener'
 import { closeDatabase, startOfflineDetection, startHistoryCleanup, syncOfflineAlarms, initDatabasePragmas } from './db-updater'
-import { startWebSocketServer, stopWebSocketServer, isWebSocketServerRunning, setSystemsChangedHandler } from './websocket-server'
+import { startWebSocketServer, stopWebSocketServer, isWebSocketServerRunning, setSystemsChangedHandler, setSettingsChangedHandler } from './websocket-server'
 import { startBindingReconciler, stopBindingReconciler, reconcileBindings } from './binding'
 import { stopMqttListeners, getMqttSubscriptionCount, isMqttConnected } from './mqtt-listener'
 import { getQueueDepth, getIngestCounters, stopIngestQueue } from './ingest-queue'
 import { resetSirens, syncSirenState } from './siren-trigger'
-import { startWing15Monitor, stopWing15Monitor } from './wing15-monitor'
+import { startWing15Monitor, stopWing15Monitor, triggerWing15Poll } from './wing15-monitor'
 import { UDP_PORTS, TCP_PORTS } from './config'
 
 // Global error handlers — log but don't crash (systemd handles real crashes)
@@ -55,6 +55,11 @@ void (async () => {
 
   // Re-bind sockets whenever the API reports a systems change (low-latency path).
   setSystemsChangedHandler(() => { void reconcileBindings() })
+
+  // Re-poll wing15 right away when its ON/OFF setting changes (instead of waiting a cycle).
+  setSettingsChangedHandler((data) => {
+    if (data.wing15Enabled !== undefined) triggerWing15Poll()
+  })
 
   // Bind sockets from (DB systems ∪ const defaults), then keep them reconciled on a poll.
   startBindingReconciler()

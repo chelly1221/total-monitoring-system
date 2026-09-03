@@ -17,6 +17,13 @@ export function setSystemsChangedHandler(fn: () => void): void {
   systemsChangedHandler = fn
 }
 
+// Registered by index.ts to react to settings changes reported by the API
+// (e.g. wing15 monitor ON/OFF). Same callback pattern as above to avoid import cycles.
+let settingsChangedHandler: ((data: WebSocketMessage['data']) => void) | null = null
+export function setSettingsChangedHandler(fn: (data: WebSocketMessage['data']) => void): void {
+  settingsChangedHandler = fn
+}
+
 let wsRestartBackoff = 1000
 const WS_BACKOFF_MAX = 30000
 let wsRestartTimer: ReturnType<typeof setTimeout> | null = null
@@ -65,6 +72,10 @@ export function startWebSocketServer(): void {
           cleanupSystemMaps(message.data.systemId)
           // A delete also changes the bound set — reconcile.
           systemsChangedHandler?.()
+        }
+        // Let the worker act on settings changes (still relayed to browsers below)
+        if (message.type === 'settings') {
+          settingsChangedHandler?.(message.data)
         }
         // Relay delete, alarm, and settings messages to all OTHER clients
         if (message.type === 'delete' || message.type === 'alarm' || message.type === 'settings') {
