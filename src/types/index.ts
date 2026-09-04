@@ -185,16 +185,17 @@ export interface PrismaAlarm {
   system?: PrismaSystem
 }
 
-// WING(wing15.lovable.app) 뇌전 감시 상태
+// WING(wing15.lovable.app) 뇌전 감시 상태 — 낙뢰 피드 기반 (특보는 피드에 없어 제공 안 함)
 export interface Wing15Item {
   key: string
-  kind: 'warning' | 'strikes'
+  kind: 'strikes'
   title: string
   startAt: string
   endAt: string | null
+  // 마지막 낙뢰 후 1시간 이내 (경보 진행 중)
   active: boolean
-  cancelled?: boolean
   strikeCount?: number
+  // 확인 시각(wing15ConfirmedAt) 이후 낙뢰가 없음
   confirmed: boolean
 }
 

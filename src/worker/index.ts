@@ -76,7 +76,7 @@ void (async () => {
   // Create alarms for systems already offline at startup
   syncOfflineAlarms()
 
-  // wing15 뇌전 감시 (김포공항 5km, 1분 주기)
+  // wing15 뇌전 감시 (김포공항 5km 낙뢰 피드, 3분 주기)
   startWing15Monitor()
 })()
 

@@ -1,9 +1,9 @@
 'use client'
 
-// 김포공항 반경 5km 뇌전경보 패널 (wing15.lovable.app 연동).
-// 경보가 없으면 상태 카드(정상/연결 중/오류), 경보 시 시작/종료 시각을 표시하고
-// 특보 해제 후 점검 체크리스트가 나타나 둘 다 체크해야 확인 버튼이 활성화된다.
-// 확인 시 wing15의 현장별 확인 현황에서 송신소(TX)가 확인됨으로 바뀐다.
+// 김포공항 반경 5km 뇌전경보 패널 (wing15.lovable.app 낙뢰 피드 연동).
+// 경보가 없으면 상태 카드(정상/연결 중/오류), 경보 시 첫/마지막 낙뢰 시각을 표시하고
+// 마지막 낙뢰 1시간 경과 후 점검 체크리스트가 나타나 둘 다 체크해야 확인 버튼이 활성화된다.
+// 확인 시 wing15의 현장별 확인 현황에서 송신소(TX)가 확인됨으로 바뀐다 (버튼 클릭 때만 접속).
 // 디자인: design_handoff_lightning_panel 명세 (솔리드 배경 5개 상태 카드)
 
 import { useEffect, useState } from 'react'
@@ -42,8 +42,8 @@ export function LightningAlertPanel() {
 
   const items = wing15?.items ?? []
   const hasUnconfirmed = items.some((i) => !i.confirmed)
-  // 발효 중 여부 — 체크리스트는 모든 항목 해제/종료 후에만 표시
-  const anyActive = items.some((i) => i.active && !i.cancelled)
+  // 진행 중 여부(마지막 낙뢰 1시간 이내) — 체크리스트는 종료 후에만 표시
+  const anyActive = items.some((i) => i.active)
   // 앱/워커 시작 직후 첫 폴링 전에는 오류가 아니라 연결 중 상태
   const connecting = !wing15 || (!wing15.ok && !wing15.updatedAt)
 
@@ -115,7 +115,7 @@ export function LightningAlertPanel() {
         title={
           status === 'error'
             ? `wing15 연결 오류: ${wing15?.error ?? '알 수 없음'}`
-            : '김포공항 반경 5km 낙뢰/뇌전특보 감시 (wing15)'
+            : '김포공항 반경 5km 낙뢰 감시 (wing15, 3분 갱신)'
         }
       >
         <div className="flex items-center justify-between gap-1">
@@ -137,7 +137,7 @@ export function LightningAlertPanel() {
     )
   }
 
-  // 뇌전경보 카드 — 발효 중(레드) / 해제(옐로)
+  // 뇌전경보 카드 — 진행 중(레드) / 종료(옐로)
   const cardClass = anyActive
     ? 'border-l-[#f87171] bg-[#dc2626]'
     : 'border-l-[#facc15] bg-[#eab308]'
@@ -166,11 +166,6 @@ export function LightningAlertPanel() {
         <div key={item.key} className={`rounded-[4px] px-2 py-1.5 ${itemRowClass}`}>
           <div className={`flex items-center gap-1.5 text-[14px] ${itemTitleClass}`}>
             <span className="whitespace-nowrap">{item.title}</span>
-            {item.cancelled && (
-              <span className="whitespace-nowrap rounded-[4px] bg-[rgba(66,32,6,0.9)] px-1.5 py-0.5 text-[12px] font-medium text-[#fef9c3]">
-                해제
-              </span>
-            )}
             {item.confirmed && <Check className={`ml-auto size-[15px] ${checkClass}`} />}
           </div>
           <div className={`mt-0.5 text-[13px] leading-5 ${itemTimeClass}`}>
@@ -182,8 +177,8 @@ export function LightningAlertPanel() {
 
       {hasUnconfirmed ? (
         anyActive ? (
-          // 발효 중에는 점검 항목을 숨기고 해제 후 표시
-          <div className="text-[13px] text-white">특보 해제 후 점검 체크리스트가 표시됩니다</div>
+          // 진행 중에는 점검 항목을 숨기고 마지막 낙뢰 1시간 경과 후 표시
+          <div className="text-[13px] text-white">낙뢰 종료 1시간 후 점검 체크리스트가 표시됩니다</div>
         ) : (
           <div className="flex flex-col gap-1.5 pt-0.5">
             <label className="flex cursor-pointer items-center gap-1.5 text-[14px] font-medium text-[#422006]">

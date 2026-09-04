@@ -159,14 +159,16 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## wing15 뇌전 감시 연동
 
-김포공항 반경 5km 낙뢰/뇌전특보를 wing15.lovable.app(Supabase 백엔드)에서 1분 주기로 폴링해 대시보드 좌측 장비 리스트 하단에 표시한다. TX(송신소) 계정으로 인증하며, 확인 버튼은 wing15의 `inspection_status`에 기록되어 "현장별 확인 현황"의 송신소 항목이 확인됨으로 바뀐다.
+김포공항 반경 5km 지상낙뢰를 wing15.lovable.app(Supabase 백엔드)의 읽기 전용 낙뢰 피드에서 3분 주기로 폴링해 대시보드 좌측 장비 리스트 하단에 표시한다.
 
-- **`src/lib/wing15.ts`** — Supabase REST 클라이언트 (로그인 `TX@lightning-system.local`, 상태 계산, 현장 확인). 판정 규칙은 wing15 앱과 동일: 낙뢰는 `distance_km <= 5` + 지상낙뢰(`type 'G'`), 특보는 `wrng_type '5'`, 발효 전 해제된 특보(무효)는 제외
-- **`src/worker/wing15-monitor.ts`** — 60초 폴러 (`WING15_POLL_INTERVAL`, `WING15_LOOKBACK_HOURS` env로 조정). Setting `wing15State`/`wing15Checklist`에 저장 + `wing15` 타입 WS 브로드캐스트
-- **`src/app/api/wing15/`** — GET 상태 조회, PUT `/checklist` 체크 저장, POST `/confirm` 현장 확인
-- **`src/components/wing15/lightning-alert-panel.tsx`** — 경보 카드: 시작/종료 시각(KST), 특별점검·유지보수일지 체크리스트, 둘 다 체크 시 확인 버튼 활성화
+2026-09-04 wing15 개발자 요청으로 연동 방식을 바꿨다. 기존 방식(TX 계정 로그인 → 수집 함수 호출 → `events`/`weather_warnings`/`inspection_status` 조회·기록)은 서버 부하 문제로 wing15 측에서 막았고 로그인 계정도 더 이상 쓰지 않는다. 지금은 익명 키만으로 `GET /rest/v1/lightning_feed?select=*&airport_code=eq.RKSS&order=detected_at.desc&limit=5` (헤더 `apikey`, `Authorization: Bearer <anon key>`)를 호출한다. 호출은 **최대 1분당 1회**로 제한 요청받음. 응답 항목: `airport_code`, `detected_at`, `type`(`G`=지상낙뢰, 그 외 공중낙뢰), `distance_km`. 뇌전특보는 피드에 없어 **더 이상 제공하지 않는다**. 현장 확인(TX 계정 로그인 → `inspection_status` 기록)은 주기 폴링에서는 하지 않고 **확인 버튼 클릭 때만** 접속해 한 번 기록한다 (우리가 보내는 쪽이라 부하 문제와 무관).
+
+- **`src/lib/wing15.ts`** — 피드 조회 `fetchNearbyStrikes` (판정은 wing15 앱과 동일: `distance_km <= 5` + `type 'G'`), 로컬 이력 병합 `mergeStrikes` (중복 제거, 24시간 유지), 상태 계산 `buildWing15State`, 현장 확인 `confirmOnWing15` (TX 로그인 → 24시간 내 반경 5km 지상낙뢰 `events` 조회 → `inspection_status` insert/patch, 클릭 시에만). 피드가 최신 5건만 주므로 폴링마다 이력(Setting `wing15Strikes`)에 누적한다. 조회 건수는 `WING15_FEED_LIMIT` env (기본 5, 늘리려면 wing15 개발자와 협의)
+- **`src/worker/wing15-monitor.ts`** — 180초 폴러 (`WING15_POLL_INTERVAL` env, 60초 미만은 60초로 클램프; `WING15_LOOKBACK_HOURS`). Setting `wing15Strikes`/`wing15State`/`wing15Checklist`에 저장 + `wing15` 타입 WS 브로드캐스트
+- **`src/app/api/wing15/`** — GET 상태 조회, PUT `/checklist` 체크 저장, POST `/confirm` 현장 확인 (`confirmOnWing15`로 wing15에 기록 성공 시 Setting `wing15ConfirmedAt`에 확인 시각 기록 — 그 시각까지의 낙뢰는 확인됨으로 계산, 이후 새 낙뢰가 오면 다시 미확인 경보. wing15 기록 실패 시 로컬에도 남기지 않고 500)
+- **`src/components/wing15/lightning-alert-panel.tsx`** — 경보 카드: 첫/마지막 낙뢰 시각(KST), 마지막 낙뢰 1시간 이내면 진행 중(레드), 이후 종료(옐로) + 특별점검·유지보수일지 체크리스트, 둘 다 체크 시 확인 버튼 활성화. 확인 후 마지막 낙뢰 1시간 경과 시 카드가 정상 상태로 돌아간다
 - **ON/OFF**: 설정 > 기능 표시 설정 > "뇌전감시" 스위치 (Setting `wing15Enabled`, 기본 켜짐). OFF면 워커가 매 주기 wing15 조회를 건너뛰고(타이머는 유지) 대시보드 패널이 숨겨진다. 설정 API가 `settings` WS 메시지로 브라우저·워커에 즉시 전파 (`setSettingsChangedHandler` → `triggerWing15Poll`)
-- **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(≤60초)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 기록 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
+- **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(≤3분)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 조회 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
 
 ## Code Style
 
