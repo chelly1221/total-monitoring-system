@@ -58,6 +58,28 @@ test('web outages are shared during cooldown and can recover on the next attempt
   assert.equal(calls, 2)
 })
 
+test('network timeouts and connection failures have Korean diagnostics and retain their cause', async t => {
+  let clock = now + 120_000
+  t.mock.method(Date, 'now', () => clock)
+  const failures = [
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), /응답 시간 초과/],
+    [new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } }), /응답 시간 초과/],
+    [new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } }), /서버 연결 실패/],
+  ] as const
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => { throw failures[calls++][0] })
+  for (const [cause, message] of failures) {
+    await assert.rejects(fetchAmoLightning(), error => {
+      assert.ok(error instanceof Error)
+      assert.match(error.message, message)
+      assert.equal(error.cause, cause)
+      return true
+    })
+    clock += 60_000
+  }
+  assert.equal(calls, failures.length)
+})
+
 test('legacy rounded rows migrate without duplicate alerts or losing confirmation', () => {
   const current = strike({ distanceKm: 1.234 })
   const legacy = { detectedAt: current.detectedAt, distanceKm: 1.2, confirmed: true }

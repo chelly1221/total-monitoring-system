@@ -121,7 +121,7 @@ export function LightningAlertPanel() {
     const detail = {
       normal: `자료 ${fmtKst(wing15?.observedAt ?? wing15?.updatedAt ?? null)}`,
       connecting: '상태 수집 대기 중...',
-      error: `마지막 갱신 ${fmtKst(wing15?.updatedAt || null)}`,
+      error: wing15?.error ?? '낙뢰 자료 수신 실패',
     }[status]
 
     return (

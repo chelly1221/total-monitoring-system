@@ -35,6 +35,7 @@ const STRIKES_KEY = 'wing15Strikes'
 const CONFIRMED_AT_KEY = 'wing15ConfirmedAt'
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
 let polling = false
 let lastState: Wing15State | null = null
 // 직전 폴링에서 본 ON/OFF 값 (전환 로그용). 시작 시 켜짐으로 가정해 첫 로그와 중복되지 않게 한다
@@ -90,7 +91,12 @@ async function publishState(state: Wing15State): Promise<void> {
 
 async function poll(): Promise<void> {
   if (polling) return // 이전 폴링이 늦어지면 겹치지 않게 스킵
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
   polling = true
+  let failed = false
   try {
     // ON/OFF는 매 주기 DB에서 확인 — WS 알림이 유실돼도 늦어도 다음 주기에 반영된다
     const enabled = await isEnabled()
@@ -138,10 +144,13 @@ async function poll(): Promise<void> {
     if (state.items.length > 0 && !hadItems) {
       log.info(`뇌전경보 감지: ${state.items.map((i) => i.title).join(', ')}`)
     }
+    const recovering = lastState?.ok === false
     await publishState(state)
+    if (recovering) log.info(`낙뢰 자료 수신 복구 (자료시각 ${observation.observedAt})`)
   } catch (error) {
+    failed = true
     const message = error instanceof Error ? error.message : String(error)
-    log.error('폴링 실패:', message)
+    log.error(`폴링 실패 (${new Date().toISOString()}, 60초 후 재시도):`, error)
     // Recover persisted alerts too: a restart during an outage must not clear them.
     const previous = await readWing15State(prisma).catch(() => lastState)
     const state: Wing15State = {
@@ -162,17 +171,24 @@ async function poll(): Promise<void> {
     broadcast({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
   } finally {
     polling = false
+    // Retry outages sooner without bypassing the feed's 60-second cooldown.
+    // Stopping during an in-flight request must not restart the monitor.
+    if (failed && pollTimer) retryTimer = setTimeout(() => void poll(), MIN_POLL_INTERVAL_MS)
   }
 }
 
 export function startWing15Monitor(): void {
   if (pollTimer) return
   log.info(`뇌전 감시 시작 (항공기상청 웹 조회, 김포공항 5km, ${POLL_INTERVAL_MS / 1000}s 주기)`)
-  void poll()
   pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS)
+  void poll()
 }
 
 export function stopWing15Monitor(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null

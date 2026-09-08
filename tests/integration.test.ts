@@ -371,6 +371,78 @@ test('background collection, dashboard and checklist access only the public weat
   }
 })
 
+test('lightning timeout retries after cooldown, preserves review and publishes recovery', async t => {
+  let clock = Date.now() + 120_000
+  t.mock.method(Date, 'now', () => clock)
+  const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
+  await prepareLightningReview([strike])
+  const initial = await (await stateApi.GET()).json()
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    assert.equal(new URL(String(input)).hostname, 'www.weather.go.kr')
+    if (++calls === 1) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    return Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
+  })
+  const originalTimeout = globalThis.setTimeout
+  const retries: { run: () => void; timer: ReturnType<typeof setTimeout> }[] = []
+  t.mock.method(globalThis, 'setTimeout', (callback: () => void, ms?: number, ...args: unknown[]) => {
+    if (ms === 60_000) {
+      const timer = originalTimeout(() => {}, ms)
+      retries.push({ run: callback, timer })
+      return timer
+    }
+    return originalTimeout(callback, ms, ...args)
+  })
+  const monitor = await import('../src/worker/wing15-monitor')
+  const receiver = new WebSocket(`ws://127.0.0.1:${process.env.WS_PORT}`)
+  const nextState = (ok: boolean) => new Promise<void>((resolve, reject) => {
+    const timeout = originalTimeout(() => reject(new Error('Lightning poll did not publish')), 5000)
+    const listener = (data: WebSocket.RawData) => {
+      const message = JSON.parse(data.toString())
+      if (message.type !== 'wing15' || message.data.wing15.ok !== ok) return
+      clearTimeout(timeout)
+      receiver.off('message', listener)
+      resolve()
+    }
+    receiver.on('message', listener)
+  })
+  try {
+    await once(receiver, 'open')
+    const failed = nextState(false)
+    monitor.startWing15Monitor()
+    await failed
+    const state = await (await stateApi.GET()).json()
+    assert.equal(state.ok, false)
+    assert.match(state.error, /응답 시간 초과/)
+    assert.equal(state.sig, initial.sig)
+    assert.deepEqual(state.checklist, initial.checklist)
+    assert.equal(retries.length, 1, 'A failed poll schedules a 60-second retry')
+
+    const repeated = nextState(false)
+    monitor.triggerWing15Poll()
+    await repeated
+    assert.equal(calls, 1, 'Manual triggers still share the failed request during cooldown')
+    assert.equal(retries.length, 2)
+
+    clock += 60_000
+    const recovered = nextState(true)
+    retries[1].run()
+    await recovered
+    const fresh = await (await stateApi.GET()).json()
+    assert.equal(fresh.ok, true)
+    assert.equal(fresh.error, undefined)
+    assert.equal(fresh.observedAt, new Date(clock).toISOString())
+    assert.deepEqual(fresh.checklist, initial.checklist)
+    assert.equal(fresh.items[0].confirmed, false)
+    assert.equal(calls, 2)
+    assert.equal(retries.length, 2, 'Recovery returns to the normal polling interval')
+  } finally {
+    monitor.stopWing15Monitor()
+    receiver.terminate()
+    for (const retry of retries) clearTimeout(retry.timer)
+  }
+})
+
 test('WING delay leaves review intact and retry confirms only after remote persistence', async t => {
   const strike: NearbyStrike = { detectedAt: Date.now() - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
   const state = await prepareLightningReview([strike])

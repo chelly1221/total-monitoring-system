@@ -70,9 +70,22 @@ export function fetchAmoLightning(): Promise<LightningObservation> {
   if (request && Date.now() - lastRequest < MIN_REQUEST_INTERVAL_MS) return request
   lastRequest = Date.now()
   request = (async () => {
-    const response = await fetch(AMO_LIGHTNING_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-    if (!response.ok) throw new Error(`항공기상청 낙뢰 조회 실패 (HTTP ${response.status})`)
-    return parseAmoLightning(await response.json())
+    try {
+      const response = await fetch(AMO_LIGHTNING_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      if (!response.ok) throw new Error(`항공기상청 낙뢰 조회 실패 (HTTP ${response.status})`)
+      return parseAmoLightning(await response.json())
+    } catch (error) {
+      if (error instanceof Error) {
+        const cause = error.cause as { code?: string } | undefined
+        if (error.name === 'TimeoutError' || cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || cause?.code === 'UND_ERR_BODY_TIMEOUT') {
+          throw new Error('항공기상청 낙뢰 응답 시간 초과', { cause: error })
+        }
+        if (error instanceof TypeError && error.message === 'fetch failed') {
+          throw new Error('항공기상청 낙뢰 서버 연결 실패', { cause: error })
+        }
+      }
+      throw error
+    }
   })()
   return request
 }
