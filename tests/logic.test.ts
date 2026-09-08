@@ -4,7 +4,8 @@ import { runCustomCode } from '../src/lib/custom-code-executor'
 import { executeCustomCode } from '../src/worker/custom-code-executor'
 import { evaluateDisplayItemStatus } from '../src/lib/threshold-evaluator'
 import { parsePort, validateSystemBody } from '../src/lib/system-validation'
-import { buildWing15State, fetchNearbyStrikes, mergeStrikes, parseStrikes } from '../src/lib/wing15'
+import { buildWing15State, mergeStrikes, parseStrikes } from '../src/lib/wing15'
+import { fetchAmoLightning } from '../src/lib/amo-lightning'
 import { extractNumericValue } from '../src/worker/parser'
 import { validateSirenBody } from '../src/lib/siren-validation'
 import type { DisplayItem } from '../src/types'
@@ -92,19 +93,19 @@ test('lightning history rejects malformed, future and out-of-radius rows', () =>
   ], now), [valid])
 })
 
-test('rapid settings polls share a single feed request, filtering missing distances', async (t) => {
+test('rapid settings polls share a single public web request without credentials', async (t) => {
   let calls = 0
-  t.mock.method(globalThis, 'fetch', async () => {
+  t.mock.method(globalThis, 'fetch', async (url: string | URL | Request, init?: RequestInit) => {
+    assert.match(String(url), /^https:\/\/www\.weather\.go\.kr\/wgis-nuri\/lgt\?/)
+    assert.equal(new Headers(init?.headers).get('authorization'), null)
     calls++
-    return Response.json([
-      null,
-      { airport_code: 'RKSS', type: 'G', distance_km: null, detected_at: new Date().toISOString() },
-      { airport_code: 'RKSS', type: 'G', distance_km: 2, detected_at: new Date(Date.now() - 1000).toISOString() },
-    ])
+    return Response.json({ baseDateList: [new Date().toISOString()], lgtList: [
+      { type: '1', lat: 37.56, lon: 126.8, date: new Date(Date.now() - 1000).toISOString() },
+    ] })
   })
-  const results = await Promise.all([fetchNearbyStrikes(), fetchNearbyStrikes(), fetchNearbyStrikes()])
+  const results = await Promise.all([fetchAmoLightning(), fetchAmoLightning(), fetchAmoLightning()])
   assert.equal(calls, 1)
-  assert.equal(results[0].length, 1)
-  await fetchNearbyStrikes()
+  assert.equal(results[0].strikes.length, 1)
+  await fetchAmoLightning()
   assert.equal(calls, 1)
 })

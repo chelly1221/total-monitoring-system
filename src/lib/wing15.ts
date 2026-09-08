@@ -1,22 +1,8 @@
-// WING(wing15.lovable.app) 뇌전 감시 연동 — 읽기 전용 낙뢰 피드 클라이언트.
-// 워커의 폴러와 Next.js API 라우트가 공유한다 (서버 전용).
-//
-// 2026-09-04 wing15 개발자 안내에 따라 연동 방식을 바꿨다:
-// - 기존 방식(TX 계정 로그인 → 수집 함수 호출 → events/weather_warnings/
-//   inspection_status 조회·기록)은 서버 부하 문제로 wing15 측에서 막았다.
-//   로그인 계정은 더 이상 쓰지 않는다.
-// - 대신 익명 키만으로 읽는 `lightning_feed` 뷰(김포공항 낙뢰 최신 N건)를 조회한다.
-//   응답 항목: airport_code, detected_at, type('G'=지상낙뢰, 그 외 공중낙뢰), distance_km
-// - 호출은 최대 1분당 1회로 제한 요청받음 (TMS 폴러는 3분 주기).
-// - 뇌전특보는 피드에 없으므로 제공하지 않는다.
-// - 피드가 최신 N건만 주므로 폴링마다 받은 낙뢰를 로컬 이력(Setting `wing15Strikes`)에
-//   누적하고, 이력을 기준으로 경보 상태를 계산한다.
-// - 현장 확인(송신소=TX 계정 → inspection_status 기록)은 주기 폴링에서는 하지 않고,
-//   사용자가 확인 버튼을 누를 때만 접속해 한 번 기록한다 (`confirmOnWing15`).
-//   확인 시각은 TMS 로컬(Setting `wing15ConfirmedAt`)에도 남긴다.
-
+// 낙뢰 상태·WING 현장 확인 연동. 웹 자료 수집은 amo-lightning.ts에서 수행한다.
 import type { Wing15Checklist, Wing15Item, Wing15State } from '@/types'
 import { createLogger } from '@/lib/logger'
+import { createHash } from 'node:crypto'
+import { GIMPO, LIGHTNING_RADIUS_KM, LIGHTNING_LOOKBACK_MS, LIGHTNING_ACTIVE_MS, sameStrike, strikeKey, isStrikeConfirmed, type NearbyStrike } from './lightning-rules'
 
 const log = createLogger('wing15')
 
@@ -24,78 +10,14 @@ const SUPABASE_URL = 'https://bwckbsugyojylfyqivrj.supabase.co'
 const ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3Y2tic3VneW9qeWxmeXFpdnJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTMzNjcsImV4cCI6MjA3NTc2OTM2N30.1nr0PgjRHcU3lowjanJ8_XNnCeVYxbpwfQWFTf3-MsQ'
 
-const AIRPORT_CODE = 'RKSS'
-const RADIUS_KM = 5
+const AIRPORT_CODE = GIMPO.code
+const RADIUS_KM = LIGHTNING_RADIUS_KM
 const GROUND_STRIKE_TYPE = 'G'
-// 피드 조회 건수 — wing15 개발자가 제공한 주소 기준 5건. 늘리려면 개발자와 협의 후 env로 조정
-const FEED_LIMIT = parseInt(process.env.WING15_FEED_LIMIT || '5', 10) || 5
-// 이 시간 내의 낙뢰만 이력에 유지하고 미확인 알림 대상으로 삼는다
-const LOOKBACK_MS =
-  (parseInt(process.env.WING15_LOOKBACK_HOURS || '24', 10) || 24) * 60 * 60 * 1000
-// 마지막 낙뢰 후 이 시간 동안은 "발효 중"으로 보고, 확인 후에도 낙뢰 항목을 계속 표시
-const STRIKE_ACTIVE_MS = 60 * 60 * 1000
+const LOOKBACK_MS = LIGHTNING_LOOKBACK_MS
+const STRIKE_ACTIVE_MS = LIGHTNING_ACTIVE_MS
 const REST_TIMEOUT_MS = 15_000
 
-interface LightningFeedRow {
-  airport_code: string
-  detected_at: string
-  type: string
-  distance_km: number | string
-}
-
-/** 반경 내 지상낙뢰 1건 (로컬 이력에 저장되는 형태) */
-export interface Wing15Strike {
-  detectedAt: number // epoch ms (UTC)
-  distanceKm: number
-}
-
-// ---------------------------------------------------------------------------
-// 조회
-// ---------------------------------------------------------------------------
-
-/**
- * wing15 낙뢰 피드에서 최신 N건을 받아 경보 조건(반경 5km 이내 + 지상낙뢰)에 맞는
- * 것만 돌려준다. 판정 규칙은 wing15 앱과 동일.
- */
-let feedRequest: Promise<Wing15Strike[]> | null = null
-let lastFeedAttempt = -Infinity
-
-export function fetchNearbyStrikes(): Promise<Wing15Strike[]> {
-  // Settings changes also trigger polls. Enforce the provider's limit here,
-  // including failed requests and overlapping polls, not just on the interval.
-  if (feedRequest && Date.now() - lastFeedAttempt < 60_000) return feedRequest
-  lastFeedAttempt = Date.now()
-  feedRequest = requestNearbyStrikes()
-  return feedRequest
-}
-
-async function requestNearbyStrikes(): Promise<Wing15Strike[]> {
-  const qs = new URLSearchParams({
-    select: '*',
-    airport_code: `eq.${AIRPORT_CODE}`,
-    order: 'detected_at.desc',
-    limit: String(FEED_LIMIT),
-  })
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/lightning_feed?${qs.toString()}`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-    signal: AbortSignal.timeout(REST_TIMEOUT_MS),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`wing15 낙뢰 피드 오류 (HTTP ${res.status}): ${text.slice(0, 200)}`)
-  }
-  const rows = (await res.json()) as unknown
-  if (!Array.isArray(rows)) throw new Error('wing15 낙뢰 피드 응답 형식 오류')
-
-  return (rows as LightningFeedRow[]).flatMap((row) => {
-    if (!row || typeof row !== 'object') return []
-    if (row.airport_code !== AIRPORT_CODE || row.type !== GROUND_STRIKE_TYPE) return []
-    const dist = Number(row.distance_km)
-    const t = new Date(row.detected_at).getTime()
-    if (row.distance_km == null || row.distance_km === '' || !Number.isFinite(dist) || dist < 0 || dist > RADIUS_KM || !Number.isFinite(t) || t > Date.now()) return []
-    return [{ detectedAt: t, distanceKm: dist }]
-  })
-}
+export type Wing15Strike = NearbyStrike
 
 // ---------------------------------------------------------------------------
 // 로컬 이력
@@ -113,7 +35,11 @@ export function parseStrikes(json: string | null | undefined): Wing15Strike[] {
         s !== null &&
         Number.isFinite((s as Wing15Strike).detectedAt) &&
         Number.isFinite((s as Wing15Strike).distanceKm) &&
-        (s as Wing15Strike).distanceKm >= 0 && (s as Wing15Strike).distanceKm <= RADIUS_KM
+        (s as Wing15Strike).distanceKm >= 0 && (s as Wing15Strike).distanceKm <= RADIUS_KM &&
+        ((s as Wing15Strike).confirmed === undefined || typeof (s as Wing15Strike).confirmed === 'boolean') &&
+        ((s as Wing15Strike).lat === undefined && (s as Wing15Strike).lon === undefined ||
+          Number.isFinite((s as Wing15Strike).lat) && Math.abs((s as Wing15Strike).lat!) <= 90 &&
+          Number.isFinite((s as Wing15Strike).lon) && Math.abs((s as Wing15Strike).lon!) <= 180)
     )
   } catch {
     return []
@@ -127,13 +53,21 @@ export function mergeStrikes(
   now = Date.now()
 ): Wing15Strike[] {
   const since = now - LOOKBACK_MS
-  const byKey = new Map<string, Wing15Strike>()
+  const byTime = new Map<number, Wing15Strike[]>()
   for (const s of [...history, ...incoming]) {
     if (!Number.isFinite(s.detectedAt) || s.detectedAt < since || s.detectedAt > now ||
       !Number.isFinite(s.distanceKm) || s.distanceKm < 0 || s.distanceKm > RADIUS_KM) continue
-    byKey.set(`${s.detectedAt}:${s.distanceKm}`, s)
+    const time = Math.floor(s.detectedAt / 1000)
+    const group = byTime.get(time) ?? []
+    const index = group.findIndex(previous => sameStrike(previous, s))
+    if (index === -1) group.push({ ...s })
+    else {
+      const previous = group[index]
+      group[index] = { ...previous, ...s, ...(previous.confirmed !== undefined ? { confirmed: previous.confirmed } : {}) }
+    }
+    byTime.set(time, group)
   }
-  return [...byKey.values()].sort((a, b) => a.detectedAt - b.detectedAt)
+  return [...byTime.values()].flat().sort((a, b) => a.detectedAt - b.detectedAt || strikeKey(a).localeCompare(strikeKey(b)))
 }
 
 // ---------------------------------------------------------------------------
@@ -150,8 +84,8 @@ function computeItems(
 
   const first = recent[0]
   const last = recent[recent.length - 1]
-  // 확인 시각 이후 낙뢰가 없으면 확인된 것으로 본다
-  const confirmed = confirmedAt !== null && last.detectedAt <= confirmedAt
+  // New web observations are confirmed individually, including late arrivals.
+  const confirmed = recent.every(strike => isStrikeConfirmed(strike, confirmedAt))
   const active = last.detectedAt >= now - STRIKE_ACTIVE_MS
   // 확인 완료 + 최근 낙뢰 없음이면 표시하지 않음
   if (confirmed && !active) return []
@@ -170,12 +104,9 @@ function computeItems(
   ]
 }
 
-function computeSig(items: Wing15Item[]): string {
-  return items
-    .filter((i) => !i.confirmed)
-    .map((i) => `${i.key}:${i.startAt}:${i.endAt}:${i.strikeCount}`)
-    .sort()
-    .join('|')
+function computeSig(strikes: Wing15Strike[], confirmedAt: number | null, now: number): string {
+  const keys = mergeStrikes(strikes, [], now).filter(strike => !isStrikeConfirmed(strike, confirmedAt)).map(strikeKey).sort()
+  return keys.length ? `strikes:RKSS:${createHash('sha256').update(JSON.stringify(keys)).digest('hex')}` : ''
 }
 
 /**
@@ -189,7 +120,7 @@ export function buildWing15State(
   now = Date.now()
 ): Wing15State {
   const items = computeItems(strikes, confirmedAt, now)
-  const sig = computeSig(items)
+  const sig = computeSig(strikes, confirmedAt, now)
   return {
     ok: true,
     updatedAt: new Date(now).toISOString(),
@@ -212,7 +143,7 @@ export function parseConfirmedAt(value: string | null | undefined): number | nul
 
 // ---------------------------------------------------------------------------
 // 현장 확인 (송신소 = TX 계정) — 확인 버튼 클릭 시에만 접속한다.
-// 주기 폴링은 위의 익명 피드만 쓰고, 이 경로는 버튼을 누를 때 한 번씩
+// 주기 폴링은 항공기상청 웹 자료만 읽고, 이 경로는 버튼을 누를 때 한 번씩
 // 로그인 → 반경 내 낙뢰 이벤트 조회 → inspection_status 기록만 수행한다.
 // 기록하면 wing15의 "현장별 확인 현황"에서 송신소 항목이 확인됨으로 바뀐다.
 // ---------------------------------------------------------------------------
@@ -229,6 +160,8 @@ interface LightningEventRow {
     distance_km?: number | string
     type?: string
     airport_code?: string
+    lat?: number | string
+    lon?: number | string
   } | null
 }
 
@@ -246,6 +179,10 @@ export interface Wing15ConfirmResult {
   /** 미확인 → 확인으로 갱신한 건수 */
   updated: number
 }
+
+export class Wing15ConfirmationPendingError extends Error {}
+
+let confirmationInFlight = false
 
 async function loginAsTx(): Promise<{ token: string; userId: string }> {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -296,84 +233,96 @@ async function restAsTx<T>(
   return (text ? JSON.parse(text) : undefined) as T
 }
 
-/**
- * 유지 기간 내 반경 5km 지상낙뢰 이벤트 전부를 TX(송신소) 계정으로 wing15에
- * 확인 처리한다. 확인 버튼 클릭 시에만 호출할 것 (주기 실행 금지).
- */
-export async function confirmOnWing15(now = Date.now(), through = now): Promise<Wing15ConfirmResult> {
-  const { token, userId } = await loginAsTx()
-  const sinceIso = new Date(now - LOOKBACK_MS).toISOString()
+/** Only writes reviewed, matching WING events; never called by the poller. */
+export async function confirmOnWing15(reviewed: Wing15Strike[], now = Date.now()): Promise<Wing15ConfirmResult> {
+  if (!reviewed.length) throw new Wing15ConfirmationPendingError('WING 확인 대상이 없습니다')
+  if (confirmationInFlight) throw new Wing15ConfirmationPendingError('WING 확인 처리 중입니다. 잠시 후 다시 확인하세요')
+  confirmationInFlight = true
+  try {
+    return await confirmReviewedStrikes(reviewed, now)
+  } finally {
+    confirmationInFlight = false
+  }
+}
 
-  const rows = await restAsTx<LightningEventRow[]>(token, '/rest/v1/events', {
-    event_type: 'eq.lightning',
-    'lightning_info->>airport_code': `eq.${AIRPORT_CODE}`,
-    'lightning_info->>detectedAt': `gte.${sinceIso}`,
-    select: 'id,lightning_info',
-    limit: '1000',
-  })
-  // 피드/경보와 동일 조건: 반경 5km 이내 + 지상낙뢰 + DB에 저장된(uuid) 이벤트만
-  const eventIds = rows
-    .filter((row) => {
-      const info = row.lightning_info
-      if (!info || !UUID_RE.test(row.id)) return false
-      if (info.type !== GROUND_STRIKE_TYPE) return false
+async function confirmReviewedStrikes(reviewed: Wing15Strike[], now: number): Promise<Wing15ConfirmResult> {
+  const { token, userId } = await loginAsTx()
+  const through = Math.max(...reviewed.map(strike => strike.detectedAt))
+  const candidates: { id: string; strike: Wing15Strike }[] = []
+  // Stable pagination avoids silently confirming only the first page in a storm.
+  const pageSize = 200
+  for (let page = 0; ; page++) {
+    if (page >= 100) throw new Error('WING 낙뢰 조회 범위를 초과했습니다. 확인을 완료하지 않았습니다')
+    const rows = await restAsTx<LightningEventRow[]>(token, '/rest/v1/events', {
+      event_type: 'eq.lightning',
+      'lightning_info->>airport_code': 'eq.' + AIRPORT_CODE,
+      'lightning_info->>detectedAt': 'gte.' + new Date(now - LOOKBACK_MS).toISOString(),
+      select: 'id,lightning_info', order: 'id.asc', limit: String(pageSize), offset: String(page * pageSize),
+    })
+    if (!Array.isArray(rows)) throw new Error('WING 낙뢰 응답 형식 오류')
+    for (const row of rows) {
+      const info = row?.lightning_info
+      if (!info || !UUID_RE.test(row.id) || info.airport_code !== AIRPORT_CODE || info.type !== GROUND_STRIKE_TYPE) continue
       const dist = Number(info.distance_km)
       const detectedAt = Date.parse(info.detectedAt ?? '')
-      return info.distance_km != null && info.distance_km !== '' && Number.isFinite(dist) && dist >= 0 && dist <= RADIUS_KM &&
-        Number.isFinite(detectedAt) && detectedAt >= now - LOOKBACK_MS && detectedAt <= through
-    })
-    .map((row) => row.id)
+      if (info.distance_km == null || info.distance_km === '' || !Number.isFinite(dist) || dist < 0 || dist > RADIUS_KM ||
+        !Number.isFinite(detectedAt) || detectedAt < now - LOOKBACK_MS || detectedAt > through) continue
+      const strike: Wing15Strike = { detectedAt, distanceKm: dist }
+      if (info.lat != null && info.lat !== '' && info.lon != null && info.lon !== '') {
+        const lat = Number(info.lat), lon = Number(info.lon)
+        if (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lon) || Math.abs(lon) > 180) continue
+        strike.lat = lat
+        strike.lon = lon
+      }
+      candidates.push({ id: row.id, strike })
+    }
+    if (rows.length < pageSize) break
+  }
 
+  const matchedIds = new Set<string>()
+  let missing = 0
+  for (const strike of reviewed) {
+    const matches = candidates.filter(candidate => !matchedIds.has(candidate.id) && sameStrike(strike, candidate.strike))
+    if (!matches.length) missing++
+    else for (const match of matches) matchedIds.add(match.id)
+  }
+  if (missing) {
+    throw new Wing15ConfirmationPendingError('낙뢰 ' + missing + '건이 아직 WING에서 확인되지 않습니다. WING 반영 후 다시 확인하세요')
+  }
+  const eventIds = [...matchedIds]
   const result: Wing15ConfirmResult = { total: eventIds.length, inserted: 0, updated: 0 }
-  if (eventIds.length === 0) {
-    log.info('현장 확인 (송신소): 대상 낙뢰 이벤트 없음')
-    return result
-  }
-
-  const existing = await restAsTx<InspectionRow[]>(token, '/rest/v1/inspection_status', {
-    user_id: `eq.${userId}`,
-    event_id: `in.(${eventIds.join(',')})`,
-    select: 'id,event_id,is_inspected',
-  })
-  const byEvent = new Map(existing.map((r) => [r.event_id, r]))
-  const toInsert = eventIds.filter((id) => !byEvent.has(id))
-  const toUpdate = existing.filter((r) => !r.is_inspected).map((r) => r.id)
   const nowIso = new Date(now).toISOString()
-
-  if (toInsert.length > 0) {
-    await restAsTx(
-      token,
-      '/rest/v1/inspection_status',
-      {},
-      {
-        method: 'POST',
-        prefer: 'return=minimal',
-        body: toInsert.map((eventId) => ({
-          event_id: eventId,
-          user_id: userId,
-          is_inspected: true,
-          inspected_at: nowIso,
-        })),
-      }
-    )
-    result.inserted = toInsert.length
+  // Keep filters/URLs bounded and verify that remote writes really persisted.
+  for (let offset = 0; offset < eventIds.length; offset += 100) {
+    const ids = eventIds.slice(offset, offset + 100)
+    const params = {
+      user_id: 'eq.' + userId,
+      event_id: 'in.(' + ids.join(',') + ')',
+      select: 'id,event_id,is_inspected', limit: '1000',
+    }
+    const existing = await restAsTx<InspectionRow[]>(token, '/rest/v1/inspection_status', params)
+    if (!Array.isArray(existing)) throw new Error('WING 확인 상태 응답 형식 오류')
+    const byEvent = new Map(existing.map(row => [row.event_id, row]))
+    const toInsert = ids.filter(id => !byEvent.has(id))
+    const toUpdate = existing.filter(row => ids.includes(row.event_id) && row.is_inspected !== true).map(row => row.id)
+    if (toInsert.length) {
+      await restAsTx(token, '/rest/v1/inspection_status', {}, {
+        method: 'POST', prefer: 'return=minimal',
+        body: toInsert.map(eventId => ({ event_id: eventId, user_id: userId, is_inspected: true, inspected_at: nowIso })),
+      })
+      result.inserted += toInsert.length
+    }
+    if (toUpdate.length) {
+      await restAsTx(token, '/rest/v1/inspection_status', { user_id: 'eq.' + userId, id: 'in.(' + toUpdate.join(',') + ')' }, {
+        method: 'PATCH', prefer: 'return=minimal', body: { is_inspected: true, inspected_at: nowIso },
+      })
+      result.updated += toUpdate.length
+    }
+    const verified = await restAsTx<InspectionRow[]>(token, '/rest/v1/inspection_status', params)
+    if (!Array.isArray(verified) || ids.some(id => !verified.some(row => row.event_id === id && row.is_inspected === true))) {
+      throw new Error('WING 확인 기록이 저장되지 않았습니다. 다시 확인하세요')
+    }
   }
-  if (toUpdate.length > 0) {
-    await restAsTx(
-      token,
-      '/rest/v1/inspection_status',
-      { id: `in.(${toUpdate.join(',')})` },
-      {
-        method: 'PATCH',
-        prefer: 'return=minimal',
-        body: { is_inspected: true, inspected_at: nowIso },
-      }
-    )
-    result.updated = toUpdate.length
-  }
-
-  log.info(
-    `현장 확인 완료 (송신소): 대상 ${result.total}건, 신규 ${result.inserted}건, 갱신 ${result.updated}건`
-  )
+  log.info('송신소 현장 확인 완료: 대상 ' + result.total + '건, 신규 ' + result.inserted + '건, 갱신 ' + result.updated + '건')
   return result
 }

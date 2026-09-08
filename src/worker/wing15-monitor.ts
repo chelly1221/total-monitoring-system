@@ -1,20 +1,21 @@
-// wing15(WING 전국공항 기상 데이터) 뇌전 감시 폴러.
-// 3분 주기로 wing15 낙뢰 피드(김포공항 최신 N건)를 조회해 반경 5km 지상낙뢰를
+// 항공기상청 웹 조회 자료를 수집하는 뇌전 감시 폴러.
+// 3분 주기로 최근 24시간을 조회해 김포 반경 5km 지상낙뢰를
 // 로컬 이력에 누적하고, 경보 상태를 DB(Setting)에 저장한 뒤 WebSocket으로
 // 대시보드에 브로드캐스트한다.
-// wing15 측 요청: 호출은 최대 1분당 1회 — 주기를 env로 줄여도 60초 미만은 막는다.
+// WING에는 점검 확인 버튼을 누를 때만 접속한다.
 
 import { prisma } from './db-updater'
 import { broadcast } from './websocket-server'
 import {
   buildWing15State,
-  fetchNearbyStrikes,
   mergeStrikes,
   parseConfirmedAt,
   parseStrikes,
 } from '@/lib/wing15'
 import { buildDemoState } from '@/lib/wing15-demo'
 import { readWing15State } from '@/lib/wing15-state'
+import { fetchAmoLightning } from '@/lib/amo-lightning'
+import { isStrikeConfirmed } from '@/lib/lightning-rules'
 import { createLogger } from '@/lib/logger'
 import type { Wing15Checklist, Wing15State } from '@/types'
 
@@ -77,7 +78,7 @@ async function publishState(state: Wing15State): Promise<void> {
   // started before the operator's edit cannot overwrite that edit afterwards.
   const published = await prisma.$transaction(async (tx) => {
     const latest = await readWing15State(tx)
-    const next = { ...latest, ok: state.ok, error: state.error, updatedAt: state.updatedAt }
+    const next = { ...latest, ok: state.ok, error: state.error, updatedAt: state.updatedAt, observedAt: state.observedAt }
     for (const [key, value] of [[STATE_KEY, JSON.stringify(next)], [CHECKLIST_KEY, JSON.stringify(next.checklist)]]) {
       await tx.setting.upsert({ where: { key }, update: { value }, create: { key, value, category: 'wing15' } })
     }
@@ -98,12 +99,12 @@ async function poll(): Promise<void> {
       lastEnabled = enabled
     }
     if (!enabled) {
-      // 꺼짐: wing15 조회/기록 없이 대기. 다시 켜지면 첫 폴링에서 경보 감지 로그가 나오도록 리셋
+      // 꺼짐: 외부 조회 없이 대기. 다시 켜지면 경보 감지 로그가 나오도록 리셋
       lastState = null
       return
     }
 
-    // 데모 모드: 카드 디자인 확인용 가짜 경보 (실제 wing15 조회 없음)
+    // 데모 모드: 카드 디자인 확인용 가짜 경보 (외부 조회 없음)
     const demo = await readSetting('wing15Demo')
     if (demo === 'true') {
       const checklist = await readChecklist()
@@ -116,22 +117,22 @@ async function poll(): Promise<void> {
 
     // 피드 조회(네트워크)를 먼저 끝낸 뒤 로컬 상태를 읽어, 확인 버튼(API)과의
     // 경합 창을 최소화한다
-    const incoming = await fetchNearbyStrikes()
-    const [checklist, historyJson, confirmedAtRaw] = await Promise.all([
-      readChecklist(),
-      readSetting(STRIKES_KEY),
-      readSetting(CONFIRMED_AT_KEY),
-    ])
-    const history = parseStrikes(historyJson)
-    const strikes = mergeStrikes(history, incoming)
-    const added = strikes.length - mergeStrikes(history, []).length
+    const observation = await fetchAmoLightning()
+    const { strikes, added } = await prisma.$transaction(async tx => {
+      const rows = await tx.setting.findMany({ where: { key: { in: [STRIKES_KEY, CONFIRMED_AT_KEY] } } })
+      const values = Object.fromEntries(rows.map(row => [row.key, row.value]))
+      const confirmedAt = parseConfirmedAt(values[CONFIRMED_AT_KEY])
+      // Preserve old confirmations when replacing rounded legacy feed rows.
+      const history = parseStrikes(values[STRIKES_KEY]).map(strike => ({ ...strike, confirmed: isStrikeConfirmed(strike, confirmedAt) }))
+      const strikes = mergeStrikes(history, observation.strikes)
+      await tx.setting.upsert({ where: { key: STRIKES_KEY }, update: { value: JSON.stringify(strikes) },
+        create: { key: STRIKES_KEY, value: JSON.stringify(strikes), category: 'wing15' } })
+      return { strikes, added: strikes.length - mergeStrikes(history, []).length }
+    })
     if (added > 0) {
       log.info(`낙뢰 ${added}건 신규 감지 (김포공항 5km 이내 지상낙뢰, 누적 ${strikes.length}건)`)
     }
-    const strikesJson = JSON.stringify(strikes)
-    if (strikesJson !== historyJson) await saveSetting(STRIKES_KEY, strikesJson)
-
-    const state = buildWing15State(strikes, parseConfirmedAt(confirmedAtRaw), checklist)
+    const state = { ...buildWing15State(strikes, null, null), observedAt: observation.observedAt }
 
     const hadItems = (lastState?.items.length ?? 0) > 0
     if (state.items.length > 0 && !hadItems) {
@@ -147,6 +148,7 @@ async function poll(): Promise<void> {
       ok: false,
       error: message,
       updatedAt: new Date().toISOString(),
+      observedAt: previous?.observedAt,
       sig: previous?.sig ?? '',
       items: previous?.items ?? [],
       checklist: previous?.checklist ?? { special: false, maintenance: false, sig: '' },
@@ -165,7 +167,7 @@ async function poll(): Promise<void> {
 
 export function startWing15Monitor(): void {
   if (pollTimer) return
-  log.info(`뇌전 감시 시작 (김포공항 5km, ${POLL_INTERVAL_MS / 1000}s 주기)`)
+  log.info(`뇌전 감시 시작 (항공기상청 웹 조회, 김포공항 5km, ${POLL_INTERVAL_MS / 1000}s 주기)`)
   void poll()
   pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS)
 }

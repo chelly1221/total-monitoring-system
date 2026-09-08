@@ -3,6 +3,7 @@ import { prisma } from './db'
 import { buildWing15State, parseConfirmedAt, parseStrikes } from './wing15'
 import { buildDemoState } from './wing15-demo'
 import type { Wing15Checklist, Wing15State } from '@/types'
+import { AMO_MAX_DATA_AGE_MS } from './amo-lightning'
 
 export async function readWing15State(db: Prisma.TransactionClient = prisma): Promise<Wing15State> {
   const rows = await db.setting.findMany({ where: { key: { in: [
@@ -21,7 +22,12 @@ export async function readWing15State(db: Prisma.TransactionClient = prisma): Pr
   try {
     const saved = JSON.parse(values.wing15State ?? 'null')
     if (saved && typeof saved.ok === 'boolean' && typeof saved.updatedAt === 'string') {
-      return { ...state, ok: saved.ok, error: typeof saved.error === 'string' ? saved.error : undefined, updatedAt: saved.updatedAt }
+      const observedAt = typeof saved.observedAt === 'string' ? saved.observedAt : undefined
+      const age = Date.now() - Date.parse(observedAt ?? saved.updatedAt)
+      const stale = !Number.isFinite(age) || age > AMO_MAX_DATA_AGE_MS || age < -5 * 60_000
+      return { ...state, ok: saved.ok && !stale,
+        error: stale ? '항공기상청 낙뢰 자료 갱신 지연' : typeof saved.error === 'string' ? saved.error : undefined,
+        updatedAt: saved.updatedAt, observedAt }
     }
   } catch { /* Missing/corrupt state is still waiting for a poll. */ }
   return { ...state, ok: false, updatedAt: '', error: '수집 대기 중' }

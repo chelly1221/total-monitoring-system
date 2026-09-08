@@ -1,6 +1,6 @@
 'use client'
 
-// 김포공항 반경 5km 뇌전경보 패널 (wing15.lovable.app 낙뢰 피드 연동).
+// 김포공항 반경 5km 뇌전경보 패널 (항공기상청 웹 조회 + WING 현장 확인).
 // 경보가 없으면 상태 카드(정상/연결 중/오류), 경보 시 첫/마지막 낙뢰 시각을 표시하고
 // 마지막 낙뢰 1시간 경과 후 점검 체크리스트가 나타나 둘 다 체크해야 확인 버튼이 활성화된다.
 // 확인 시 wing15의 현장별 확인 현황에서 송신소(TX)가 확인됨으로 바뀐다 (버튼 클릭 때만 접속).
@@ -78,7 +78,6 @@ export function LightningAlertPanel() {
       })
       if (res.ok) {
         toast.success('송신소 현장 확인 완료')
-        await syncWing15()
       } else {
         const body = await res.json().catch(() => null)
         toast.error(body?.error ?? '현장 확인 처리 실패')
@@ -86,6 +85,7 @@ export function LightningAlertPanel() {
     } catch {
       toast.error('현장 확인 처리 실패')
     } finally {
+      await syncWing15()
       setConfirming(false)
     }
   }
@@ -119,7 +119,7 @@ export function LightningAlertPanel() {
       error: { text: '오류', className: 'bg-[rgba(113,63,18,0.8)] text-[#fef9c3]' },
     }[status]
     const detail = {
-      normal: `갱신 ${fmtKst(wing15?.updatedAt ?? null)}`,
+      normal: `자료 ${fmtKst(wing15?.observedAt ?? wing15?.updatedAt ?? null)}`,
       connecting: '상태 수집 대기 중...',
       error: `마지막 갱신 ${fmtKst(wing15?.updatedAt || null)}`,
     }[status]
@@ -129,8 +129,8 @@ export function LightningAlertPanel() {
         className={`mt-1 flex-shrink-0 rounded-[6px] border-l-4 px-3 py-[10px] ${CARD_SHADOW} ${cardClass}`}
         title={
           status === 'error'
-            ? `wing15 연결 오류: ${wing15?.error ?? '알 수 없음'}`
-            : '김포공항 반경 5km 낙뢰 감시 (wing15, 3분 갱신)'
+            ? `낙뢰 조회 오류: ${wing15?.error ?? '알 수 없음'}`
+            : '김포공항 반경 5km 지상낙뢰 (항공기상청 웹 조회, WING 확인 연동)'
         }
       >
         <div className="flex items-center justify-between gap-1">
@@ -177,6 +177,10 @@ export function LightningAlertPanel() {
         <span className={`ml-auto text-[13px] ${headSubClass}`}>김포 5km</span>
       </div>
 
+      {wing15 && !wing15.ok && (
+        <div className={`text-[13px] ${headSubClass}`} title={wing15.error}>자료 수신 지연 · 확인 보류</div>
+      )}
+
       {items.map((item) => (
         <div key={item.key} className={`rounded-[4px] px-2 py-1.5 ${itemRowClass}`}>
           <div className={`flex items-center gap-1.5 text-[14px] ${itemTitleClass}`}>
@@ -200,7 +204,7 @@ export function LightningAlertPanel() {
               <Checkbox
                 className="size-[18px] rounded-[4px] border-[rgba(31,19,0,0.7)] bg-[rgba(255,255,255,0.45)] data-[state=checked]:border-[#1f1300] data-[state=checked]:bg-[#1f1300] data-[state=checked]:text-[#fef9c3] [&_svg]:size-[13px]"
                 checked={special}
-                disabled={saving || confirming}
+                disabled={saving || confirming || !wing15?.ok}
                 onCheckedChange={(v) => saveChecklist(v === true, maintenance)}
               />
               특별점검
@@ -209,7 +213,7 @@ export function LightningAlertPanel() {
               <Checkbox
                 className="size-[18px] rounded-[4px] border-[rgba(31,19,0,0.7)] bg-[rgba(255,255,255,0.45)] data-[state=checked]:border-[#1f1300] data-[state=checked]:bg-[#1f1300] data-[state=checked]:text-[#fef9c3] [&_svg]:size-[13px]"
                 checked={maintenance}
-                disabled={saving || confirming}
+                disabled={saving || confirming || !wing15?.ok}
                 onCheckedChange={(v) => saveChecklist(special, v === true)}
               />
               유지보수일지

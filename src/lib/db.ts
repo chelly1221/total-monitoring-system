@@ -3,6 +3,7 @@ import { applySqlitePragmas } from './sqlite'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
+  prismaReady: Promise<void> | undefined
 }
 
 // Pin a single SQLite connection so the per-connection busy_timeout pragma below
@@ -20,8 +21,10 @@ export const prisma =
 // Match the worker's SQLite pragmas so the two processes share the file without
 // blocking each other: WAL enables concurrent reader/writer, busy_timeout makes a
 // contended query wait instead of throwing SQLITE_BUSY. Run once per process.
-if (!globalForPrisma.prisma) {
-  void applySqlitePragmas(prisma).catch(error => console.error('[db] SQLite initialization failed:', error))
-}
+export const prismaReady = globalForPrisma.prismaReady ?? applySqlitePragmas(prisma)
+void prismaReady.catch(error => console.error('[db] SQLite initialization failed:', error))
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma
+  globalForPrisma.prismaReady = prismaReady
+}

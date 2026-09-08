@@ -10,6 +10,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import WebSocket from 'ws'
 import { NextRequest } from 'next/server'
 import type { DisplayItem, MetricsConfig } from '../src/types'
+import { GIMPO, type NearbyStrike } from '../src/lib/lightning-rules'
+import { mockWing, wingEvent } from './helpers/wing'
 
 let directory: string
 let db: typeof import('../src/lib/db').prisma
@@ -46,7 +48,7 @@ before(async () => {
   stateApi = await import('../src/app/api/wing15/route')
   checklistApi = await import('../src/app/api/wing15/checklist/route')
   confirmApi = await import('../src/app/api/wing15/confirm/route')
-  await worker.initDatabasePragmas()
+  await Promise.all([(await import('../src/lib/db')).prismaReady, worker.initDatabasePragmas()])
   sockets.startWebSocketServer()
 })
 
@@ -197,6 +199,128 @@ test('stale lightning inspection is rejected before any external confirmation', 
   assert.equal(valid.status, 200)
   assert.equal((await confirmApi.POST(request({ sig: 'old' }))).status, 409)
   assert.equal(await db.setting.count({ where: { key: 'wing15ConfirmedAt' } }), 0)
+})
+
+async function prepareLightningReview(strikes: NearbyStrike[]) {
+  await db.setting.createMany({ data: [
+    { key: 'wing15Strikes', value: JSON.stringify(strikes) },
+    { key: 'wing15State', value: JSON.stringify({ ok: true, updatedAt: new Date().toISOString(), observedAt: new Date().toISOString() }) },
+  ] })
+  const state = await (await stateApi.GET()).json()
+  const checked = await checklistApi.PUT(new NextRequest(request({ sig: state.sig, special: true, maintenance: true }, 'PUT')))
+  assert.equal(checked.status, 200)
+  return state
+}
+
+test('background collection, dashboard and checklist access only the public weather source', async t => {
+  const now = Date.now()
+  const legacy = { detectedAt: now - 3 * 3600_000, distanceKm: 0 }
+  const pending = { detectedAt: now - 2 * 3600_000, distanceKm: 0 }
+  await db.setting.createMany({ data: [
+    { key: 'wing15Strikes', value: JSON.stringify([legacy]) },
+    { key: 'wing15ConfirmedAt', value: new Date(legacy.detectedAt).toISOString() },
+  ] })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input))
+    assert.equal(url.hostname, 'www.weather.go.kr', 'Background activity must never access WING')
+    assert.equal(new Headers(init?.headers).get('authorization'), null)
+    calls++
+    return Response.json({ baseDateList: [new Date(now).toISOString()], lgtList: [legacy, pending].map(strike => ({
+      date: new Date(strike.detectedAt).toISOString(), type: '1', lat: GIMPO.lat, lon: GIMPO.lon,
+    })) })
+  })
+  const monitor = await import('../src/worker/wing15-monitor')
+  const receiver = new WebSocket(`ws://127.0.0.1:${process.env.WS_PORT}`)
+  try {
+    await once(receiver, 'open')
+    const published = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Lightning poll did not publish')), 5000)
+      receiver.on('message', data => {
+        const message = JSON.parse(data.toString())
+        if (message.type === 'wing15' && message.data.wing15.observedAt === new Date(now).toISOString()) {
+          clearTimeout(timeout)
+          resolve()
+        }
+      })
+    })
+    monitor.startWing15Monitor()
+    await published
+    const state = await (await stateApi.GET()).json()
+    assert.equal(state.ok, true)
+    const checked = await checklistApi.PUT(new NextRequest(request({ sig: state.sig, special: true, maintenance: true }, 'PUT')))
+    assert.equal(checked.status, 200)
+    const history = JSON.parse((await db.setting.findUniqueOrThrow({ where: { key: 'wing15Strikes' } })).value) as NearbyStrike[]
+    assert.equal(history.length, 2)
+    assert.equal(history[0].confirmed, true, 'Legacy confirmations survive the source migration')
+    assert.equal(history[1].confirmed, false)
+    assert.equal(calls, 1)
+  } finally {
+    monitor.stopWing15Monitor()
+    receiver.terminate()
+  }
+})
+
+test('WING delay leaves review intact and retry confirms only after remote persistence', async t => {
+  const strike: NearbyStrike = { detectedAt: Date.now() - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
+  const state = await prepareLightningReview([strike])
+  const remote = mockWing(t, [])
+  const pending = await confirmApi.POST(request({ sig: state.sig }))
+  assert.equal(pending.status, 409)
+  assert.match((await pending.json()).error, /WING/)
+  assert.equal(await db.setting.count({ where: { key: 'wing15ConfirmedAt' } }), 0)
+  assert.equal(remote.writes.length, 0)
+  assert.equal((await (await stateApi.GET()).json()).checklist.special, true)
+
+  remote.events.push(wingEvent(strike, 1))
+  remote.persistWrites = false
+  assert.equal((await confirmApi.POST(request({ sig: state.sig }))).status, 500)
+  assert.equal(await db.setting.count({ where: { key: 'wing15ConfirmedAt' } }), 0)
+
+  remote.persistWrites = true
+  const confirmed = await confirmApi.POST(request({ sig: state.sig }))
+  assert.equal(confirmed.status, 200)
+  assert.deepEqual((await confirmed.json()).items, [])
+  assert.equal(JSON.parse((await db.setting.findUniqueOrThrow({ where: { key: 'wing15Strikes' } })).value)[0].confirmed, true)
+})
+
+test('strikes arriving during WING confirmation remain unconfirmed, including older observations', async t => {
+  const now = Date.now()
+  const reviewed: NearbyStrike = { detectedAt: now - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
+  const newer = { ...reviewed, detectedAt: now - 30 * 60_000 }
+  const late = { ...reviewed, detectedAt: now - 3 * 3600_000 }
+  const state = await prepareLightningReview([reviewed])
+  const remote = mockWing(t, [wingEvent(reviewed, 1)])
+  remote.onWrite = async () => {
+    await db.setting.update({ where: { key: 'wing15Strikes' }, data: { value: JSON.stringify([reviewed, newer, late]) } })
+  }
+  const response = await confirmApi.POST(request({ sig: state.sig }))
+  assert.equal(response.status, 200)
+  const next = await response.json()
+  assert.equal(next.items[0].confirmed, false)
+  assert.equal(next.items[0].active, true)
+  assert.notEqual(next.sig, state.sig)
+  assert.equal(next.checklist.special, false)
+  const history = JSON.parse((await db.setting.findUniqueOrThrow({ where: { key: 'wing15Strikes' } })).value) as NearbyStrike[]
+  assert.equal(history.find(item => item.detectedAt === reviewed.detectedAt)?.confirmed, true)
+  assert.equal(history.find(item => item.detectedAt === newer.detectedAt)?.confirmed, false)
+  assert.equal(history.find(item => item.detectedAt === late.detectedAt)?.confirmed, false)
+  assert.equal(remote.inspections.size, 1)
+})
+
+test('stale observation clock blocks confirmation even when the last poll said OK', async t => {
+  const strike: NearbyStrike = { detectedAt: Date.now() - 2 * 3600_000, distanceKm: 0, confirmed: false }
+  const state = await prepareLightningReview([strike])
+  await db.setting.update({ where: { key: 'wing15State' }, data: { value: JSON.stringify({
+    ok: true, updatedAt: new Date().toISOString(), observedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  }) } })
+  const remote = mockWing(t, [])
+  const stale = await (await stateApi.GET()).json()
+  assert.equal(stale.ok, false)
+  assert.equal(stale.items.length, 1)
+  assert.equal((await confirmApi.POST(request({ sig: state.sig }))).status, 409)
+  assert.equal(remote.eventReads, 0)
+  assert.equal(remote.writes.length, 0)
 })
 
 test('audio upload uses actual format and persistent storage; non-WAVE RIFF is rejected', async () => {
