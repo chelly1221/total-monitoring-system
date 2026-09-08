@@ -81,6 +81,8 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
   const [humidityLines, setHumidityLines] = useState<{ dataKey: string; name: string; color: string }[]>(() => chartCache.humidityLines)
   const [historyLoaded, setHistoryLoaded] = useState(() => chartCache.historyLoaded)
   const lastAppendRef = useRef<number>(0)
+  const lastUpdateRef = useRef(lastUpdate)
+  useEffect(() => { lastUpdateRef.current = lastUpdate }, [lastUpdate])
 
   // Get sensor systems from realtime data
   const sensorSystems = systems.filter((s) => sensorSystemIds.includes(s.id))
@@ -97,7 +99,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
 
   // Track sensorSystems in ref so fetchHistory callback can access current values
   const sensorSystemsRef = useRef(sensorSystems)
-  sensorSystemsRef.current = sensorSystems
+  useEffect(() => { sensorSystemsRef.current = sensorSystems }, [sensorSystems])
 
   // Sync state changes back to module-level cache
   useEffect(() => {
@@ -216,51 +218,57 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
     fetchHistory()
   }, [buildChartData, seedFromRealtimeData])
 
-  // Append new data points from realtime updates (throttled to 1s)
+  // Append new data points from realtime updates (sampled every 10s)
   useEffect(() => {
-    if (!historyLoaded || !lastUpdate) return
+    if (!historyLoaded) return
+    const sample = () => {
+      if (!lastUpdateRef.current) return
 
-    const now = Date.now()
-    if (now - lastAppendRef.current < 10000) return
-    lastAppendRef.current = now
+      const now = Date.now()
+      if (now - lastAppendRef.current < 10000) return
+      lastAppendRef.current = now
 
-    const timeStr = formatTime(new Date())
+      const timeStr = formatTime(new Date())
 
-    // Build new temp point
-    const tempPoint: ChartDataPoint = { time: timeStr, ts: now }
-    const humidPoint: ChartDataPoint = { time: timeStr, ts: now }
-    let hasTempData = false
-    let hasHumidData = false
+      // Build new temp point
+      const tempPoint: ChartDataPoint = { time: timeStr, ts: now }
+      const humidPoint: ChartDataPoint = { time: timeStr, ts: now }
+      let hasTempData = false
+      let hasHumidData = false
 
-    for (const sys of sensorSystems) {
-      const tempMetric = sys.metrics?.find((m) => m.name === '온도')
-      const humidMetric = sys.metrics?.find((m) => m.name === '습도')
-      if (tempMetric) {
-        tempPoint[sys.name] = tempMetric.value
-        hasTempData = true
+      for (const sys of sensorSystemsRef.current) {
+        const tempMetric = sys.metrics?.find((m) => m.name === '온도')
+        const humidMetric = sys.metrics?.find((m) => m.name === '습도')
+        if (tempMetric) {
+          tempPoint[sys.name] = tempMetric.value
+          hasTempData = true
+        }
+        if (humidMetric) {
+          humidPoint[sys.name] = humidMetric.value
+          hasHumidData = true
+        }
       }
-      if (humidMetric) {
-        humidPoint[sys.name] = humidMetric.value
-        hasHumidData = true
+
+      const cutoff = now - 24 * 60 * 60 * 1000
+      if (hasTempData) {
+        setTempChartData((prev) => {
+          const updated = [...prev, tempPoint]
+          const firstValid = updated.findIndex(p => p.ts >= cutoff)
+          return firstValid > 0 ? updated.slice(firstValid) : updated
+        })
+      }
+      if (hasHumidData) {
+        setHumidityChartData((prev) => {
+          const updated = [...prev, humidPoint]
+          const firstValid = updated.findIndex(p => p.ts >= cutoff)
+          return firstValid > 0 ? updated.slice(firstValid) : updated
+        })
       }
     }
-
-    const cutoff = now - 24 * 60 * 60 * 1000
-    if (hasTempData) {
-      setTempChartData((prev) => {
-        const updated = [...prev, tempPoint]
-        const firstValid = updated.findIndex(p => p.ts >= cutoff)
-        return firstValid > 0 ? updated.slice(firstValid) : updated
-      })
-    }
-    if (hasHumidData) {
-      setHumidityChartData((prev) => {
-        const updated = [...prev, humidPoint]
-        const firstValid = updated.findIndex(p => p.ts >= cutoff)
-        return firstValid > 0 ? updated.slice(firstValid) : updated
-      })
-    }
-  }, [lastUpdate, historyLoaded, sensorSystems])
+    const initial = setTimeout(sample, 0)
+    const interval = setInterval(sample, 10000)
+    return () => { clearTimeout(initial); clearInterval(interval) }
+  }, [historyLoaded])
 
   // Downsample only for rendering, forward-fill sparse sensor values, then insert gap markers
   const displayTempData = useMemo(() => {

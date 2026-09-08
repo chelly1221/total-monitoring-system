@@ -1,11 +1,12 @@
 // Condition-based threshold evaluator for sensor systems
 
-import type { ThresholdCondition, StatusConditions, SystemStatus } from '@/types'
+import type { ThresholdCondition, StatusConditions, SystemStatus, DisplayItem } from '@/types'
 
 /**
  * Evaluate a single condition against a value
  */
 export function evaluateCondition(value: number, condition: ThresholdCondition): boolean {
+  if (!Number.isFinite(value)) return false
   switch (condition.operator) {
     case 'between':
       return value >= condition.value1 && value <= (condition.value2 ?? condition.value1)
@@ -22,6 +23,31 @@ export function evaluateCondition(value: number, condition: ThresholdCondition):
     default:
       return false
   }
+}
+
+/** Shared by ingest and settings edits so disabled/text/legacy metrics agree. */
+export function evaluateDisplayItemStatus(
+  metric: { value: number; textValue?: string | null },
+  item: DisplayItem
+): SystemStatus {
+  if (item.alarmEnabled === false) return 'normal'
+  const conditions = item.conditions
+  const criticalConditions = conditions
+    ? [...(conditions.critical ?? []), ...(conditions.coldCritical ?? []),
+      ...(conditions.dryCritical ?? []), ...(conditions.humidCritical ?? [])]
+    : []
+  if (metric.textValue != null) {
+    return criticalConditions.some(c => {
+      if (c.stringValue === undefined) return false
+      if (c.operator === 'eq') return metric.textValue === c.stringValue
+      if (c.operator === 'neq') return metric.textValue !== c.stringValue
+      return false
+    }) ? 'critical' : 'normal'
+  }
+  if (!Number.isFinite(metric.value)) return 'normal'
+  if (conditions && criticalConditions.length) return evaluateSensorStatus(metric.value, conditions)
+  return (item.critical != null && metric.value >= item.critical) ||
+    (item.warning != null && metric.value <= item.warning) ? 'critical' : 'normal'
 }
 
 /**

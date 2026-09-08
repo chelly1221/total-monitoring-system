@@ -5,7 +5,7 @@ import type { WebSocketMessage } from '@/types'
 import { syncSirenState } from './siren-trigger'
 import { cleanupSystemMaps } from './db-updater'
 
-const WS_PORT = 7778
+const WS_PORT = Number(process.env.WS_PORT) || 7778
 
 let wss: WebSocketServer | null = null
 const clients = new Set<WebSocket>()
@@ -60,13 +60,12 @@ export function startWebSocketServer(): void {
         const message = JSON.parse(data.toString()) as WebSocketMessage
         // Handle siren-sync: trigger immediate siren state check
         if (message.type === 'siren-sync') {
-          syncSirenState()
+          void syncSirenState()
           return
         }
         // Handle systems-changed: re-bind sockets to match the updated DB
         if (message.type === 'systems-changed') {
           systemsChangedHandler?.()
-          return
         }
         if (message.type === 'delete' && message.data.systemId) {
           cleanupSystemMaps(message.data.systemId)
@@ -77,8 +76,9 @@ export function startWebSocketServer(): void {
         if (message.type === 'settings') {
           settingsChangedHandler?.(message.data)
         }
-        // Relay delete, alarm, and settings messages to all OTHER clients
-        if (message.type === 'delete' || message.type === 'alarm' || message.type === 'settings') {
+        // API notifications must reach every dashboard, including configuration
+        // edits, status recalculation, alarm resolution and lightning confirmation.
+        if (['delete', 'alarm', 'settings', 'system', 'alarm-resolved', 'systems-changed', 'wing15'].includes(message.type)) {
           const payload = JSON.stringify(message)
           for (const client of clients) {
             if (client !== ws && client.readyState === WebSocket.OPEN) {

@@ -2,11 +2,25 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // Runtime audio paths must not pull previous desktop builds or local data
+  // into Next.js file tracing and recursively expand the installer.
+  outputFileTracingExcludes: {
+    '/*': [
+      './src-tauri/**/*',
+      './.review/**/*',
+      './.git/**/*',
+      './screenshots/**/*',
+      './tests/**/*',
+      './**/*.db',
+      './**/*.db-*',
+      './.env*',
+    ],
+  },
   async headers() {
     return [
       {
         // Prevent caching of HTML pages
-        source: '/:path*',
+        source: '/:path((?!_next/static/).*)',
         headers: [
           {
             key: 'Cache-Control',
@@ -14,16 +28,7 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        // Allow caching of static assets with hashed filenames
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // Next.js owns immutable caching for /_next/static assets.
     ]
   },
 };

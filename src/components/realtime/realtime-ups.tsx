@@ -129,6 +129,8 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
   const [chartsMap, setChartsMap] = useState<Map<string, MetricChartCache>>(() => chartCache.charts)
   const [historyLoaded, setHistoryLoaded] = useState(() => chartCache.historyLoaded)
   const lastAppendRef = useRef<number>(0)
+  const lastUpdateRef = useRef(lastUpdate)
+  useEffect(() => { lastUpdateRef.current = lastUpdate }, [lastUpdate])
 
   // Get UPS systems from realtime data
   const upsSystems = systems.filter((s) => upsSystemIds.includes(s.id))
@@ -160,11 +162,11 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
 
   // Track systems ref for async callbacks
   const upsSystemsRef = useRef(upsSystems)
-  upsSystemsRef.current = upsSystems
+  useEffect(() => { upsSystemsRef.current = upsSystems }, [upsSystems])
   const systemConfigsRef = useRef(systemConfigs)
-  systemConfigsRef.current = systemConfigs
+  useEffect(() => { systemConfigsRef.current = systemConfigs }, [systemConfigs])
   const systemColorMapRef = useRef(systemColorMap)
-  systemColorMapRef.current = systemColorMap
+  useEffect(() => { systemColorMapRef.current = systemColorMap }, [systemColorMap])
 
   // Sync state changes back to module-level cache
   useEffect(() => {
@@ -259,50 +261,56 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
 
   // Append new data points from realtime updates (throttled to 10s)
   useEffect(() => {
-    if (!historyLoaded || !lastUpdate) return
+    if (!historyLoaded) return
+    const sample = () => {
+      if (!lastUpdateRef.current) return
 
-    const now = Date.now()
-    if (now - lastAppendRef.current < 10000) return
-    lastAppendRef.current = now
+      const now = Date.now()
+      if (now - lastAppendRef.current < 10000) return
+      lastAppendRef.current = now
 
-    const timeStr = formatTime(new Date())
-    const cutoff = now - 24 * 60 * 60 * 1000
+      const timeStr = formatTime(new Date())
+      const cutoff = now - 24 * 60 * 60 * 1000
 
-    setChartsMap((prev) => {
-      const next = new Map(prev)
+      setChartsMap((prev) => {
+        const next = new Map(prev)
 
-      // Group current metrics by chart group (keyed by systemName:metricName)
-      const metricsByGroup = new Map<string, { key: string; value: number }[]>()
-      for (const sys of upsSystems) {
-        for (const m of sys.metrics ?? []) {
-          const group = resolveChartGroup(m.name, sys.id)
-          if (!group) continue
-          const arr = metricsByGroup.get(group) ?? []
-          arr.push({ key: `${sys.name}:${m.name}`, value: m.value })
-          metricsByGroup.set(group, arr)
-        }
-      }
-
-      for (const [groupName, values] of metricsByGroup) {
-        const existing = next.get(groupName)
-        if (!existing) continue
-
-        const point: ChartDataPoint = { time: timeStr, ts: now }
-        for (const { key, value } of values) {
-          point[key] = value
+        // Group current metrics by chart group (keyed by systemName:metricName)
+        const metricsByGroup = new Map<string, { key: string; value: number }[]>()
+        for (const sys of upsSystemsRef.current) {
+          for (const m of sys.metrics ?? []) {
+            const group = resolveChartGroup(m.name, sys.id)
+            if (!group) continue
+            const arr = metricsByGroup.get(group) ?? []
+            arr.push({ key: `${sys.name}:${m.name}`, value: m.value })
+            metricsByGroup.set(group, arr)
+          }
         }
 
-        const updated = [...existing.data, point]
-        const firstValid = updated.findIndex(p => p.ts >= cutoff)
-        next.set(groupName, {
-          ...existing,
-          data: firstValid > 0 ? updated.slice(firstValid) : updated,
-        })
-      }
+        for (const [groupName, values] of metricsByGroup) {
+          const existing = next.get(groupName)
+          if (!existing) continue
 
-      return next
-    })
-  }, [lastUpdate, historyLoaded, upsSystems, resolveChartGroup])
+          const point: ChartDataPoint = { time: timeStr, ts: now }
+          for (const { key, value } of values) {
+            point[key] = value
+          }
+
+          const updated = [...existing.data, point]
+          const firstValid = updated.findIndex(p => p.ts >= cutoff)
+          next.set(groupName, {
+            ...existing,
+            data: firstValid > 0 ? updated.slice(firstValid) : updated,
+          })
+        }
+
+        return next
+      })
+    }
+    const initial = setTimeout(sample, 0)
+    const interval = setInterval(sample, 10000)
+    return () => { clearTimeout(initial); clearInterval(interval) }
+  }, [historyLoaded, resolveChartGroup])
 
   // Derive chart group names from configs, with fallback to defaults
   const chartGroupNames = useMemo(() => {

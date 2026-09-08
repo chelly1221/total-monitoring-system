@@ -563,7 +563,6 @@ export function SystemMetricsConfig({
   typeLabel,
   systemType,
   fixedSensorMode = false,
-  dataPreviewSlot,
   disabled = false,
   sensorItemName,
   testResultKeys,
@@ -673,47 +672,48 @@ export function SystemMetricsConfig({
   }
 
   // Fixed 2-item sensor mode for temperature/humidity
+  // Keep hooks unconditional when switching between equipment, UPS and sensors.
+  React.useEffect(() => {
+    if (!isSensor || !fixedSensorMode) return
+    const tempItem = config.displayItems.find((i) => i.name === "온도")
+    const humidItem = config.displayItems.find((i) => i.name === "습도")
+
+    if (!tempItem || !humidItem) {
+      const newItems: DisplayItem[] = []
+
+      // Reuse existing temperature item or create new
+      newItems.push(
+        tempItem || {
+          name: "온도",
+          index: 0,
+          unit: "°C",
+          warning: null,
+          critical: null,
+          conditions: { ...DEFAULT_CONDITIONS },
+          audioConfig: { type: "none" },
+          dataMatchConditions: [],
+        }
+      )
+
+      // Reuse existing humidity item or create new
+      newItems.push(
+        humidItem || {
+          name: "습도",
+          index: 1,
+          unit: "%",
+          warning: null,
+          critical: null,
+          conditions: { ...DEFAULT_CONDITIONS },
+          audioConfig: { type: "none" },
+          dataMatchConditions: [],
+        }
+      )
+
+      onChange({ ...config, displayItems: newItems })
+    }
+  }, [isSensor, fixedSensorMode, config, onChange])
+
   if (isSensor && fixedSensorMode) {
-    // Initialize: auto-create temperature/humidity items if missing
-    React.useEffect(() => {
-      const tempItem = config.displayItems.find((i) => i.name === "온도")
-      const humidItem = config.displayItems.find((i) => i.name === "습도")
-
-      if (!tempItem || !humidItem) {
-        const newItems: DisplayItem[] = []
-
-        // Reuse existing temperature item or create new
-        newItems.push(
-          tempItem || {
-            name: "온도",
-            index: 0,
-            unit: "°C",
-            warning: null,
-            critical: null,
-            conditions: { ...DEFAULT_CONDITIONS },
-            audioConfig: { type: "none" },
-            dataMatchConditions: [],
-          }
-        )
-
-        // Reuse existing humidity item or create new
-        newItems.push(
-          humidItem || {
-            name: "습도",
-            index: 1,
-            unit: "%",
-            warning: null,
-            critical: null,
-            conditions: { ...DEFAULT_CONDITIONS },
-            audioConfig: { type: "none" },
-            dataMatchConditions: [],
-          }
-        )
-
-        onChange({ ...config, displayItems: newItems })
-      }
-    }, [])
-
     const temperatureItem = config.displayItems.find((item) => item.name === "온도")
     const humidityItem = config.displayItems.find((item) => item.name === "습도")
 

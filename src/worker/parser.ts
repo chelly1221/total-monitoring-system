@@ -45,5 +45,5 @@ export function extractNumericValue(data: ParsedData): number | null {
   // partially-decoded string would otherwise yield a plausible-but-wrong number.
   if (data.value.includes('�')) return null
   const num = parseFloat(data.value)
-  return isNaN(num) ? null : num
+  return Number.isFinite(num) ? num : null
 }

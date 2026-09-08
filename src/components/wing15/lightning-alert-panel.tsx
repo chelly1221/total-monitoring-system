@@ -29,6 +29,7 @@ export function LightningAlertPanel() {
   const [special, setSpecial] = useState(false)
   const [maintenance, setMaintenance] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const sig = wing15?.sig ?? ''
   const savedSpecial = wing15?.checklist.special ?? false
@@ -47,20 +48,34 @@ export function LightningAlertPanel() {
   // 앱/워커 시작 직후 첫 폴링 전에는 오류가 아니라 연결 중 상태
   const connecting = !wing15 || (!wing15.ok && !wing15.updatedAt)
 
-  const saveChecklist = (nextSpecial: boolean, nextMaintenance: boolean) => {
+  const saveChecklist = async (nextSpecial: boolean, nextMaintenance: boolean) => {
+    if (saving) return
+    setSaving(true)
     setSpecial(nextSpecial)
     setMaintenance(nextMaintenance)
-    fetch('/api/wing15/checklist', {
+    try {
+      const response = await fetch('/api/wing15/checklist', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ special: nextSpecial, maintenance: nextMaintenance, sig }),
-    }).catch(() => {})
+      })
+      if (!response.ok) throw new Error('체크리스트 저장 실패')
+    } catch {
+      setSpecial(savedSpecial)
+      setMaintenance(savedMaintenance)
+      toast.error('점검 항목을 저장하지 못했습니다. 다시 확인하세요')
+    } finally {
+      await syncWing15()
+      setSaving(false)
+    }
   }
 
   const confirm = async () => {
     setConfirming(true)
     try {
-      const res = await fetch('/api/wing15/confirm', { method: 'POST' })
+      const res = await fetch('/api/wing15/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sig }),
+      })
       if (res.ok) {
         toast.success('송신소 현장 확인 완료')
         await syncWing15()
@@ -185,6 +200,7 @@ export function LightningAlertPanel() {
               <Checkbox
                 className="size-[18px] rounded-[4px] border-[rgba(31,19,0,0.7)] bg-[rgba(255,255,255,0.45)] data-[state=checked]:border-[#1f1300] data-[state=checked]:bg-[#1f1300] data-[state=checked]:text-[#fef9c3] [&_svg]:size-[13px]"
                 checked={special}
+                disabled={saving || confirming}
                 onCheckedChange={(v) => saveChecklist(v === true, maintenance)}
               />
               특별점검
@@ -193,6 +209,7 @@ export function LightningAlertPanel() {
               <Checkbox
                 className="size-[18px] rounded-[4px] border-[rgba(31,19,0,0.7)] bg-[rgba(255,255,255,0.45)] data-[state=checked]:border-[#1f1300] data-[state=checked]:bg-[#1f1300] data-[state=checked]:text-[#fef9c3] [&_svg]:size-[13px]"
                 checked={maintenance}
+                disabled={saving || confirming}
                 onCheckedChange={(v) => saveChecklist(special, v === true)}
               />
               유지보수일지
@@ -200,7 +217,7 @@ export function LightningAlertPanel() {
             <button
               type="button"
               className="mt-0.5 h-8 w-full rounded-[6px] text-[15px] font-semibold transition-colors enabled:bg-[#1f1300] enabled:text-[#fef9c3] enabled:hover:bg-[#1f1300]/90 disabled:cursor-not-allowed disabled:bg-[rgba(31,19,0,0.45)] disabled:text-[#fffbeb]"
-              disabled={!special || !maintenance || confirming}
+              disabled={!special || !maintenance || saving || confirming || !wing15?.ok}
               onClick={confirm}
             >
               {confirming ? '처리 중...' : '확인'}

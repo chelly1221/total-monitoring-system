@@ -55,3 +55,6 @@ src-tauri/gen/
 
 # tv-mode dev artifacts
 screenshots/
+
+# isolated review builds and verification logs
+/.review/

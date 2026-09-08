@@ -237,7 +237,7 @@ fn attach_log(cmd: &mut Command, log: Option<std::fs::File>) {
     }
 }
 
-fn spawn_server(resource_dir: &PathBuf, database_url: &str, log: Option<std::fs::File>) -> Result<Child, String> {
+fn spawn_server(resource_dir: &PathBuf, database_url: &str, data_dir: &PathBuf, log: Option<std::fs::File>) -> Result<Child, String> {
     let server_script = resource_dir.join("standalone").join("server.js");
 
     let mut cmd = Command::new("node");
@@ -245,6 +245,7 @@ fn spawn_server(resource_dir: &PathBuf, database_url: &str, log: Option<std::fs:
         .env("PORT", "7777")
         .env("HOSTNAME", "0.0.0.0")
         .env("DATABASE_URL", database_url)
+        .env("AUDIO_DIR", data_dir.join("audio"))
         .current_dir(resource_dir.join("standalone"))
         .kill_on_drop(true);
     attach_log(&mut cmd, log);
@@ -322,7 +323,7 @@ async fn supervise(
 
         let log = open_log_file(&data_dir, kind.name());
         let spawn_res = match kind {
-            ProcKind::Server => spawn_server(&resource_dir, &database_url, log),
+            ProcKind::Server => spawn_server(&resource_dir, &database_url, &data_dir, log),
             ProcKind::Worker => spawn_worker(&resource_dir, &database_url, log),
         };
 
@@ -393,7 +394,8 @@ async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, pa
     }
 
     let url = format!("http://localhost:7777{}", path);
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url.parse().unwrap()))
+    let parsed_url = url.parse().map_err(|e| format!("Invalid window URL: {}", e))?;
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
         .title(&title)
         .inner_size(1920.0, 1080.0)
         // No native title bar — the in-app header acts as the title bar (drag region +

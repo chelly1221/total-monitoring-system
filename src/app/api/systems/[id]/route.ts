@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { notifySystemDeleted, notifySystemStatusChanged, notifyAlarmResolution, notifySirenSync, notifySystemsChanged } from '@/lib/ws-notify'
-import { validateCustomCode } from '@/lib/validate-custom-code'
-import type { MetricsConfig, SystemStatus, DisplayItem } from '@/types'
-import { evaluateSensorStatus } from '@/lib/threshold-evaluator'
+import { validateSystemBody, parsePort, normalizeEncoding, normalizeOfflineThreshold } from '@/lib/system-validation'
+import type { MetricsConfig, SystemStatus } from '@/types'
+import { evaluateDisplayItemStatus } from '@/lib/threshold-evaluator'
 import { syncMetricsFromConfig } from '@/lib/sync-metrics'
-
-// Normalize the wire-encoding field: only 'utf8' | 'buffer' are valid, else null (default).
-function normalizeEncoding(e: unknown): string | null {
-  return e === 'utf8' || e === 'buffer' ? e : null
-}
-
-// Normalize the per-device offline threshold (ms): floor at 1 minute, reject
-// non-positive/garbage. null = use the global default.
-function normalizeOfflineThreshold(v: unknown): number | null {
-  if (v == null) return null
-  const n = typeof v === 'number' ? v : parseInt(String(v), 10)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.max(60000, n)
-}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -54,44 +40,15 @@ async function recalculateSystemStatus(systemId: string, systemName: string): Pr
     }
   }
 
-  const hasConditions = metricsConfig?.displayItems?.some((item: DisplayItem) => item.conditions)
-
   let worstStatus: SystemStatus = 'normal'
-
-  if (hasConditions && metricsConfig) {
-    // Condition-based evaluation
-    for (const displayItem of metricsConfig.displayItems) {
-      if (!displayItem.conditions) continue
-      const metric = metrics.find(m => m.name === displayItem.name)
-      if (!metric) continue
-      const itemStatus: SystemStatus = evaluateSensorStatus(metric.value, displayItem.conditions)
-      if (itemStatus === 'critical') {
-        worstStatus = 'critical'
-        break
-      } else if (itemStatus === 'warning') {
-        worstStatus = 'warning'
-      }
-    }
-  } else {
-    // Legacy threshold evaluation
-    for (const metric of metrics) {
-      const value = metric.value
-      const warning = metric.warningThreshold
-      const critical = metric.criticalThreshold
-
-      let metricStatus: SystemStatus = 'normal'
-
-      if (critical !== null && value >= critical) {
-        metricStatus = 'critical'
-      } else if (warning !== null && value <= warning) {
-        metricStatus = 'critical'
-      }
-
-      if (metricStatus === 'critical') {
-        worstStatus = 'critical'
-        break
-      }
-    }
+  for (const metric of metrics) {
+    const item = metricsConfig?.displayItems.find(item => item.name === metric.name)
+    if (metricsConfig && !item) continue
+    const status = evaluateDisplayItemStatus(metric, item ?? {
+      name: metric.name, index: 0, unit: metric.unit,
+      warning: metric.warningThreshold, critical: metric.criticalThreshold,
+    })
+    if (status === 'critical') { worstStatus = 'critical'; break }
   }
 
   if (system.status !== worstStatus) {
@@ -151,6 +108,8 @@ export async function PUT(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params
     const body = await request.json()
+    const validationError = validateSystemBody(body, request.method === 'PATCH')
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 })
 
     const { name, type, port, protocol, topic, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
@@ -226,17 +185,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       if (!port) {
         return NextResponse.json({ error: 'Port and protocol are required' }, { status: 400 })
       }
-      portNum = parseInt(port, 10)
-    }
-
-    if (config?.customCode?.trim()) {
-      const result = validateCustomCode(config.customCode)
-      if (!result.valid) {
-        return NextResponse.json(
-          { error: `커스텀 코드 구문 오류: ${result.error}` },
-          { status: 400 }
-        )
-      }
+      portNum = parsePort(port)
     }
 
     const updateData: Record<string, unknown> = {
@@ -258,19 +207,22 @@ export async function PUT(request: Request, { params }: RouteParams) {
       updateData.encoding = normalizeEncoding(encoding)
     }
 
-    const system = await prisma.system.update({
-      where: { id },
-      data: updateData,
+    await prisma.$transaction(async (tx) => {
+      await tx.system.update({ where: { id }, data: updateData })
+      if (config?.displayItems && (type === 'ups' || type === 'sensor')) {
+        await syncMetricsFromConfig(id, config as MetricsConfig, tx)
+      }
     })
 
     // Sync metrics from config and recalculate status for UPS/sensor types
     if (config && config.displayItems && (type === 'ups' || type === 'sensor')) {
-      await syncMetricsFromConfig(id, config as MetricsConfig)
       await recalculateSystemStatus(id, name)
     }
 
     // Port/protocol/encoding/enabled may have changed — re-bind sockets.
     notifySystemsChanged()
+
+    notifySirenSync()
 
     // Re-fetch with relations so client gets complete data
     const updatedSystem = await prisma.system.findUnique({
@@ -295,6 +247,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params
     const body = await request.json()
+    const validationError = validateSystemBody(body, request.method === 'PATCH')
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 })
 
     const existingSystem = await prisma.system.findUnique({
       where: { id },
@@ -326,19 +280,17 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       updateData.encoding = normalizeEncoding(body.encoding)
     }
 
-    const system = await prisma.system.update({
-      where: { id },
-      data: updateData,
+    await prisma.$transaction(async (tx) => {
+      await tx.system.update({ where: { id }, data: updateData })
+      if (body.config?.displayItems && (existingSystem.type === 'ups' || existingSystem.type === 'sensor')) {
+        await syncMetricsFromConfig(id, body.config as MetricsConfig, tx)
+      }
     })
-
-    // isEnabled/encoding may have changed — re-bind sockets.
-    notifySystemsChanged()
 
     // Sync metrics from config and recalculate status for UPS/sensor types
     if (body.config && body.config.displayItems) {
       const systemType = existingSystem.type
       if (systemType === 'ups' || systemType === 'sensor') {
-        await syncMetricsFromConfig(id, body.config as MetricsConfig)
         const systemName = body.name || existingSystem.name
         await recalculateSystemStatus(id, systemName)
       }
@@ -386,6 +338,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     // Notify all connected clients (fire-and-forget)
     notifySystemDeleted(id, systemName)
+    notifySirenSync()
 
     return NextResponse.json({ success: true })
   } catch (error) {

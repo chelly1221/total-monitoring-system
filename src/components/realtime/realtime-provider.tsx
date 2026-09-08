@@ -76,7 +76,7 @@ export function RealtimeProvider({
 
   // Ref to avoid handleMessage depending on systems state (prevents recreation on every metric update)
   const systemsRef = useRef<PrismaSystem[]>(initialSystems)
-  systemsRef.current = systems
+  useEffect(() => { systemsRef.current = systems }, [systems])
 
   // Extract all metrics from systems (memoized to prevent child re-renders)
   const metrics = useMemo(() => systems.flatMap((s) => s.metrics ?? []), [systems])
@@ -184,6 +184,48 @@ export function RealtimeProvider({
       .catch(() => {})
   }, [])
 
+  // WebSocket 재연결 시 전체 상태 동기화
+  const syncState = useCallback(async () => {
+    try {
+      const [systemsRes, alarmsRes, settingsRes] = await Promise.all([
+        fetch('/api/systems'),
+        fetch('/api/alarms?acknowledged=false&resolved=false&limit=100'),
+        fetch('/api/settings'),
+      ])
+      if (systemsRes.ok) {
+        const freshSystems = await systemsRes.json()
+        setSystems(freshSystems)
+      }
+      if (alarmsRes.ok) {
+        const freshAlarms = await alarmsRes.json()
+        setAlarms(freshAlarms)
+      }
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json()
+        const enabled = settings.audioEnabled !== 'false'
+        if (enabled) {
+          setAudioMuted(false)
+          setMuteEndTime(null)
+        } else {
+          const end = settings.muteEndTime ? parseInt(settings.muteEndTime) : 0
+          if (end && end <= Date.now()) {
+            // Mute expired, re-enable
+            setAudioMuted(false)
+            setMuteEndTime(null)
+          } else {
+            setAudioMuted(true)
+            setMuteEndTime(end || null)
+          }
+        }
+        setFeatureFlags(parseFeatureFlags(settings))
+      }
+      await syncWing15()
+      setLastUpdate(new Date())
+    } catch (e) {
+      console.error('[realtime] State sync failed:', e)
+    }
+  }, [syncWing15])
+
   const handleMessage = useCallback(
     (message: WebSocketMessage) => {
       const { type, data } = message
@@ -263,6 +305,10 @@ export function RealtimeProvider({
           }
           break
 
+        case 'systems-changed':
+          void syncState()
+          break
+
         case 'ping':
           // Connection keepalive, no action needed
           break
@@ -322,61 +368,14 @@ export function RealtimeProvider({
           console.log('[realtime] Unknown message type:', type)
       }
     },
-    [updateMetric, updateSystem, addAlarm, removeSystem]
+    [updateMetric, updateSystem, addAlarm, removeSystem, syncState]
   )
-
-  // WebSocket 재연결 시 전체 상태 동기화
-  const syncState = useCallback(async () => {
-    try {
-      const [systemsRes, alarmsRes, settingsRes] = await Promise.all([
-        fetch('/api/systems'),
-        fetch('/api/alarms?acknowledged=false&resolved=false&limit=100'),
-        fetch('/api/settings'),
-      ])
-      if (systemsRes.ok) {
-        const freshSystems = await systemsRes.json()
-        setSystems(freshSystems)
-      }
-      if (alarmsRes.ok) {
-        const freshAlarms = await alarmsRes.json()
-        setAlarms(freshAlarms)
-      }
-      if (settingsRes.ok) {
-        const settings = await settingsRes.json()
-        const enabled = settings.audioEnabled !== 'false'
-        if (enabled) {
-          setAudioMuted(false)
-          setMuteEndTime(null)
-        } else {
-          const end = settings.muteEndTime ? parseInt(settings.muteEndTime) : 0
-          if (end && end <= Date.now()) {
-            // Mute expired, re-enable
-            setAudioMuted(false)
-            setMuteEndTime(null)
-          } else {
-            setAudioMuted(true)
-            setMuteEndTime(end || null)
-          }
-        }
-        setFeatureFlags(parseFeatureFlags(settings))
-      }
-      setLastUpdate(new Date())
-    } catch (e) {
-      console.error('[realtime] State sync failed:', e)
-    }
-  }, [])
-
-  const hasConnectedOnce = useRef(false)
 
   const { connected, reconnecting } = useWebSocket({
     onMessage: handleMessage,
     onConnect: () => {
       console.log('[realtime] WebSocket connected')
-      if (hasConnectedOnce.current) {
-        // 재연결 시 전체 상태 동기화
-        syncState()
-      }
-      hasConnectedOnce.current = true
+      void syncState()
     },
     onDisconnect: () => console.log('[realtime] WebSocket disconnected'),
   })

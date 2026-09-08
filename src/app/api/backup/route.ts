@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { validateBackup } from '@/lib/backup-validation'
+import { notifySystemsChanged, notifySirenSync } from '@/lib/ws-notify'
 
 export async function GET() {
   try {
-    const [systems, settings, sirens, alarmLogs] = await Promise.all([
+    const [systems, settings, sirens, alarmLogs] = await prisma.$transaction([
       prisma.system.findMany({ include: { metrics: true } }),
       prisma.setting.findMany(),
       prisma.siren.findMany(),
@@ -30,8 +32,9 @@ export async function POST(request: Request) {
   try {
     const data = await request.json()
 
-    if (!data.version || !data.systems) {
-      return NextResponse.json({ error: 'Invalid backup format' }, { status: 400 })
+    const validationError = validateBackup(data)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
     await prisma.$transaction(async (tx) => {
@@ -120,11 +123,14 @@ export async function POST(request: Request) {
           })
         }
       }
-    })
+    }, { timeout: 60_000 })
 
+    notifySystemsChanged()
+    notifySirenSync()
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Import error:', error)
+    if (error instanceof SyntaxError) return NextResponse.json({ error: '잘못된 백업 JSON입니다' }, { status: 400 })
     return NextResponse.json({ error: 'Import failed' }, { status: 500 })
   }
 }
@@ -141,6 +147,8 @@ export async function DELETE() {
       await tx.siren.deleteMany()
     })
 
+    notifySystemsChanged()
+    notifySirenSync()
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Reset error:', error)

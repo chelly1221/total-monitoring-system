@@ -115,6 +115,12 @@ export function getSensorAlarms(alarms: PrismaAlarm[]): PrismaAlarm[] {
   )
 }
 
+// Stable particle variation prevents hydration mismatches and visual jumps.
+function particleVariation(index: number, salt: number): number {
+  const value = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453
+  return value - Math.floor(value)
+}
+
 /* ===== Effect Sub-Components ===== */
 
 function HighTempEffect({ compact }: { compact: boolean }) {
@@ -123,18 +129,18 @@ function HighTempEffect({ compact }: { compact: boolean }) {
   const flames = useMemo(() =>
     Array.from({ length: flameCount }, (_, i) => ({
       left: `${(i / flameCount) * 100}%`,
-      size: 8 + Math.random() * 16,
-      duration: 2 + Math.random() * 3,
-      delay: Math.random() * 4,
-      opacity: 0.5 + Math.random() * 0.5,
+      size: 8 + particleVariation(i, 1) * 16,
+      duration: 2 + particleVariation(i, 2) * 3,
+      delay: particleVariation(i, 3) * 4,
+      opacity: 0.5 + particleVariation(i, 4) * 0.5,
     })), [flameCount]
   )
   const embers = useMemo(() =>
     Array.from({ length: emberCount }, (_, i) => ({
-      left: `${10 + Math.random() * 80}%`,
-      size: 3 + Math.random() * 5,
-      duration: 3 + Math.random() * 4,
-      delay: Math.random() * 5,
+      left: `${10 + particleVariation(i, 5) * 80}%`,
+      size: 3 + particleVariation(i, 6) * 5,
+      duration: 3 + particleVariation(i, 7) * 4,
+      delay: particleVariation(i, 8) * 5,
     })), [emberCount]
   )
 
@@ -185,11 +191,11 @@ function LowTempEffect({ compact }: { compact: boolean }) {
   const snowflakes = useMemo(() =>
     Array.from({ length: snowCount }, (_, i) => ({
       left: `${(i / snowCount) * 100}%`,
-      size: 4 + Math.random() * 8,
-      duration: 4 + Math.random() * 6,
-      delay: Math.random() * 8,
-      drift: -30 + Math.random() * 60,
-      opacity: 0.4 + Math.random() * 0.6,
+      size: 4 + particleVariation(i, 9) * 8,
+      duration: 4 + particleVariation(i, 10) * 6,
+      delay: particleVariation(i, 11) * 8,
+      drift: -30 + particleVariation(i, 12) * 60,
+      opacity: 0.4 + particleVariation(i, 13) * 0.6,
     })), [snowCount]
   )
 
@@ -240,23 +246,23 @@ function DryEffect({ compact }: { compact: boolean }) {
   const heatLineCount = compact ? 4 : 8
   const dust = useMemo(() =>
     Array.from({ length: dustCount }, (_, i) => ({
-      left: `${10 + Math.random() * 80}%`,
-      top: `${10 + Math.random() * 80}%`,
-      size: 3 + Math.random() * 6,
-      duration: 6 + Math.random() * 8,
-      delay: Math.random() * 6,
-      dx: -40 + Math.random() * 80,
-      dy: -30 + Math.random() * 60,
-      dx2: -30 + Math.random() * 60,
-      dy2: -20 + Math.random() * 40,
+      left: `${10 + particleVariation(i, 14) * 80}%`,
+      top: `${10 + particleVariation(i, 15) * 80}%`,
+      size: 3 + particleVariation(i, 16) * 6,
+      duration: 6 + particleVariation(i, 17) * 8,
+      delay: particleVariation(i, 18) * 6,
+      dx: -40 + particleVariation(i, 19) * 80,
+      dy: -30 + particleVariation(i, 20) * 60,
+      dx2: -30 + particleVariation(i, 21) * 60,
+      dy2: -20 + particleVariation(i, 22) * 40,
     })), [dustCount]
   )
   const heatLines = useMemo(() =>
     Array.from({ length: heatLineCount }, (_, i) => ({
       left: `${10 + (i / heatLineCount) * 80}%`,
-      height: 40 + Math.random() * 60,
-      duration: 3 + Math.random() * 3,
-      delay: Math.random() * 4,
+      height: 40 + particleVariation(i, 23) * 60,
+      duration: 3 + particleVariation(i, 24) * 3,
+      delay: particleVariation(i, 25) * 4,
     })), [heatLineCount]
   )
 
@@ -325,20 +331,20 @@ function HumidEffect({ compact }: { compact: boolean }) {
   const raindrops = useMemo(() =>
     Array.from({ length: raindropCount }, (_, i) => ({
       left: `${(i / raindropCount) * 100}%`,
-      width: 1 + Math.random() * 1.5,
-      height: 15 + Math.random() * 25,
-      duration: 0.6 + Math.random() * 0.8,
-      delay: Math.random() * 2,
-      drift: -8 + Math.random() * 4,
-      opacity: 0.3 + Math.random() * 0.4,
+      width: 1 + particleVariation(i, 26) * 1.5,
+      height: 15 + particleVariation(i, 27) * 25,
+      duration: 0.6 + particleVariation(i, 28) * 0.8,
+      delay: particleVariation(i, 29) * 2,
+      drift: -8 + particleVariation(i, 30) * 4,
+      opacity: 0.3 + particleVariation(i, 31) * 0.4,
     })), [raindropCount]
   )
   const ripples = useMemo(() =>
     Array.from({ length: rippleCount }, (_, i) => ({
-      left: `${10 + Math.random() * 80}%`,
-      duration: 2 + Math.random() * 2,
-      delay: Math.random() * 4,
-      size: 10 + Math.random() * 20,
+      left: `${10 + particleVariation(i, 32) * 80}%`,
+      duration: 2 + particleVariation(i, 33) * 2,
+      delay: particleVariation(i, 34) * 4,
+      size: 10 + particleVariation(i, 35) * 20,
     })), [rippleCount]
   )
 

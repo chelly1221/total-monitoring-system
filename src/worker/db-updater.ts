@@ -11,12 +11,13 @@ import {
   broadcastAlarmResolutionByIds,
 } from './websocket-server'
 import { syncSirenState } from './siren-trigger'
-import type { EquipmentConfig, MetricsConfig, SystemStatus, DisplayItem } from '@/types'
-import { evaluateSensorStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
+import type { EquipmentConfig, MetricsConfig, SystemStatus } from '@/types'
+import { evaluateDisplayItemStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
-import { executeCustomCode } from './custom-code-executor'
+import { executeCustomCode, clearCustomCodeCache } from './custom-code-executor'
 import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
+import { applySqlitePragmas } from '@/lib/sqlite'
 
 const log = createLogger('db-updater')
 
@@ -45,9 +46,7 @@ export const prisma = new PrismaClient({
  */
 export async function initDatabasePragmas(): Promise<void> {
   try {
-    await prisma.$executeRawUnsafe('PRAGMA journal_mode=WAL;')
-    await prisma.$executeRawUnsafe('PRAGMA busy_timeout=5000;')
-    await prisma.$executeRawUnsafe('PRAGMA synchronous=NORMAL;')
+    await applySqlitePragmas(prisma)
     log.info('SQLite pragmas applied (journal_mode=WAL, busy_timeout=5000, synchronous=NORMAL)')
   } catch (error) {
     log.error('Failed to apply SQLite pragmas:', error)
@@ -60,6 +59,7 @@ const CRITICAL_THRESHOLD = 3
 
 // Per-metric confirmed critical state: "systemId:metricName" → true when counter reached threshold
 const metricCriticalState = new Map<string, boolean>()
+const metricCriticalSamples = new Map<string, { value: number; textValue?: string | null }>()
 
 // Per-system mutex to serialize async processing and prevent interleaving
 const systemMutexes = new Map<string, Promise<void>>()
@@ -178,6 +178,9 @@ export function cleanupSystemMaps(systemId: string): void {
   for (const key of metricCriticalState.keys()) {
     if (key === systemId || key.startsWith(`${systemId}:`)) metricCriticalState.delete(key)
   }
+  for (const key of metricCriticalSamples.keys()) {
+    if (key.startsWith(`${systemId}:`)) metricCriticalSamples.delete(key)
+  }
   // Spike maps are keyed by `${systemId}:${metricId}`, so match that prefix.
   for (const key of spikeFilterBuffers.keys()) {
     if (key.startsWith(`${systemId}:`)) spikeFilterBuffers.delete(key)
@@ -187,6 +190,7 @@ export function cleanupSystemMaps(systemId: string): void {
   }
   systemMutexes.delete(systemId)
   configCache.delete(systemId)
+  clearCustomCodeCache(systemId)
   log.debug(`Cleaned up maps for system ${systemId}`)
 }
 
@@ -320,7 +324,7 @@ function calculateEquipmentStatus(rawData: string, config: EquipmentConfig): Sys
  * Process a single system's metric update
  */
 async function processSystemMetric(
-  system: { id: string; name: string; type: string; config: string | null; metrics: { id: string; name: string; value: number; unit: string; min: number | null; max: number | null; warningThreshold: number | null; criticalThreshold: number | null }[] },
+  system: { id: string; name: string; type: string; config: string | null; metrics: { id: string; name: string; value: number; textValue?: string | null; unit: string; min: number | null; max: number | null; warningThreshold: number | null; criticalThreshold: number | null }[] },
   data: ParsedData,
   numericValue: number | null
 ): Promise<boolean> {
@@ -448,7 +452,6 @@ async function processSystemMetric(
     const processedMetricNames = new Set<string>()
 
     // === Phase 1: Update matched metric values ===
-    let customCodeRan = false
     if (metricsConfig.customCode?.trim()) {
       // Custom code path: run user code to extract metric values
       const codeResult = executeCustomCode(system.id, metricsConfig.customCode, data.value)
@@ -456,7 +459,6 @@ async function processSystemMetric(
         log.error(`Custom code execution failed for system ${system.name} (${system.id}), raw: ${data.value.substring(0, 100)}`)
         return false
       }
-      customCodeRan = true
       for (const [metricName, val] of Object.entries(codeResult)) {
         const displayItem = metricsConfig.displayItems.find(d => d.name === metricName)
         if (!displayItem) continue
@@ -464,16 +466,15 @@ async function processSystemMetric(
         if (!metric) continue
 
         anyProcessed = true
-        processedMetricNames.add(metricName)
 
         if (typeof val === 'string') {
           // Text metric: store in textValue, keep numeric value as 0
-          const changed = (metric as unknown as { textValue?: string | null }).textValue !== val
           await prisma.metric.update({
             where: { id: metric.id },
-            data: { textValue: val, trend: changed ? 'stable' : 'stable', updatedAt: new Date() },
+            data: { textValue: val, trend: 'stable', updatedAt: new Date() },
           })
-          ;(metric as unknown as { textValue?: string | null }).textValue = val
+          metric.textValue = val
+          processedMetricNames.add(metricName)
           broadcastMetric(system.id, system.name, metric.id, metric.name, metric.value, metric.unit, 'stable', val)
         } else {
           // Spike filter for sensor systems (sustained shifts are adopted, not frozen)
@@ -490,6 +491,8 @@ async function processSystemMetric(
           })
 
           metric.value = val
+          metric.textValue = null
+          processedMetricNames.add(metricName)
 
           await prisma.metricHistory.create({
             data: { metricId: metric.id, value: val },
@@ -521,10 +524,9 @@ async function processSystemMetric(
         const numMatch = rawVal.match(/-?\d+\.?\d*/)
         if (!numMatch) continue
         const val = parseFloat(numMatch[0])
-        if (isNaN(val)) continue
+        if (!Number.isFinite(val)) continue
 
         anyProcessed = true
-        processedMetricNames.add(displayItem.name)
 
         // Find matching metric in DB
         const metric = system.metrics.find(m => m.name === displayItem.name)
@@ -540,11 +542,13 @@ async function processSystemMetric(
 
         await prisma.metric.update({
           where: { id: metric.id },
-          data: { value: val, trend, updatedAt: new Date() },
+          data: { value: val, textValue: null, trend, updatedAt: new Date() },
         })
 
         // Keep local copy in sync so Phase 2 sees fresh values
         metric.value = val
+        metric.textValue = null
+        processedMetricNames.add(displayItem.name)
 
         // Record metric history for charts
         await prisma.metricHistory.create({
@@ -565,44 +569,15 @@ async function processSystemMetric(
           if (!processedMetricNames.has(displayItem.name)) continue
           const metric = system.metrics.find(m => m.name === displayItem.name)
           if (!metric) continue
-          const val = metric.value
           const counterKey = `${system.id}:${displayItem.name}`
+          const itemStatus = evaluateDisplayItemStatus(metric, displayItem)
 
-          // Evaluate this metric's raw status
-          let itemStatus: SystemStatus = 'normal'
-          // Respect alarmEnabled flag for all items (including those with conditions)
-          if (displayItem.alarmEnabled === false) {
-            itemStatus = 'normal'
-          } else {
-            const textVal = (metric as unknown as { textValue?: string | null }).textValue
-            if (displayItem.conditions) {
-              if (textVal != null) {
-                // Text metric: evaluate string conditions (eq/neq)
-                for (const cond of displayItem.conditions.critical || []) {
-                  const target = cond.stringValue ?? String(cond.value1)
-                  if (cond.operator === 'eq' && textVal === target) { itemStatus = 'critical'; break }
-                  if (cond.operator === 'neq' && textVal !== target) { itemStatus = 'critical'; break }
-                }
-              } else {
-                itemStatus = evaluateSensorStatus(val, displayItem.conditions)
-                // If conditions exist but have no critical conditions, fall back to legacy thresholds
-                if (itemStatus === 'normal' && !(displayItem.conditions.critical?.length || displayItem.conditions.coldCritical?.length || displayItem.conditions.dryCritical?.length || displayItem.conditions.humidCritical?.length)) {
-                  if (displayItem.critical !== null && val >= displayItem.critical) itemStatus = 'critical'
-                  else if (displayItem.warning !== null && val <= displayItem.warning) itemStatus = 'critical'
-                }
-              }
-            } else {
-              if (displayItem.critical !== null && val >= displayItem.critical) itemStatus = 'critical'
-              else if (displayItem.warning !== null && val <= displayItem.warning) itemStatus = 'critical'
-            }
-          }
-
-          // Per-metric critical counter
           if (itemStatus === 'critical') {
             const count = Math.min((criticalCounters.get(counterKey) ?? 0) + 1, CRITICAL_THRESHOLD)
             criticalCounters.set(counterKey, count)
             if (count >= CRITICAL_THRESHOLD) {
               metricCriticalState.set(counterKey, true)
+              metricCriticalSamples.set(counterKey, { value: metric.value, textValue: metric.textValue })
             }
             log.debug(`${system.name}:${displayItem.name} critical count ${count}/${CRITICAL_THRESHOLD}`)
           } else {
@@ -618,6 +593,7 @@ async function processSystemMetric(
               } else {
                 criticalCounters.delete(counterKey)
                 metricCriticalState.delete(counterKey)
+                metricCriticalSamples.delete(counterKey)
                 log.debug(`${system.name}:${displayItem.name} non-critical, counter cleared (was ${prev})`)
               }
             }
@@ -633,41 +609,34 @@ async function processSystemMetric(
         const triggerValues: Record<string, string> = {}
 
         for (const displayItem of metricsConfig!.displayItems) {
+          if (displayItem.alarmEnabled === false) continue
           const counterKey = `${system.id}:${displayItem.name}`
           const metric = system.metrics.find(m => m.name === displayItem.name)
           if (!metric) continue
 
           if (metricCriticalState.get(counterKey)) {
             worstStatus = 'critical'
-            const valueStr = `${metric.value}${displayItem.unit}`
+            // Preserve the confirmed trigger through the recovery debounce.
+            // Otherwise one normal sample relabels/resolves a still-active alarm.
+            const confirmedMetric = metricCriticalSamples.get(counterKey) ?? metric
+            const valueStr = `${confirmedMetric.textValue ?? confirmedMetric.value}${displayItem.unit}`
             // Determine trigger type for alarm message
             if (displayItem.conditions) {
               if (system.type === 'sensor') {
                 // Sensor: distinguish 고온/저온/건조/다습
-                if (isColdCritical(metric.value, displayItem.conditions)) { coldTriggered = true; triggerValues['저온 경고'] = valueStr }
-                else if (isDryCritical(metric.value, displayItem.conditions)) { dryTriggered = true; triggerValues['건조 경고'] = valueStr }
-                else if (isHumidCritical(metric.value, displayItem.conditions)) { humidTriggered = true; triggerValues['다습 경고'] = valueStr }
+                if (isColdCritical(confirmedMetric.value, displayItem.conditions)) { coldTriggered = true; triggerValues['저온 경고'] = valueStr }
+                else if (isDryCritical(confirmedMetric.value, displayItem.conditions)) { dryTriggered = true; triggerValues['건조 경고'] = valueStr }
+                else if (isHumidCritical(confirmedMetric.value, displayItem.conditions)) { humidTriggered = true; triggerValues['다습 경고'] = valueStr }
                 else { hotTriggered = true; triggerValues['고온 경고'] = valueStr }
               } else {
                 // UPS/other: per-item threshold key
                 triggerValues[`${displayItem.name} 임계치 초과`] = valueStr
               }
             } else {
-              if (displayItem.critical !== null && metric.value >= displayItem.critical) { hotTriggered = true; triggerValues[`${displayItem.name} 임계치 초과`] = valueStr }
-              if (displayItem.warning !== null && metric.value <= displayItem.warning) { coldTriggered = true; triggerValues[`${displayItem.name} 임계치 초과`] = valueStr }
+              if (displayItem.critical != null && confirmedMetric.value >= displayItem.critical) { hotTriggered = true; triggerValues[`${displayItem.name} 임계치 초과`] = valueStr }
+              if (displayItem.warning != null && confirmedMetric.value <= displayItem.warning) { coldTriggered = true; triggerValues[`${displayItem.name} 임계치 초과`] = valueStr }
             }
-          } else {
-            // Check threshold status (no counter needed)
-            if (!displayItem.conditions && displayItem.alarmEnabled !== false) {
-              const valueStr = `${metric.value}${displayItem.unit}`
-              if (displayItem.critical !== null && metric.value >= displayItem.critical && worstStatus !== 'critical') {
-                worstStatus = 'critical'
-                triggerValues[`${displayItem.name} 임계치 초과`] = valueStr
-              } else if (displayItem.warning !== null && metric.value <= displayItem.warning && worstStatus !== 'critical') {
-                worstStatus = 'critical'
-                triggerValues[`${displayItem.name} 임계치 초과`] = valueStr
-              }
-            }
+
           }
         }
 
@@ -679,10 +648,9 @@ async function processSystemMetric(
         await updateSensorSystemStatus(system.id, system.name, worstStatus, coldTriggered, dryTriggered, humidTriggered, hotTriggered, system.type, triggerValues, allItemLabels)
       })
     }
-    // For custom code: even if this particular line didn't match any metrics
-    // (e.g. apcupsd HOSTNAME line), the code ran successfully so we should
-    // update lastDataAt to prevent false offline detection.
-    return anyProcessed || customCodeRan
+    // On shared ports an empty parser result cannot prove which device sent it.
+    // The sole-owner path already advances liveness for every received packet.
+    return anyProcessed
   }
 
   if (numericValue !== null && system.metrics.length > 0) {
@@ -1171,14 +1139,7 @@ export async function syncOfflineAlarms(): Promise<void> {
           const metric = sys.metrics.find(m => m.name === displayItem.name)
           if (!metric) continue
 
-          let exceeded = false
-          if (displayItem.conditions) {
-            const itemStatus = evaluateSensorStatus(metric.value, displayItem.conditions)
-            exceeded = itemStatus === 'critical'
-          } else {
-            if (displayItem.critical !== null && metric.value >= displayItem.critical) exceeded = true
-            else if (displayItem.warning !== null && metric.value <= displayItem.warning) exceeded = true
-          }
+          const exceeded = evaluateDisplayItemStatus(metric, displayItem) === 'critical'
           if (!exceeded) continue
 
           const statusLabel = `${displayItem.name} 임계치 초과`

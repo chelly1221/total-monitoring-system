@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { applySqlitePragmas } from './sqlite'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -20,9 +21,7 @@ export const prisma =
 // blocking each other: WAL enables concurrent reader/writer, busy_timeout makes a
 // contended query wait instead of throwing SQLITE_BUSY. Run once per process.
 if (!globalForPrisma.prisma) {
-  void prisma.$executeRawUnsafe('PRAGMA journal_mode=WAL;').catch(() => {})
-  void prisma.$executeRawUnsafe('PRAGMA busy_timeout=5000;').catch(() => {})
-  void prisma.$executeRawUnsafe('PRAGMA synchronous=NORMAL;').catch(() => {})
+  void applySqlitePragmas(prisma).catch(error => console.error('[db] SQLite initialization failed:', error))
 }
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

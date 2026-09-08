@@ -57,7 +57,19 @@ export interface Wing15Strike {
  * wing15 낙뢰 피드에서 최신 N건을 받아 경보 조건(반경 5km 이내 + 지상낙뢰)에 맞는
  * 것만 돌려준다. 판정 규칙은 wing15 앱과 동일.
  */
-export async function fetchNearbyStrikes(): Promise<Wing15Strike[]> {
+let feedRequest: Promise<Wing15Strike[]> | null = null
+let lastFeedAttempt = -Infinity
+
+export function fetchNearbyStrikes(): Promise<Wing15Strike[]> {
+  // Settings changes also trigger polls. Enforce the provider's limit here,
+  // including failed requests and overlapping polls, not just on the interval.
+  if (feedRequest && Date.now() - lastFeedAttempt < 60_000) return feedRequest
+  lastFeedAttempt = Date.now()
+  feedRequest = requestNearbyStrikes()
+  return feedRequest
+}
+
+async function requestNearbyStrikes(): Promise<Wing15Strike[]> {
   const qs = new URLSearchParams({
     select: '*',
     airport_code: `eq.${AIRPORT_CODE}`,
@@ -76,10 +88,11 @@ export async function fetchNearbyStrikes(): Promise<Wing15Strike[]> {
   if (!Array.isArray(rows)) throw new Error('wing15 낙뢰 피드 응답 형식 오류')
 
   return (rows as LightningFeedRow[]).flatMap((row) => {
+    if (!row || typeof row !== 'object') return []
     if (row.airport_code !== AIRPORT_CODE || row.type !== GROUND_STRIKE_TYPE) return []
     const dist = Number(row.distance_km)
     const t = new Date(row.detected_at).getTime()
-    if (isNaN(dist) || dist > RADIUS_KM || isNaN(t)) return []
+    if (row.distance_km == null || row.distance_km === '' || !Number.isFinite(dist) || dist < 0 || dist > RADIUS_KM || !Number.isFinite(t) || t > Date.now()) return []
     return [{ detectedAt: t, distanceKm: dist }]
   })
 }
@@ -98,8 +111,9 @@ export function parseStrikes(json: string | null | undefined): Wing15Strike[] {
       (s): s is Wing15Strike =>
         typeof s === 'object' &&
         s !== null &&
-        typeof (s as Wing15Strike).detectedAt === 'number' &&
-        typeof (s as Wing15Strike).distanceKm === 'number'
+        Number.isFinite((s as Wing15Strike).detectedAt) &&
+        Number.isFinite((s as Wing15Strike).distanceKm) &&
+        (s as Wing15Strike).distanceKm >= 0 && (s as Wing15Strike).distanceKm <= RADIUS_KM
     )
   } catch {
     return []
@@ -115,7 +129,8 @@ export function mergeStrikes(
   const since = now - LOOKBACK_MS
   const byKey = new Map<string, Wing15Strike>()
   for (const s of [...history, ...incoming]) {
-    if (s.detectedAt < since) continue
+    if (!Number.isFinite(s.detectedAt) || s.detectedAt < since || s.detectedAt > now ||
+      !Number.isFinite(s.distanceKm) || s.distanceKm < 0 || s.distanceKm > RADIUS_KM) continue
     byKey.set(`${s.detectedAt}:${s.distanceKm}`, s)
   }
   return [...byKey.values()].sort((a, b) => a.detectedAt - b.detectedAt)
@@ -130,9 +145,7 @@ function computeItems(
   confirmedAt: number | null,
   now: number
 ): Wing15Item[] {
-  const recent = strikes
-    .filter((s) => s.detectedAt >= now - LOOKBACK_MS)
-    .sort((a, b) => a.detectedAt - b.detectedAt)
+  const recent = mergeStrikes(strikes, [], now)
   if (recent.length === 0) return []
 
   const first = recent[0]
@@ -160,7 +173,7 @@ function computeItems(
 function computeSig(items: Wing15Item[]): string {
   return items
     .filter((i) => !i.confirmed)
-    .map((i) => i.key)
+    .map((i) => `${i.key}:${i.startAt}:${i.endAt}:${i.strikeCount}`)
     .sort()
     .join('|')
 }
@@ -287,7 +300,7 @@ async function restAsTx<T>(
  * 유지 기간 내 반경 5km 지상낙뢰 이벤트 전부를 TX(송신소) 계정으로 wing15에
  * 확인 처리한다. 확인 버튼 클릭 시에만 호출할 것 (주기 실행 금지).
  */
-export async function confirmOnWing15(now = Date.now()): Promise<Wing15ConfirmResult> {
+export async function confirmOnWing15(now = Date.now(), through = now): Promise<Wing15ConfirmResult> {
   const { token, userId } = await loginAsTx()
   const sinceIso = new Date(now - LOOKBACK_MS).toISOString()
 
@@ -305,7 +318,9 @@ export async function confirmOnWing15(now = Date.now()): Promise<Wing15ConfirmRe
       if (!info || !UUID_RE.test(row.id)) return false
       if (info.type !== GROUND_STRIKE_TYPE) return false
       const dist = Number(info.distance_km)
-      return !isNaN(dist) && dist <= RADIUS_KM
+      const detectedAt = Date.parse(info.detectedAt ?? '')
+      return info.distance_km != null && info.distance_km !== '' && Number.isFinite(dist) && dist >= 0 && dist <= RADIUS_KM &&
+        Number.isFinite(detectedAt) && detectedAt >= now - LOOKBACK_MS && detectedAt <= through
     })
     .map((row) => row.id)
 

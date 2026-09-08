@@ -75,7 +75,6 @@
     return n;
   }
   function setText(id, text) { var n = $(id); if (n) n.textContent = text; }
-  function setHTML(node, html) { if (node) node.innerHTML = html; }
   function parseConfig(s) {
     if (!s) return null;
     if (typeof s !== 'string') return s;
@@ -106,7 +105,6 @@
     if (Math.abs(v) >= 10) return v.toFixed(2);
     return v.toFixed(3);
   }
-  function formatTimeHM(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
   /* ============================================================
    *  HTTP

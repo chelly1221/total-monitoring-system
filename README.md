@@ -99,6 +99,22 @@ npm run worker:dev    # Worker (별도 터미널)
 cargo tauri dev       # Tauri 앱 (위 서버에 연결)
 ```
 
+### 검증
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm audit
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+테스트는 별도 임시 SQLite DB와 비어 있는 WebSocket 포트를 사용하며, 실제 감시 DB·장비·wing15에는 쓰지 않습니다. 장비 설정, 알람 발생/복구, 공유 포트 수신 구분, 백업 복원, 뇌전 점검, 음원 업로드를 검증합니다.
+
+데스크톱에서 업로드한 음원은 앱 데이터 폴더의 `audio/`에 보관합니다. 서버만 실행할 때는 `AUDIO_DIR`로 저장 위치를 지정할 수 있으며, 기본값은 `public/audio`입니다. `WS_PORT`는 수집기/API 알림 포트, `NEXT_PUBLIC_WS_PORT`는 프론트엔드 빌드 시 접속 포트입니다(기본 7778).
+
+`tsx`가 사용하는 `esbuild`는 Windows 개발 서버의 파일 읽기 취약점 수정 버전인 0.28.2로 override했습니다. `tsx` 업데이트 시 override 제거 가능 여부를 함께 확인하세요.
+
 ## WSL 환경 참고
 
 WSL에서 개발하는 경우, Tauri 빌드는 **Windows 측 도구**를 사용해야 합니다:

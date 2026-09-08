@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import path from 'path'
+import { audioDirectories } from '@/lib/audio-storage'
 
 const MIME_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -15,7 +16,7 @@ export async function GET(
 
   // Prevent path traversal
   const sanitized = path.basename(filename)
-  if (sanitized !== filename) {
+  if (sanitized !== filename || /[\\/:\x00]/.test(filename)) {
     return NextResponse.json({ error: 'Invalid filename' }, { status: 400 })
   }
 
@@ -25,10 +26,13 @@ export async function GET(
     return NextResponse.json({ error: 'Unsupported format' }, { status: 400 })
   }
 
-  const filePath = path.join(process.cwd(), 'public', 'audio', sanitized)
+  const { writable, bundled } = audioDirectories()
 
   try {
-    const buffer = await readFile(filePath)
+    const buffer = await readFile(path.join(writable, sanitized)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT' || writable === bundled) throw error
+      return readFile(path.join(bundled, sanitized))
+    })
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,

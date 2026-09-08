@@ -2,16 +2,16 @@
 // Connects as temporary client to the worker WebSocket server
 
 import WebSocket from 'ws'
-import type { WebSocketMessage } from '@/types'
+import type { WebSocketMessage, Wing15State } from '@/types'
 
-const WS_URL = 'ws://localhost:7778'
+const WS_URL = `ws://127.0.0.1:${Number(process.env.WS_PORT) || 7778}`
 
 /**
  * Send a notification to the WebSocket server
  * Fire-and-forget: doesn't block on delivery
  */
 function sendNotification(message: WebSocketMessage): void {
-  const ws = new WebSocket(WS_URL)
+  const ws = new WebSocket(WS_URL, { handshakeTimeout: 3000 })
 
   ws.on('open', () => {
     ws.send(JSON.stringify(message))
@@ -21,6 +21,10 @@ function sendNotification(message: WebSocketMessage): void {
   ws.on('error', (error) => {
     console.error('[ws-notify] Connection error:', error.message)
   })
+}
+
+export function notifyWing15Changed(state: Wing15State): void {
+  sendNotification({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
 }
 
 /**

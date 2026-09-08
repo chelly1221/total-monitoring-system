@@ -13,6 +13,7 @@ import { reconcileTcpListeners } from './tcp-listener'
 import { reconcileMqttListeners } from './mqtt-listener'
 import { getEnabledSystemsForBinding } from './db-updater'
 import { createLogger } from '@/lib/logger'
+import { parsePort } from '@/lib/system-validation'
 
 const log = createLogger('binding')
 
@@ -69,6 +70,10 @@ async function computeDesired(): Promise<{ udp: Map<number, PortConfig>; tcp: Ma
       continue
     }
     if (s.port == null) continue
+    if (parsePort(s.port) === null) {
+      log.warn(`System "${s.name}" has invalid port ${s.port} — not bound`)
+      continue
+    }
     if (s.protocol !== 'udp' && s.protocol !== 'tcp') {
       log.warn(`System "${s.name}" has port ${s.port} but invalid protocol ${JSON.stringify(s.protocol)} — not bound`)
       continue

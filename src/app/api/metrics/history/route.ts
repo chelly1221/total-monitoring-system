@@ -13,6 +13,10 @@ export async function GET(request: Request) {
     // Use from/to if provided, otherwise fall back to hours
     const since = from ? new Date(from) : new Date(Date.now() - hours * 60 * 60 * 1000)
     const until = to ? new Date(to) : undefined
+    if ((!from && (!Number.isFinite(hours) || hours <= 0)) || !Number.isFinite(since.getTime()) ||
+      (until && (!Number.isFinite(until.getTime()) || until < since))) {
+      return NextResponse.json({ error: '조회 기간을 확인하세요' }, { status: 400 })
+    }
 
     const recordedAtFilter: { gte: Date; lte?: Date } = { gte: since }
     if (until) recordedAtFilter.lte = until

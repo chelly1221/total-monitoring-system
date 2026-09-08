@@ -2,14 +2,13 @@
 
 import { useEffect, useRef } from 'react'
 import { useRealtime } from './realtime-provider'
-import { evaluateSensorStatus } from '@/lib/threshold-evaluator'
+import { evaluateDisplayItemStatus } from '@/lib/threshold-evaluator'
 import type { AudioConfig, MetricsConfig } from '@/types'
 
 export function AudioAlertManager() {
   const { alarms, systems, metrics, audioMuted } = useRealtime()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentFileRef = useRef<string | null>(null)
-  const prevCriticalKeyRef = useRef<string>('')
 
   useEffect(() => {
     // If muted, stop any playing audio immediately
@@ -20,7 +19,6 @@ export function AudioAlertManager() {
         audioRef.current = null
         currentFileRef.current = null
       }
-      prevCriticalKeyRef.current = ''
       return
     }
 
@@ -29,20 +27,12 @@ export function AudioAlertManager() {
       (a) => a.severity === 'critical' && !a.resolvedAt && !a.acknowledged
     )
 
-    // Early exit: if the set of critical alarm system IDs hasn't changed,
-    // skip expensive audio file resolution (metric updates don't affect which audio plays)
-    const criticalKey = activeCritical.map((a) => a.systemId).sort().join(',')
-    if (criticalKey === prevCriticalKeyRef.current && audioRef.current) {
-      return
-    }
-    prevCriticalKeyRef.current = criticalKey
-
     if (activeCritical.length > 0) {
       // Find the first alarm that has a valid audio file configured
       let targetFile: string | null = null
       for (const alarm of activeCritical) {
         const system = systems.find((s) => s.id === alarm.systemId)
-        if (!system) continue
+        if (!system || !system.isEnabled || !system.isActive) continue
 
         // Sensor & UPS systems: check per-item audio based on current metric values
         if ((system.type === 'sensor' || system.type === 'ups') && system.config) {
@@ -59,14 +49,7 @@ export function AudioAlertManager() {
                 if (!metric) continue
 
                 // Check if this specific metric is currently in critical state
-                let isCritical = false
-                if (item.conditions) {
-                  isCritical = evaluateSensorStatus(metric.value, item.conditions) === 'critical'
-                } else if (item.critical != null && metric.value >= item.critical) {
-                  isCritical = true
-                } else if (item.warning != null && metric.value <= item.warning) {
-                  isCritical = true
-                }
+                const isCritical = evaluateDisplayItemStatus(metric, item) === 'critical'
 
                 if (isCritical) {
                   targetFile = item.audioConfig.fileName

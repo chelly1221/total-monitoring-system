@@ -79,6 +79,8 @@ interface AlarmsClientProps {
   systems: SystemOption[]
 }
 
+const temperatureFilters = ['hot', 'cold', 'dry', 'humid'] as const
+
 export function AlarmsClient({
   initialActiveAlarms,
   initialAcknowledgedAlarms,
@@ -92,7 +94,6 @@ export function AlarmsClient({
   const [typeFilter, setTypeFilter] = useState<'all' | 'critical' | 'warning' | 'hot' | 'cold' | 'dry' | 'humid'>('all')
 
   // Reset typeFilter if current filter is a hidden temperature filter
-  const temperatureFilters = ['hot', 'cold', 'dry', 'humid'] as const
   useEffect(() => {
     if (!featureFlags.temperatureEnabled && temperatureFilters.includes(typeFilter as typeof temperatureFilters[number])) {
       setTypeFilter('all')

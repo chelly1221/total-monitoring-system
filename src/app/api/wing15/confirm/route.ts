@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db'
 import { buildWing15State, confirmOnWing15, parseStrikes } from '@/lib/wing15'
 import { buildDemoState } from '@/lib/wing15-demo'
 import type { Wing15State } from '@/types'
+import { readWing15State } from '@/lib/wing15-state'
+import { notifyWing15Changed } from '@/lib/ws-notify'
 
 // 현재 미확인 뇌전 알림을 TX(송신소) 계정으로 wing15에 현장 확인 처리한다.
 // wing15 접속은 이 버튼 클릭 때만 일어난다 (주기 폴링은 익명 피드만 읽음).
@@ -10,8 +12,14 @@ import type { Wing15State } from '@/types'
 // 이후 그 시각까지의 낙뢰는 확인된 것으로 계산된다 (src/lib/wing15.ts).
 // wing15 기록이 실패하면 로컬에도 남기지 않고 오류를 돌려줘 다시 누를 수 있게 한다.
 // 데모 모드에서는 wing15에 기록하지 않고 데모 확인 완료 상태로만 전환한다.
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const body = await request.json().catch(() => null)
+    const current = await readWing15State()
+    if (!current.ok || !current.sig || body?.sig !== current.sig || current.items.some(item => item.active) ||
+      !current.checklist.special || !current.checklist.maintenance) {
+      return NextResponse.json({ error: '경보 종료 후 최신 점검 항목을 모두 확인하세요' }, { status: 409 })
+    }
     let state: Wing15State
     const demo = await prisma.setting.findUnique({ where: { key: 'wing15Demo' } })
     if (demo?.value === 'true') {
@@ -22,16 +30,18 @@ export async function POST() {
         create: { key: 'wing15DemoConfirmed', value: 'true', category: 'wing15' },
       })
     } else {
-      const now = Date.now()
+      // Confirm through the reviewed end time, so newer strikes received during
+      // the remote request remain unconfirmed.
+      const now = Math.max(...current.items.map(item => Date.parse(item.endAt ?? item.startAt)))
       const nowIso = new Date(now).toISOString()
-      await confirmOnWing15(now)
+      await confirmOnWing15(Date.now(), now)
       const history = await prisma.setting.findUnique({ where: { key: 'wing15Strikes' } })
       await prisma.setting.upsert({
         where: { key: 'wing15ConfirmedAt' },
         update: { value: nowIso },
         create: { key: 'wing15ConfirmedAt', value: nowIso, category: 'wing15' },
       })
-      state = buildWing15State(parseStrikes(history?.value), now, null, now)
+      state = buildWing15State(parseStrikes(history?.value), now, null)
     }
 
     // 확인 후 상태/체크리스트를 즉시 반영 (워커의 다음 폴링 전에도 일관되게)
@@ -52,6 +62,7 @@ export async function POST() {
       }),
     ])
 
+    notifyWing15Changed(state)
     return NextResponse.json(state)
   } catch (error) {
     console.error('Wing15 confirm error:', error)

@@ -25,7 +25,7 @@ export function UpsDataPreview({
 }: UpsDataPreviewProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const [paused, setPaused] = React.useState(false)
-  const frozenMessagesRef = React.useRef<string[]>([])
+  const [frozenMessages, setFrozenMessages] = React.useState<string[]>([])
 
   // Filter messages by data match conditions
   const filteredMessages = React.useMemo(() => {
@@ -34,11 +34,11 @@ export function UpsDataPreview({
   }, [messages, conditions])
 
   // When pausing, snapshot current filtered messages; when resuming, clear snapshot
-  const displayMessages = paused ? frozenMessagesRef.current : filteredMessages
+  const displayMessages = paused ? frozenMessages : filteredMessages
 
   const handleTogglePause = () => {
     if (!paused) {
-      frozenMessagesRef.current = filteredMessages
+      setFrozenMessages(filteredMessages)
     }
     setPaused((p) => !p)
   }

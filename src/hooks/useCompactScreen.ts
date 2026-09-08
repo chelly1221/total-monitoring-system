@@ -1,20 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useSyncExternalStore } from 'react'
 
 const COMPACT_QUERY = '(max-height: 520px)'
 
+function subscribe(onChange: () => void) {
+  const query = window.matchMedia(COMPACT_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
 export function useCompactScreen(): boolean {
-  const [compact, setCompact] = useState(false)
-
-  useEffect(() => {
-    const mql = window.matchMedia(COMPACT_QUERY)
-    setCompact(mql.matches)
-
-    const handler = (e: MediaQueryListEvent) => setCompact(e.matches)
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [])
-
-  return compact
+  return useSyncExternalStore(subscribe, () => window.matchMedia(COMPACT_QUERY).matches, () => false)
 }

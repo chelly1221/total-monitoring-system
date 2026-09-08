@@ -1,24 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { syncMetricsFromConfig } from '@/lib/sync-metrics'
-import { validateCustomCode } from '@/lib/validate-custom-code'
+import { validateSystemBody, parsePort, normalizeEncoding, normalizeOfflineThreshold } from '@/lib/system-validation'
 import { notifySystemsChanged } from '@/lib/ws-notify'
 import type { MetricsConfig } from '@/types'
-
-// Normalize the wire-encoding field: only 'utf8' | 'buffer' are valid, else null (default).
-function normalizeEncoding(e: unknown): string | null {
-  return e === 'utf8' || e === 'buffer' ? e : null
-}
-
-// Normalize the per-device offline threshold (ms): floor at 1 minute and reject
-// non-positive/garbage values so a tiny/zero threshold can never force a system
-// into permanent instant-offline. null = use the global default.
-function normalizeOfflineThreshold(v: unknown): number | null {
-  if (v == null) return null
-  const n = typeof v === 'number' ? v : parseInt(String(v), 10)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.max(60000, n)
-}
 
 export async function GET() {
   try {
@@ -40,6 +25,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    const validationError = validateSystemBody(body, request.method === 'PATCH')
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 })
 
     const { name, type, port, protocol, topic, config, isEnabled, audioConfig, offlineThreshold, encoding } = body
 
@@ -97,40 +84,34 @@ export async function POST(request: Request) {
       if (!port) {
         return NextResponse.json({ error: 'Port and protocol are required' }, { status: 400 })
       }
-      portNum = parseInt(port, 10)
+      portNum = parsePort(port)
     }
 
-    if (config?.customCode?.trim()) {
-      const result = validateCustomCode(config.customCode)
-      if (!result.valid) {
-        return NextResponse.json(
-          { error: `커스텀 코드 구문 오류: ${result.error}` },
-          { status: 400 }
-        )
+    const system = await prisma.$transaction(async (tx) => {
+      const created = await tx.system.create({
+        data: {
+          name,
+          type,
+          port: portNum,
+          protocol,
+          topic: topicStr,
+          offlineThreshold: normalizeOfflineThreshold(offlineThreshold),
+          encoding: normalizeEncoding(encoding),
+          config: config ? JSON.stringify(config) : null,
+          audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
+          isEnabled: isEnabled !== false,
+          status: 'offline',
+          isActive: true,
+        },
+      })
+
+      // Sync metrics from config for UPS/sensor types
+      if (config && config.displayItems && (type === 'ups' || type === 'sensor')) {
+        await syncMetricsFromConfig(created.id, config as MetricsConfig, tx)
       }
-    }
 
-    const system = await prisma.system.create({
-      data: {
-        name,
-        type,
-        port: portNum,
-        protocol,
-        topic: topicStr,
-        offlineThreshold: normalizeOfflineThreshold(offlineThreshold),
-        encoding: normalizeEncoding(encoding),
-        config: config ? JSON.stringify(config) : null,
-        audioConfig: audioConfig ? JSON.stringify(audioConfig) : null,
-        isEnabled: isEnabled !== false,
-        status: 'offline',
-        isActive: true,
-      },
+      return created
     })
-
-    // Sync metrics from config for UPS/sensor types
-    if (config && config.displayItems && (type === 'ups' || type === 'sensor')) {
-      await syncMetricsFromConfig(system.id, config as MetricsConfig)
-    }
 
     // Tell the worker to bind a socket for this new (port, protocol).
     notifySystemsChanged()

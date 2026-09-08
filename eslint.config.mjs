@@ -12,7 +12,21 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "src-tauri/target/**",
+    "src-tauri/resources/**",
+    "src-tauri/gen/**",
+    "public/tv/vendor/**",
+    ".review/**",
   ]),
+  {
+    files: ["scripts/**/*.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
+    // The TV client targets ES5 browsers, which require a catch binding.
+    files: ["public/tv/tv.js"],
+    rules: { "@typescript-eslint/no-unused-vars": ["warn", { caughtErrors: "none" }] },
+  },
 ]);
 
 export default eslintConfig;

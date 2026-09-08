@@ -14,6 +14,7 @@ import {
   parseStrikes,
 } from '@/lib/wing15'
 import { buildDemoState } from '@/lib/wing15-demo'
+import { readWing15State } from '@/lib/wing15-state'
 import { createLogger } from '@/lib/logger'
 import type { Wing15Checklist, Wing15State } from '@/types'
 
@@ -71,17 +72,19 @@ async function saveSetting(key: string, value: string): Promise<void> {
   })
 }
 
-async function publishState(
-  state: Wing15State,
-  priorChecklist: Wing15Checklist | null
-): Promise<void> {
-  // 미확인 알림 구성이 바뀌어 체크리스트가 리셋됐으면 반영
-  if (!priorChecklist || priorChecklist.sig !== state.checklist.sig) {
-    await saveSetting(CHECKLIST_KEY, JSON.stringify(state.checklist))
-  }
-  lastState = state
-  await saveSetting(STATE_KEY, JSON.stringify(state))
-  broadcast({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
+async function publishState(state: Wing15State): Promise<void> {
+  // Re-read confirmation/checklist inside the write transaction so a poll that
+  // started before the operator's edit cannot overwrite that edit afterwards.
+  const published = await prisma.$transaction(async (tx) => {
+    const latest = await readWing15State(tx)
+    const next = { ...latest, ok: state.ok, error: state.error, updatedAt: state.updatedAt }
+    for (const [key, value] of [[STATE_KEY, JSON.stringify(next)], [CHECKLIST_KEY, JSON.stringify(next.checklist)]]) {
+      await tx.setting.upsert({ where: { key }, update: { value }, create: { key, value, category: 'wing15' } })
+    }
+    return next
+  })
+  lastState = published
+  broadcast({ type: 'wing15', data: { wing15: published }, timestamp: new Date().toISOString() })
 }
 
 async function poll(): Promise<void> {
@@ -105,7 +108,7 @@ async function poll(): Promise<void> {
     if (demo === 'true') {
       const checklist = await readChecklist()
       const demoConfirmed = await readSetting('wing15DemoConfirmed')
-      await publishState(buildDemoState(checklist, demoConfirmed === 'true'), checklist)
+      await publishState(buildDemoState(checklist, demoConfirmed === 'true'))
       return
     }
     // 데모 종료 시 확인 흔적 정리
@@ -134,18 +137,19 @@ async function poll(): Promise<void> {
     if (state.items.length > 0 && !hadItems) {
       log.info(`뇌전경보 감지: ${state.items.map((i) => i.title).join(', ')}`)
     }
-    await publishState(state, checklist)
+    await publishState(state)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error('폴링 실패:', message)
-    // 일시 장애 시 마지막 정상 항목은 유지한 채 오류만 표시
+    // Recover persisted alerts too: a restart during an outage must not clear them.
+    const previous = await readWing15State(prisma).catch(() => lastState)
     const state: Wing15State = {
       ok: false,
       error: message,
       updatedAt: new Date().toISOString(),
-      sig: lastState?.sig ?? '',
-      items: lastState?.items ?? [],
-      checklist: lastState?.checklist ?? { special: false, maintenance: false, sig: '' },
+      sig: previous?.sig ?? '',
+      items: previous?.items ?? [],
+      checklist: previous?.checklist ?? { special: false, maintenance: false, sig: '' },
     }
     lastState = state
     try {

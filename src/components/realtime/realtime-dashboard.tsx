@@ -66,7 +66,6 @@ export function RealtimeDashboard() {
   const ringCount = compact ? 3 : 7
   const innerTriCount = compact ? 6 : 12
   const innerTriRadius = compact ? 70 : 150
-  const zapCount = compact ? 4 : 8
 
   return (
     <>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isIP } from 'net'
 import { prisma } from '@/lib/db'
+import { validateSirenBody } from '@/lib/siren-validation'
+import { parsePort } from '@/lib/system-validation'
+import { Prisma } from '@prisma/client'
 
 export async function GET() {
   try {
@@ -9,6 +11,10 @@ export async function GET() {
     })
     return NextResponse.json(sirens)
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') return NextResponse.json({ error: '이미 등록된 IP와 포트입니다' }, { status: 409 })
+      if (error.code === 'P2025') return NextResponse.json({ error: '사이렌 장비를 찾을 수 없습니다' }, { status: 404 })
+    }
     console.error('Siren list error:', error)
     return NextResponse.json(
       { error: '사이렌 목록 조회 실패' },
@@ -20,50 +26,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const validationError = validateSirenBody(body, false)
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 })
     const { ip, port, protocol, messageOn, messageOff, location } = body
 
-    if (!ip || !port || !messageOn || !location) {
-      return NextResponse.json(
-        { error: '필수 항목을 모두 입력해주세요' },
-        { status: 400 }
-      )
-    }
-
-    if (!isIP(ip)) {
-      return NextResponse.json(
-        { error: '유효한 IP 주소를 입력해주세요' },
-        { status: 400 }
-      )
-    }
-
-    const portNum = parseInt(port)
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      return NextResponse.json(
-        { error: '포트 번호는 1-65535 범위여야 합니다' },
-        { status: 400 }
-      )
-    }
-
-    if (protocol && !['tcp', 'udp'].includes(protocol)) {
-      return NextResponse.json(
-        { error: '프로토콜은 tcp 또는 udp여야 합니다' },
-        { status: 400 }
-      )
-    }
-
-    if (messageOn.length > 1000 || (messageOff && messageOff.length > 1000)) {
-      return NextResponse.json(
-        { error: '메시지는 1000자 이하여야 합니다' },
-        { status: 400 }
-      )
-    }
-
-    if (location.length > 100) {
-      return NextResponse.json(
-        { error: '위치는 100자 이하여야 합니다' },
-        { status: 400 }
-      )
-    }
+    const portNum = parsePort(port)!
 
     const siren = await prisma.siren.create({
       data: {
@@ -78,6 +45,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(siren)
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') return NextResponse.json({ error: '이미 등록된 IP와 포트입니다' }, { status: 409 })
+      if (error.code === 'P2025') return NextResponse.json({ error: '사이렌 장비를 찾을 수 없습니다' }, { status: 404 })
+    }
     console.error('Siren create error:', error)
     return NextResponse.json(
       { error: '사이렌 장비 등록 실패' },

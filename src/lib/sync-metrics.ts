@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 import type { MetricsConfig, DisplayItem } from '@/types'
 
 /**
@@ -20,21 +21,26 @@ export function extractRepresentativeThreshold(conditions: DisplayItem['conditio
  * Sync displayItems from config to Metric table
  * Creates or updates metrics based on config.displayItems
  */
-export async function syncMetricsFromConfig(systemId: string, config: MetricsConfig): Promise<void> {
+export async function syncMetricsFromConfig(systemId: string, config: MetricsConfig, db: Prisma.TransactionClient = prisma): Promise<void> {
   if (!config.displayItems || !Array.isArray(config.displayItems)) {
     return
   }
+
+  // Removed/renamed items must not leave stale values and thresholds on the dashboard.
+  await db.metric.deleteMany({
+    where: { systemId, name: { notIn: config.displayItems.map(item => item.name) } },
+  })
 
   for (const item of config.displayItems) {
     // Use conditions-based thresholds if available, otherwise fall back to legacy
     const warningThreshold = item.conditions
       ? extractRepresentativeThreshold(item.conditions, 'warning')
-      : item.warning
+      : item.warning ?? null
     const criticalThreshold = item.conditions
       ? extractRepresentativeThreshold(item.conditions, 'critical')
-      : item.critical
+      : item.critical ?? null
 
-    const existingMetric = await prisma.metric.findFirst({
+    const existingMetric = await db.metric.findFirst({
       where: {
         systemId,
         name: item.name,
@@ -42,7 +48,7 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
     })
 
     if (existingMetric) {
-      await prisma.metric.update({
+      await db.metric.update({
         where: { id: existingMetric.id },
         data: {
           warningThreshold,
@@ -51,7 +57,7 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
         },
       })
     } else {
-      await prisma.metric.create({
+      await db.metric.create({
         data: {
           systemId,
           name: item.name,

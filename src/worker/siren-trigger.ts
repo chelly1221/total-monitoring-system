@@ -135,7 +135,7 @@ async function syncSirenStateOnce(): Promise<void> {
     }
 
     const activeCriticalCount = await prisma.alarm.count({
-      where: { severity: 'critical', resolvedAt: null, acknowledged: false },
+      where: { severity: 'critical', resolvedAt: null, acknowledged: false, system: { isActive: true, isEnabled: true } },
     })
 
     if (activeCriticalCount > 0 && !sirensActive) {

@@ -188,7 +188,7 @@ export function LineChart({
                 return
               }
 
-              const { data: curData, lines: curLines, xAxisTickFormatter: fmt, isNumericX: numX } = propsRef.current
+              const { lines: curLines, xAxisTickFormatter: fmt, isNumericX: numX } = propsRef.current
               const uData = u.data
 
               // Format label
