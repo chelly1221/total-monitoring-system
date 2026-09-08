@@ -12,6 +12,9 @@ import { NextRequest } from 'next/server'
 import type { DisplayItem, MetricsConfig } from '../src/types'
 import { GIMPO, type NearbyStrike } from '../src/lib/lightning-rules'
 import { mockWing, wingEvent } from './helpers/wing'
+import { runHistoryMaintenanceBatch, pruneOldestHistory } from '../src/worker/history-maintenance'
+import { readHistoryStorage } from '../src/lib/history-storage'
+import { compact } from '../scripts/compact-history.cjs'
 
 let directory: string
 let db: typeof import('../src/lib/db').prisma
@@ -89,12 +92,69 @@ async function ingest(port: number, value: string) {
 }
 
 test('both SQLite clients retain their startup pragmas under contention', async () => {
+  assert.equal((await readHistoryStorage(db)).incremental, true)
   for (const client of [db, worker.prisma]) {
     const timeout = await client.$queryRawUnsafe<{ timeout: bigint }[]>('PRAGMA busy_timeout')
     const synchronous = await client.$queryRawUnsafe<{ synchronous: bigint }[]>('PRAGMA synchronous')
     assert.equal(Number(timeout[0].timeout), 5000)
     assert.equal(Number(synchronous[0].synchronous), 1)
   }
+})
+
+test('startup schedules maintenance without immediately sweeping the collector database', async t => {
+  const scheduled: number[] = []
+  const originalTimeout = globalThis.setTimeout
+  t.mock.method(globalThis, 'setTimeout', (callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+    scheduled.push(ms ?? 0)
+    return originalTimeout(callback, ms, ...args)
+  })
+  try {
+    worker.startHistoryCleanup()
+    assert.deepEqual(scheduled, [60_000])
+    assert.equal(await worker.prisma.system.count(), 0)
+  } finally { worker.stopHistoryCleanup() }
+})
+
+test('indexed history batches preserve recent data and average integer and legacy ISO timestamps together', async () => {
+  const now = Date.UTC(2026, 8, 8, 12)
+  const day = 86400_000
+  const system = await createSystem({ delimiter: ',', displayItems: [item()] })
+  const metric = await db.metric.findFirstOrThrow({ where: { systemId: system.id } })
+  await db.metricHistory.createMany({ data: [
+    { metricId: metric.id, value: 99, recordedAt: new Date(now - 366 * day) },
+    { metricId: metric.id, value: 4, recordedAt: new Date(now - 60 * day + 1000) },
+    { metricId: metric.id, value: 10, recordedAt: new Date(now - 8 * day + 1000) },
+    { metricId: metric.id, value: 20, recordedAt: new Date(now - 8 * day + 2000) },
+    { metricId: metric.id, value: 42, recordedAt: new Date(now - day) },
+  ] })
+  const legacyTime = new Date(now - 60 * day + 2000).toISOString()
+  await db.$executeRaw`INSERT INTO metric_history (id, metricId, value, recordedAt) VALUES ('legacy-history', ${metric.id}, 8, ${legacyTime})`
+  const plan = await db.$queryRaw<{ detail: string }[]>`EXPLAIN QUERY PLAN SELECT id FROM metric_history WHERE metricId=${metric.id} AND recordedAt>=${now - 365 * day} AND recordedAt<${now} ORDER BY recordedAt LIMIT 2001`
+  assert.ok(plan.some(row => row.detail.includes('metric_history_metricId_recordedAt_idx')))
+  assert.ok(plan.every(row => !row.detail.includes('SCAN metric_history')))
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 1)
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 1)
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 1)
+  const rows = await db.metricHistory.findMany({ where: { metricId: metric.id }, orderBy: { recordedAt: 'asc' } })
+  assert.deepEqual(rows.map(row => row.value), [6, 15, 42])
+  assert.deepEqual(rows.map(row => row.recordedAt.getTime()), [now - 60 * day, now - 8 * day, now - day])
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 0, 'Repeating maintenance must not change completed averages')
+})
+
+test('history expiration is bounded and incomplete dense buckets remain intact', async () => {
+  const now = Date.UTC(2026, 8, 8, 12)
+  const day = 86400_000
+  const system = await createSystem({ delimiter: ',', displayItems: [item()] })
+  const metric = await db.metric.findFirstOrThrow({ where: { systemId: system.id } })
+  await db.metricHistory.createMany({ data: Array.from({ length: 2501 }, (_, i) => ({ metricId: metric.id, value: i, recordedAt: new Date(now - 366 * day + i) })) })
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 2000)
+  assert.equal(await db.metricHistory.count(), 501)
+  assert.equal(await runHistoryMaintenanceBatch(db, now), 501)
+  await db.metricHistory.createMany({ data: Array.from({ length: 2501 }, (_, i) => ({ metricId: metric.id, value: i, recordedAt: new Date(now - 60 * day + i) })) })
+  await runHistoryMaintenanceBatch(db, now)
+  await runHistoryMaintenanceBatch(db, now)
+  assert.equal(await db.metricHistory.count(), 2501)
+  assert.equal((await db.metricHistory.aggregate({ _sum: { value: true } }))._sum.value, 2500 * 2501 / 2)
 })
 
 test('bad ports and malformed config return 400 without partial creation', async () => {
@@ -105,6 +165,56 @@ test('bad ports and malformed config return 400 without partial creation', async
   const response = await systemsApi.POST(request({ name: 'bad', type: 'ups', protocol: 'udp', port: 23001, config: { displayItems: [item(), item()] } }))
   assert.equal(response.status, 400)
   assert.equal(await db.system.count(), 0)
+})
+
+test('capacity cleanup removes oldest history across metrics while preserving settings and alarms', async () => {
+  const now = Date.now()
+  const system = await createSystem({ delimiter: ',', displayItems: [item(), { ...item('습도'), index: 1 }] })
+  const metrics = await db.metric.findMany({ where: { systemId: system.id } })
+  await db.setting.create({ data: { key: 'keep-setting', value: 'keep' } })
+  await db.alarm.create({ data: { systemId: system.id, severity: 'warning', message: 'keep alarm' } })
+  await db.metricHistory.createMany({ data: Array.from({ length: 2100 }, (_, i) => ({ metricId: metrics[i % 2].id, value: i, recordedAt: new Date(now - 10000 + i) })) })
+  await db.$executeRaw`INSERT INTO metric_history (id,metricId,value,recordedAt) VALUES ('old-iso',${metrics[0].id},-1,${new Date(now - 20000).toISOString()})`
+  assert.equal(await pruneOldestHistory(db, now), 2000)
+  assert.equal(await db.metricHistory.count(), 101)
+  assert.equal((await db.metricHistory.aggregate({ _min: { value: true } }))._min.value, 1999)
+  assert.equal(await db.alarm.count(), 1)
+  assert.equal((await db.setting.findUniqueOrThrow({ where: { key: 'keep-setting' } })).value, 'keep')
+})
+
+test('offline compaction keeps the newest history within its budget and leaves the source unchanged', async () => {
+  const system = await createSystem({ delimiter: ',', displayItems: [item(), { ...item('습도'), index: 1 }] })
+  const metrics = await db.metric.findMany({ where: { systemId: system.id } })
+  const now = Date.now()
+  for (let offset = 0; offset < 20000; offset += 5000) {
+    await db.metricHistory.createMany({ data: Array.from({ length: 5000 }, (_, i) => ({ metricId: metrics[(offset + i) % 2].id, value: offset + i, recordedAt: new Date(now - 50000 + offset + i) })) })
+  }
+  await db.$executeRaw`INSERT INTO metric_history (id,metricId,value,recordedAt) VALUES ('new-iso',${metrics[0].id},12345,${new Date(now - 1000).toISOString()})`
+  const destination = path.join(directory, 'compacted.db')
+  const result = compact(path.join(directory, 'test.db'), destination, 2)
+  assert.ok(result.bytes < 2 * 1024 * 1024)
+  assert.ok(result.retained < 20001 && result.retained > 0)
+  assert.equal(await db.metricHistory.count(), 20001)
+  const { PrismaClient } = await import('@prisma/client')
+  const copy = new PrismaClient({ datasourceUrl: 'file:' + destination.replaceAll('\\', '/') })
+  try {
+    assert.equal(await copy.metricHistory.count(), result.retained)
+    assert.equal(await copy.system.count(), 1)
+    assert.equal(await copy.metric.count(), 2)
+    assert.ok(await copy.metricHistory.findUnique({ where: { id: 'new-iso' } }))
+    assert.equal((await copy.metricHistory.aggregate({ _min: { recordedAt: true } }))._min.recordedAt?.toISOString(), result.oldest)
+    assert.equal((await readHistoryStorage(copy)).incremental, true)
+  } finally { await copy.$disconnect() }
+})
+
+test('history capacity settings reject invalid values without storing them', async () => {
+  const api = await import('../src/app/api/settings/route')
+  for (const value of [0, -1, '5120junk', 511, 10241, true, 512.5]) {
+    assert.equal((await api.PUT(request({ historyMaxSizeMb: value }, 'PUT'))).status, 400)
+  }
+  assert.equal(await db.setting.count(), 0)
+  assert.equal((await api.PUT(request({ historyMaxSizeMb: '5120' }, 'PUT'))).status, 200)
+  assert.equal((await readHistoryStorage(db)).limitMb, 5120)
 })
 
 test('metric deletion and cleared thresholds persist with system edits', async () => {

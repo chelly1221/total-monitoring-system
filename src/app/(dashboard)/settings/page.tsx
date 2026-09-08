@@ -41,7 +41,7 @@ export default async function SettingsPage() {
             initialGateEnabled={settings.gateEnabled !== 'false'}
             initialWing15Enabled={settings.wing15Enabled !== 'false'}
           />
-          <DataManagementCard />
+          <DataManagementCard initialHistoryMaxMb={settings.historyMaxSizeMb} />
         </div>
 
         <SirenSettingsCard initialSirens={sirens} />

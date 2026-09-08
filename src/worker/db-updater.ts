@@ -18,6 +18,8 @@ import { executeCustomCode, clearCustomCodeCache } from './custom-code-executor'
 import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
 import { applySqlitePragmas } from '@/lib/sqlite'
+import { runHistoryMaintenanceBatch } from './history-maintenance'
+import { recordMetricHistory } from './history-writer'
 
 const log = createLogger('db-updater')
 
@@ -81,9 +83,6 @@ const SPIKE_REJECT_LIMIT = 3
 // flooding the alarm log with one row per crossing.
 const ALARM_REARM_MS = 5 * 60 * 1000
 
-// AlarmLog had no retention (unlike MetricHistory) and grew forever. Prune on the same
-// hourly cleanup interval.
-const ALARM_LOG_RETENTION_DAYS = 365
 
 /**
  * Raise an alarm with flap-coalescing semantics.
@@ -293,8 +292,7 @@ const OFFLINE_THRESHOLD = parseInt(process.env.OFFLINE_THRESHOLD || '300000', 10
 const workerStartedAt = Date.now()
 
 let offlineCheckInterval: ReturnType<typeof setInterval> | null = null
-let historyCleanupInterval: ReturnType<typeof setInterval> | null = null
-let isFirstCleanupRun = true
+let historyCleanupInterval: ReturnType<typeof setTimeout> | null = null
 
 /**
  * Calculate equipment status based on pattern matching
@@ -494,9 +492,7 @@ async function processSystemMetric(
           metric.textValue = null
           processedMetricNames.add(metricName)
 
-          await prisma.metricHistory.create({
-            data: { metricId: metric.id, value: val },
-          })
+          await recordMetricHistory(prisma, { metricId: metric.id, value: val })
 
           broadcastMetric(system.id, system.name, metric.id, metric.name, val, metric.unit, trend)
         }
@@ -551,9 +547,7 @@ async function processSystemMetric(
         processedMetricNames.add(displayItem.name)
 
         // Record metric history for charts
-        await prisma.metricHistory.create({
-          data: { metricId: metric.id, value: val },
-        })
+        await recordMetricHistory(prisma, { metricId: metric.id, value: val })
 
         broadcastMetric(system.id, system.name, metric.id, metric.name, val, metric.unit, trend)
       }
@@ -669,9 +663,7 @@ async function processSystemMetric(
     })
 
     // Record metric history for charts
-    await prisma.metricHistory.create({
-      data: { metricId: metric.id, value: numericValue },
-    })
+    await recordMetricHistory(prisma, { metricId: metric.id, value: numericValue })
 
     broadcastMetric(
       system.id,
@@ -1338,139 +1330,23 @@ export async function getEnabledSystemsForBinding(): Promise<BindingSystem[]> {
   })
 }
 
-/**
- * Start periodic cleanup and downsampling of metric history.
- * Retention policy:
- *   - Raw data: 7 days
- *   - 10-min averages: 7–31 days
- *   - 30-min averages: 31–365 days
- *   - Delete: >365 days
- * Runs every hour.
- */
+/** Start bounded history maintenance after listeners and lightning have started. */
 export function startHistoryCleanup(): void {
   if (historyCleanupInterval) return
-
-  log.info(' Starting metric history cleanup (365d tiered retention)')
-  isFirstCleanupRun = true
-
-  // Run cleanup immediately on start
-  cleanOldHistory()
-
-  historyCleanupInterval = setInterval(cleanOldHistory, 60 * 60 * 1000) // 1 hour
+  log.info(' Scheduling indexed metric history cleanup (365d tiered retention)')
+  historyCleanupInterval = setTimeout(cleanOldHistory, 60_000)
 }
 
 async function cleanOldHistory(): Promise<void> {
   try {
-    const now = Date.now()
-    const DAY = 24 * 60 * 60 * 1000
-    const HOUR = 60 * 60 * 1000
-    const yearCutoff = new Date(now - 365 * DAY)
-    const d31 = new Date(now - 31 * DAY)
-    const d7 = new Date(now - 7 * DAY)
-
-    // 1. Delete data older than 365 days
-    const deleted = await prisma.metricHistory.deleteMany({
-      where: { recordedAt: { lt: yearCutoff } },
-    })
-    if (deleted.count > 0) {
-      log.info(` Deleted ${deleted.count} records older than 365 days`)
-    }
-
-    // 1b. Prune permanent alarm log (previously unbounded).
-    const alarmLogCutoff = new Date(now - ALARM_LOG_RETENTION_DAYS * DAY)
-    const prunedAlarmLogs = await prisma.alarmLog.deleteMany({
-      where: { createdAt: { lt: alarmLogCutoff } },
-    })
-    if (prunedAlarmLogs.count > 0) {
-      log.info(` Deleted ${prunedAlarmLogs.count} alarm logs older than ${ALARM_LOG_RETENTION_DAYS} days`)
-    }
-
-    if (isFirstCleanupRun) {
-      // Full-range processing on startup (catches up after extended downtime)
-      isFirstCleanupRun = false
-
-      const r30 = await downsampleRange(yearCutoff, d31, 30)
-      if (r30 > 0) log.info(` Startup 30-min downsample: reduced ${r30} records`)
-
-      const r10 = await downsampleRange(d31, d7, 10)
-      if (r10 > 0) log.info(` Startup 10-min downsample: reduced ${r10} records`)
-    } else {
-      // Incremental: only process 2-hour windows at each boundary
-
-      // 31-day boundary → downsample to 30-min averages
-      const r30 = await downsampleRange(
-        new Date(now - 31 * DAY - 2 * HOUR),
-        d31,
-        30,
-      )
-      if (r30 > 0) log.info(` 30-min downsample: reduced ${r30} records`)
-
-      // 7-day boundary → downsample to 10-min averages
-      const r10 = await downsampleRange(
-        new Date(now - 7 * DAY - 2 * HOUR),
-        d7,
-        10,
-      )
-      if (r10 > 0) log.info(` 10-min downsample: reduced ${r10} records`)
-    }
+    const reduced = await runHistoryMaintenanceBatch(prisma)
+    if (reduced > 0) log.info(` History batch reduced ${reduced} records`)
   } catch (error) {
     log.error(' History cleanup error:', error)
+  } finally {
+    // Schedule after completion so slow I/O cannot queue overlapping cleanups.
+    if (historyCleanupInterval) historyCleanupInterval = setTimeout(cleanOldHistory, 1000)
   }
-}
-
-/**
- * Downsample MetricHistory records in a time range to the specified interval.
- * Groups records by metricId and time bucket, replaces with averaged values.
- * Skips if data is already at the target resolution.
- * Returns the number of records reduced.
- */
-async function downsampleRange(
-  rangeStart: Date,
-  rangeEnd: Date,
-  intervalMinutes: number,
-): Promise<number> {
-  if (rangeStart >= rangeEnd) return 0
-
-  const intervalSeconds = intervalMinutes * 60
-  const startISO = rangeStart.toISOString()
-  const endISO = rangeEnd.toISOString()
-
-  // Count current records in range
-  const currentCount = await prisma.metricHistory.count({
-    where: { recordedAt: { gte: rangeStart, lt: rangeEnd } },
-  })
-  if (currentCount === 0) return 0
-
-  // Get averaged data grouped by metric and time bucket
-  const averaged = await prisma.$queryRaw<
-    Array<{ metricId: string; avgValue: number; bucketEpoch: bigint }>
-  >`SELECT
-       metricId,
-       AVG(value) as avgValue,
-       (CAST(strftime('%s', recordedAt) AS INTEGER) / ${intervalSeconds}) * ${intervalSeconds} as bucketEpoch
-     FROM metric_history
-     WHERE recordedAt >= ${startISO} AND recordedAt < ${endISO}
-     GROUP BY metricId, bucketEpoch`
-
-  // If bucket count matches record count, already at target resolution
-  if (averaged.length >= currentCount) return 0
-
-  // Replace records with downsampled versions in a single transaction
-  await prisma.$transaction(
-    async (tx) => {
-      // Delete all records in range
-      await tx.$executeRaw`DELETE FROM metric_history WHERE recordedAt >= ${startISO} AND recordedAt < ${endISO}`
-
-      // Insert averaged records
-      for (const row of averaged) {
-        const ts = new Date(Number(row.bucketEpoch) * 1000).toISOString()
-        await tx.$executeRaw`INSERT INTO metric_history (id, metricId, value, recordedAt) VALUES (lower(hex(randomblob(12))), ${row.metricId}, ${Number(row.avgValue)}, ${ts})`
-      }
-    },
-    { timeout: 120000 },
-  )
-
-  return currentCount - averaged.length
 }
 
 /**
@@ -1478,7 +1354,7 @@ async function downsampleRange(
  */
 export function stopHistoryCleanup(): void {
   if (historyCleanupInterval) {
-    clearInterval(historyCleanupInterval)
+    clearTimeout(historyCleanupInterval)
     historyCleanupInterval = null
     log.info(' History cleanup stopped')
   }

@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-export function DataManagementCard() {
+export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHistoryMaxMb?: string }) {
+  const [historyLimit, setHistoryLimit] = useState(initialHistoryMaxMb)
+  const [savingLimit, setSavingLimit] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
@@ -86,6 +88,25 @@ export function DataManagementCard() {
         <CardTitle>DB 관리</CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <label htmlFor="history-size-limit">이력 DB 용량 상한</label>
+          <select id="history-size-limit" className="rounded border border-input bg-background px-2 py-1" value={historyLimit} onChange={event => setHistoryLimit(event.target.value)} disabled={savingLimit}>
+            <option value="1024">1GB</option>
+            <option value="2048">2GB</option>
+            <option value="5120">5GB</option>
+            <option value="10240">10GB</option>
+          </select>
+          <Button size="sm" variant="outline" disabled={savingLimit} onClick={async () => {
+            setSavingLimit(true)
+            try {
+              const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ historyMaxSizeMb: historyLimit }) })
+              if (!response.ok) throw new Error('Save failed')
+              toast.success('이력 DB 용량 상한을 저장했습니다')
+            } catch { toast.error('용량 상한 저장에 실패했습니다') }
+            finally { setSavingLimit(false) }
+          }}>{savingLimit ? '저장 중...' : '저장'}</Button>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
         <div className="flex gap-2">
           <Button
             variant="outline"

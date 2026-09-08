@@ -61,6 +61,7 @@ model MetricHistory {
   metric Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)
 
   @@index([metricId, recordedAt])
+  @@index([recordedAt])
   @@map("metric_history")
 }
 

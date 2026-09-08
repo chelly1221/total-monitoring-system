@@ -25,6 +25,12 @@ try {
     const dbPath = path.resolve(path.dirname(schemaPath), filename);
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     fs.closeSync(fs.openSync(dbPath, 'a'));
+    if (fs.statSync(dbPath).size === 0) {
+      // Incremental vacuum must be enabled before creating the first table.
+      execFileSync(process.execPath,
+        [require.resolve('prisma/build/index.js'), 'db', 'execute', '--url', dbUrl, '--stdin'],
+        { input: 'PRAGMA auto_vacuum=INCREMENTAL;', stdio: ['pipe', 'inherit', 'inherit'], env: process.env });
+    }
   }
   execFileSync(
     process.execPath,

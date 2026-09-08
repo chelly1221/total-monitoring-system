@@ -172,6 +172,14 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## Code Style
 
+### 이력 DB 관리
+
+- `src/worker/history-maintenance.ts`: 시작 시 전체 `metric_history` 삭제·집계를 실행하지 않는다. 1분 후부터 작은 작업을 순차 실행하고 기존 `(metricId, recordedAt)` 인덱스와 날짜 인덱스를 사용한다. 한 작업이 끝난 뒤 다음 작업을 예약하여 중첩 실행을 막는다.
+- `historyMaxSizeMb` 기본 5120MB, 설정 > DB 관리에서 변경. `src/lib/history-storage.ts`의 실제 SQLite 사용 페이지 기준 90%부터 오래된 이력을 정리하고 98%에서는 `history-writer.ts`가 측정 이력 추가만 일시 보류한다. 실시간 값·설정·알람 쓰기는 계속한다.
+- 새 DB는 `auto_vacuum=INCREMENTAL`로 만들고 빈 페이지를 소량씩 회수한다. 기존 DB에서 이를 활성화하고 파일 자체를 축소하려면 오프라인 재구성이 필요하다.
+- `scripts/compact-history.cjs`는 Node.js 22.13+ 오프라인 도구. 원본을 읽기 전용으로 열고 별도 파일에 모든 설정·장비·알람 및 최신 이력을 복사한다. 운영 DB 교체 전 원본 DB/WAL 백업과 생성 결과 무결성 검증이 필요하다. 런타임 DB와 백업을 Git에 추가하지 않는다.
+- SQLite 날짜는 정수 밀리초 또는 기존 ISO 텍스트일 수 있다. 문자열에만 동작하는 `strftime` 집계를 정수 날짜에 사용하지 않는다. 불완전한 조밀한 시간 구간은 원자료를 유지하고 부분 평균으로 덮어쓰지 않는다.
+
 - 한국어: UI 라벨, 도메인 용어
 - 영어: 코드 식별자, 주석
 - TypeScript strict mode

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { HISTORY_LIMIT_KEY, validHistoryLimit } from '@/lib/history-storage'
 import {
   notifySirenSync,
   notifyAudioSettingsChanged,
@@ -30,6 +31,10 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      (HISTORY_LIMIT_KEY in body && !validHistoryLimit(body[HISTORY_LIMIT_KEY]))) {
+      return NextResponse.json({ error: '이력 DB 용량은 512~10240MB 범위의 정수로 설정하세요' }, { status: 400 })
+    }
 
     const updates = Object.entries(body).map(([key, value]) =>
       prisma.setting.upsert({
