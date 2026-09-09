@@ -371,7 +371,7 @@ test('background collection, dashboard and checklist access only the public weat
   }
 })
 
-test('repeated lightning timeouts fall back to cooldown, preserve review and publish recovery', async t => {
+test('lightning starts immediately, then waits ten minutes even after exhausting its retries', async t => {
   let clock = Date.now() + 120_000
   t.mock.method(Date, 'now', () => clock)
   const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
@@ -384,13 +384,16 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
     return Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
   })
   const originalTimeout = globalThis.setTimeout
-  const retries: { run: () => void; timer: ReturnType<typeof setTimeout> }[] = []
+  const originalInterval = globalThis.setInterval
+  const polls: { run: () => void; ms: number | undefined; timer: ReturnType<typeof setInterval> }[] = []
+  t.mock.method(globalThis, 'setInterval', (callback: () => void, ms?: number) => {
+    const timer = originalInterval(() => {}, ms)
+    polls.push({ run: callback, ms, timer })
+    return timer
+  })
+  const retryDelays: number[] = []
   t.mock.method(globalThis, 'setTimeout', (callback: () => void, ms?: number, ...args: unknown[]) => {
-    if (ms === 60_000) {
-      const timer = originalTimeout(() => {}, ms)
-      retries.push({ run: callback, timer })
-      return timer
-    }
+    if (ms === 60_000) retryDelays.push(ms)
     return originalTimeout(callback, ms, ...args)
   })
   const monitor = await import('../src/worker/wing15-monitor')
@@ -410,23 +413,20 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
     await once(receiver, 'open')
     const failed = nextState(false)
     monitor.startWing15Monitor()
+    monitor.startWing15Monitor()
     await failed
     const state = await (await stateApi.GET()).json()
     assert.equal(state.ok, false)
     assert.match(state.error, /응답 시간 초과/)
     assert.equal(state.sig, initial.sig)
     assert.deepEqual(state.checklist, initial.checklist)
-    assert.equal(retries.length, 1, 'A failed poll schedules a 60-second retry')
+    assert.equal(calls, 6, 'Startup immediately runs the first request and up to five retries')
+    assert.deepEqual(polls.map(poll => poll.ms), [600_000], 'Repeated starts must share one ten-minute schedule')
+    assert.deepEqual(retryDelays, [], 'An exhausted retry sequence must not schedule a one-minute poll')
 
-    const repeated = nextState(false)
-    monitor.triggerWing15Poll()
-    await repeated
-    assert.equal(calls, 6, 'Manual triggers still share all six failed attempts during cooldown')
-    assert.equal(retries.length, 2)
-
-    clock += 60_000
+    clock += 600_000
     const recovered = nextState(true)
-    retries[1].run()
+    polls[0].run()
     await recovered
     const fresh = await (await stateApi.GET()).json()
     assert.equal(fresh.ok, true)
@@ -435,16 +435,17 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
     assert.deepEqual(fresh.checklist, initial.checklist)
     assert.equal(fresh.items[0].confirmed, false)
     assert.equal(calls, 7)
-    assert.equal(retries.length, 2, 'Recovery returns to the normal polling interval')
+    assert.deepEqual(retryDelays, [])
+    assert.equal(polls.length, 1, 'Recovery keeps the same ten-minute schedule')
   } finally {
     monitor.stopWing15Monitor()
     receiver.terminate()
-    for (const retry of retries) clearTimeout(retry.timer)
+    for (const poll of polls) clearInterval(poll.timer)
   }
 })
 
 test('the fifth immediate lightning retry publishes success without a transient dashboard error', async t => {
-  const clock = Date.now() + 240_000
+  const clock = Date.now() + 14 * 60_000
   t.mock.method(Date, 'now', () => clock)
   const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
   await prepareLightningReview([strike])

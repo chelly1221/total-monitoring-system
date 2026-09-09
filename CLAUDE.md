@@ -164,11 +164,11 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **`src/lib/amo-lightning.ts`** — 항공기상청 낙뢰 화면의 공개 지도 요청 `https://www.weather.go.kr/wgis-nuri/lgt?date=&dateNum=144&interval=10`을 키·로그인 없이 조회. `baseDateList` 자료시각, `lgtList` 항목의 `date`(UTC), `lat`, `lon`, `type`을 검증. `type 1` 지상낙뢰만 사용하고 `type 2` 공중낙뢰 제외. 형식 오류·자료시각 25분 초과 지연은 오류로 처리. HTTP 500·502·503·504와 시간 초과·연결 실패는 첫 요청 실패 후 최대 5회 즉시 재시도(총 6회, 각 15초 제한)한다. 60초를 넘겨도 진행 중인 모든 시도를 하나의 요청으로 공유하며 성공하면 즉시 중단한다. Retry-After가 있는 HTTP 응답·4xx·자료 오류는 즉시 재시도하지 않는다. 최종 완료 시점부터 성공·실패 모두 60초 요청 제한을 적용한다.
 - **`src/lib/lightning-rules.ts`** — WING 김포공항 기준 좌표 37.56, 126.8에서 Haversine 거리 계산 후 반올림 전 `<= 5km` 판정. 1시간 진행, 기본 24시간 이력 유지(`WING15_LOOKBACK_HOURS`, 최대 24). 좌표·시각으로 동일 낙뢰를 식별하고 기존 좌표 없는 이력은 반올림 거리로 연결.
 - **`src/lib/wing15.ts`** — 로컬 이력 병합 `mergeStrikes`, 상태 계산 `buildWing15State`, 현장 확인 `confirmOnWing15`. 버튼 클릭 당시 검토한 미확인 낙뢰 모두가 WING `events`에 있어야 TX `inspection_status`를 기록하며, 재조회로 저장 여부까지 검증. 페이지 조회·분할 저장 지원. 해당 낙뢰 미반영 시 전체 확인 보류, 재시도 시 이미 저장된 항목은 유지.
-- **`src/worker/wing15-monitor.ts`** — 항공기상청 웹 자료만 180초마다 수집 (`WING15_POLL_INTERVAL`, 최소 60초). 실패 시 60초 후 재시도하며 실패 시각·원인과 수신 복구를 로그에 남긴다. `wing15Strikes`에 낙뢰별 `confirmed`를 저장하고 기존 `wing15ConfirmedAt` 이력을 이관. 확인 중 들어온 새 낙뢰나 늦게 들어온 과거 낙뢰가 이전 확인 시각 때문에 확인 처리되지 않도록 명시적인 상태 유지. Setting 저장과 WS 브로드캐스트는 최신 점검 상태를 트랜잭션에서 다시 읽어 수행.
+- **`src/worker/wing15-monitor.ts`** — 시작 시 바로 수집하고 이후 항공기상청 웹 자료만 기본 600초마다 수집 (`WING15_POLL_INTERVAL`, 최소 600초). 즉시 재시도를 모두 소진하면 다음 정기 조회까지 기다리며 별도의 60초 재조회는 없다. 실패 시각·원인과 수신 복구를 로그에 남긴다. `wing15Strikes`에 낙뢰별 `confirmed`를 저장하고 기존 `wing15ConfirmedAt` 이력을 이관. 확인 중 들어온 새 낙뢰나 늦게 들어온 과거 낙뢰가 이전 확인 시각 때문에 확인 처리되지 않도록 명시적인 상태 유지. Setting 저장과 WS 브로드캐스트는 최신 점검 상태를 트랜잭션에서 다시 읽어 수행.
 - **`src/app/api/wing15/`** — GET 상태 조회와 PUT `/checklist`는 로컬 DB만 사용. POST `/confirm`만 WING에 접속하고 성공한 대상만 로컬에 확인 저장. 미반영·진행 중·오래된 점검은 409, 통신·저장 실패는 500. 확인 중 수신한 낙뢰는 미확인으로 유지.
 - **`src/components/wing15/lightning-alert-panel.tsx`** — 첫/마지막 낙뢰 시각(KST), 마지막 낙뢰 후 1시간 대기, 특별점검·유지보수일지 두 항목 유지. 자료시각 표시, 수신 오류·지연 시 확인 보류. 성공·실패 후 모두 로컬 상태 재조회.
-- **ON/OFF**: 설정 > 기능 표시 설정 > "뇌전감시" 스위치 (Setting `wing15Enabled`, 기본 켜짐). OFF면 외부 조회를 건너뛰고(타이머 유지) 패널을 숨긴다. 설정 API가 `settings` WS 메시지로 즉시 전파 (`setSettingsChangedHandler` → `triggerWing15Poll`).
-- **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(≤3분)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 조회 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
+- **ON/OFF**: 설정 > 기능 표시 설정 > "뇌전감시" 스위치 (Setting `wing15Enabled`, 기본 켜짐). OFF면 외부 조회를 건너뛰고(타이머 유지) 패널을 숨긴다. 설정 API가 `settings` WS 메시지로 패널 표시를 즉시 전파한다. ON/OFF는 정기 조회 주기를 앞당기지 않으며, 수집 여부는 다음 정기 조회에서 설정을 읽어 결정한다.
+- **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(기본 ≤10분)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 조회 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
 
 ## Code Style
 

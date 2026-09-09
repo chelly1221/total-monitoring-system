@@ -1,8 +1,7 @@
-// 항공기상청 웹 조회 자료를 수집하는 뇌전 감시 폴러.
-// 3분 주기로 최근 24시간을 조회해 김포 반경 5km 지상낙뢰를
-// 로컬 이력에 누적하고, 경보 상태를 DB(Setting)에 저장한 뒤 WebSocket으로
-// 대시보드에 브로드캐스트한다.
-// WING에는 점검 확인 버튼을 누를 때만 접속한다.
+// Collect public AMO lightning at startup and every ten minutes.
+// Merge the last 24 hours of ground strikes within 5km of Gimpo into local
+// history, persist the alert state and publish it over WebSocket.
+// Only the operator's confirmation action may contact WING.
 
 import { prisma } from './db-updater'
 import { broadcast } from './websocket-server'
@@ -21,11 +20,10 @@ import type { Wing15Checklist, Wing15State } from '@/types'
 
 const log = createLogger('wing15-monitor')
 
-const MIN_POLL_INTERVAL_MS = 60_000
-const DEFAULT_POLL_INTERVAL_MS = 180_000
+const MIN_POLL_INTERVAL_MS = 600_000
 const POLL_INTERVAL_MS = Math.max(
   MIN_POLL_INTERVAL_MS,
-  parseInt(process.env.WING15_POLL_INTERVAL || '', 10) || DEFAULT_POLL_INTERVAL_MS
+  parseInt(process.env.WING15_POLL_INTERVAL || '', 10) || MIN_POLL_INTERVAL_MS
 )
 
 const STATE_KEY = 'wing15State'
@@ -35,7 +33,6 @@ const STRIKES_KEY = 'wing15Strikes'
 const CONFIRMED_AT_KEY = 'wing15ConfirmedAt'
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let retryTimer: ReturnType<typeof setTimeout> | null = null
 let polling = false
 let lastState: Wing15State | null = null
 // 직전 폴링에서 본 ON/OFF 값 (전환 로그용). 시작 시 켜짐으로 가정해 첫 로그와 중복되지 않게 한다
@@ -91,12 +88,7 @@ async function publishState(state: Wing15State): Promise<void> {
 
 async function poll(): Promise<void> {
   if (polling) return // 이전 폴링이 늦어지면 겹치지 않게 스킵
-  if (retryTimer) {
-    clearTimeout(retryTimer)
-    retryTimer = null
-  }
   polling = true
-  let failed = false
   try {
     // ON/OFF는 매 주기 DB에서 확인 — WS 알림이 유실돼도 늦어도 다음 주기에 반영된다
     const enabled = await isEnabled()
@@ -148,9 +140,8 @@ async function poll(): Promise<void> {
     await publishState(state)
     if (recovering) log.info(`낙뢰 자료 수신 복구 (자료시각 ${observation.observedAt})`)
   } catch (error) {
-    failed = true
     const message = error instanceof Error ? error.message : String(error)
-    log.error(`폴링 실패 (${new Date().toISOString()}, 60초 후 재시도):`, error)
+    log.error(`폴링 실패 (${new Date().toISOString()}, 다음 정기 조회에서 재시도):`, error)
     // Recover persisted alerts too: a restart during an outage must not clear them.
     const previous = await readWing15State(prisma).catch(() => lastState)
     const state: Wing15State = {
@@ -171,9 +162,6 @@ async function poll(): Promise<void> {
     broadcast({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
   } finally {
     polling = false
-    // Retry outages sooner without bypassing the feed's 60-second cooldown.
-    // Stopping during an in-flight request must not restart the monitor.
-    if (failed && pollTimer) retryTimer = setTimeout(() => void poll(), MIN_POLL_INTERVAL_MS)
   }
 }
 
@@ -185,18 +173,8 @@ export function startWing15Monitor(): void {
 }
 
 export function stopWing15Monitor(): void {
-  if (retryTimer) {
-    clearTimeout(retryTimer)
-    retryTimer = null
-  }
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
   }
-}
-
-// 설정(ON/OFF) 변경을 다음 주기까지 기다리지 않고 즉시 반영한다
-export function triggerWing15Poll(): void {
-  if (!pollTimer) return
-  void poll()
 }
