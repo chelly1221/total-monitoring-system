@@ -48,14 +48,14 @@ test('web outages are shared during cooldown and can recover on the next attempt
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
-    return calls === 1 ? new Response('Unavailable', { status: 503 }) : Response.json(body())
+    return calls <= 2 ? new Response('Bad Gateway', { status: 502 }) : Response.json(body())
   })
-  await assert.rejects(fetchAmoLightning(), /HTTP 503/)
-  await assert.rejects(fetchAmoLightning(), /HTTP 503/)
-  assert.equal(calls, 1)
+  await assert.rejects(fetchAmoLightning(), /HTTP 502/)
+  await assert.rejects(fetchAmoLightning(), /HTTP 502/)
+  assert.equal(calls, 2)
   clock += 60_000
   assert.deepEqual((await fetchAmoLightning()).strikes, [])
-  assert.equal(calls, 2)
+  assert.equal(calls, 3)
 })
 
 test('network timeouts and connection failures have Korean diagnostics and retain their cause', async t => {
@@ -67,7 +67,7 @@ test('network timeouts and connection failures have Korean diagnostics and retai
     [new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } }), /서버 연결 실패/],
   ] as const
   let calls = 0
-  t.mock.method(globalThis, 'fetch', async () => { throw failures[calls++][0] })
+  t.mock.method(globalThis, 'fetch', async () => { throw failures[Math.floor(calls++ / 2)][0] })
   for (const [cause, message] of failures) {
     await assert.rejects(fetchAmoLightning(), error => {
       assert.ok(error instanceof Error)
@@ -77,7 +77,79 @@ test('network timeouts and connection failures have Korean diagnostics and retai
     })
     clock += 60_000
   }
-  assert.equal(calls, failures.length)
+  assert.equal(calls, failures.length * 2)
+})
+
+test('transient server failures share one immediate retry and release failed response bodies', async t => {
+  let clock = now + 5 * 60_000
+  t.mock.method(Date, 'now', () => clock)
+  for (const status of [500, 502, 503, 504]) {
+    await t.test(`HTTP ${status}`, async sub => {
+      let calls = 0
+      let cancelled = false
+      const signals: (AbortSignal | null | undefined)[] = []
+      sub.mock.method(globalThis, 'fetch', async (_input: unknown, init?: RequestInit) => {
+        signals.push(init?.signal)
+        if (++calls === 1) return new Response(new ReadableStream({ cancel() { cancelled = true } }), { status })
+        assert.ok(cancelled, 'The error response must be released before retrying')
+        return Response.json(body())
+      })
+      const pending = fetchAmoLightning()
+      assert.equal(fetchAmoLightning(), pending)
+      const result = await pending
+      assert.deepEqual(result.strikes, [])
+      assert.equal(calls, 2, 'The retry happens without advancing the clock')
+      assert.ok(signals[0])
+      assert.ok(signals[1])
+      assert.notEqual(signals[0], signals[1])
+      assert.equal(await fetchAmoLightning(), result)
+      assert.equal(calls, 2)
+    })
+    clock += 60_000
+  }
+})
+
+test('a timeout gets a fresh deadline for its immediate retry', async t => {
+  const clock = now + 9 * 60_000
+  t.mock.method(Date, 'now', () => clock)
+  const signals = [AbortSignal.abort(new DOMException('Timeout', 'TimeoutError')), new AbortController().signal]
+  let deadlines = 0
+  t.mock.method(AbortSignal, 'timeout', (ms: number) => {
+    assert.equal(ms, 15_000)
+    return signals[deadlines++]
+  })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (_input: unknown, init?: RequestInit) => {
+    calls++
+    init?.signal?.throwIfAborted()
+    return Response.json(body())
+  })
+  assert.deepEqual((await fetchAmoLightning()).strikes, [])
+  assert.equal(calls, 2)
+  assert.equal(deadlines, 2)
+})
+
+test('client errors, requested backoff and invalid data do not trigger immediate retries', async t => {
+  let clock = now + 10 * 60_000
+  t.mock.method(Date, 'now', () => clock)
+  const cases = [
+    { name: 'forbidden', response: () => new Response('', { status: 403 }), error: /HTTP 403/ },
+    { name: 'rate limit', response: () => new Response('', { status: 429 }), error: /HTTP 429/ },
+    { name: 'server backoff', response: () => new Response('', { status: 503, headers: { 'Retry-After': '60' } }), error: /HTTP 503/ },
+    { name: 'invalid JSON', response: () => new Response('<html>error</html>'), error: SyntaxError },
+    { name: 'invalid schema', response: () => Response.json({}), error: /응답 형식 오류/ },
+    { name: 'stale data', response: () => Response.json(body([], ['2026-09-08T05:00:00'])), error: /갱신 지연/ },
+  ]
+  for (const scenario of cases) {
+    await t.test(scenario.name, async sub => {
+      let calls = 0
+      sub.mock.method(globalThis, 'fetch', async () => { calls++; return scenario.response() })
+      await assert.rejects(fetchAmoLightning(), scenario.error)
+      await assert.rejects(fetchAmoLightning(), scenario.error)
+      assert.equal(calls, 1)
+    })
+    clock += 60_000
+  }
 })
 
 test('legacy rounded rows migrate without duplicate alerts or losing confirmation', () => {

@@ -371,7 +371,7 @@ test('background collection, dashboard and checklist access only the public weat
   }
 })
 
-test('lightning timeout retries after cooldown, preserves review and publishes recovery', async t => {
+test('repeated lightning timeouts fall back to cooldown, preserve review and publish recovery', async t => {
   let clock = Date.now() + 120_000
   t.mock.method(Date, 'now', () => clock)
   const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
@@ -380,7 +380,7 @@ test('lightning timeout retries after cooldown, preserves review and publishes r
   let calls = 0
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     assert.equal(new URL(String(input)).hostname, 'www.weather.go.kr')
-    if (++calls === 1) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    if (++calls <= 2) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
     return Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
   })
   const originalTimeout = globalThis.setTimeout
@@ -421,7 +421,7 @@ test('lightning timeout retries after cooldown, preserves review and publishes r
     const repeated = nextState(false)
     monitor.triggerWing15Poll()
     await repeated
-    assert.equal(calls, 1, 'Manual triggers still share the failed request during cooldown')
+    assert.equal(calls, 2, 'Manual triggers still share both failed attempts during cooldown')
     assert.equal(retries.length, 2)
 
     clock += 60_000
@@ -434,12 +434,62 @@ test('lightning timeout retries after cooldown, preserves review and publishes r
     assert.equal(fresh.observedAt, new Date(clock).toISOString())
     assert.deepEqual(fresh.checklist, initial.checklist)
     assert.equal(fresh.items[0].confirmed, false)
-    assert.equal(calls, 2)
+    assert.equal(calls, 3)
     assert.equal(retries.length, 2, 'Recovery returns to the normal polling interval')
   } finally {
     monitor.stopWing15Monitor()
     receiver.terminate()
     for (const retry of retries) clearTimeout(retry.timer)
+  }
+})
+
+test('an immediate lightning retry publishes success without a transient dashboard error', async t => {
+  const clock = Date.now() + 240_000
+  t.mock.method(Date, 'now', () => clock)
+  const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
+  await prepareLightningReview([strike])
+  const initial = await (await stateApi.GET()).json()
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    assert.equal(new URL(String(input)).hostname, 'www.weather.go.kr')
+    return ++calls === 1 ? new Response('Bad Gateway', { status: 502 })
+      : Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
+  })
+  const originalTimeout = globalThis.setTimeout
+  let delayedRetries = 0
+  t.mock.method(globalThis, 'setTimeout', (callback: () => void, ms?: number, ...args: unknown[]) => {
+    if (ms === 60_000) delayedRetries++
+    return originalTimeout(callback, ms, ...args)
+  })
+  const monitor = await import('../src/worker/wing15-monitor')
+  const receiver = new WebSocket(`ws://127.0.0.1:${process.env.WS_PORT}`)
+  const publishedStates: boolean[] = []
+  try {
+    await once(receiver, 'open')
+    const published = new Promise<void>((resolve, reject) => {
+      const timeout = originalTimeout(() => reject(new Error('Lightning retry did not publish')), 5000)
+      receiver.on('message', data => {
+        const message = JSON.parse(data.toString())
+        if (message.type !== 'wing15') return
+        publishedStates.push(message.data.wing15.ok)
+        clearTimeout(timeout)
+        resolve()
+      })
+    })
+    monitor.startWing15Monitor()
+    await published
+    assert.deepEqual(publishedStates, [true])
+    assert.equal(calls, 2)
+    assert.equal(delayedRetries, 0)
+    const fresh = await (await stateApi.GET()).json()
+    assert.equal(fresh.ok, true)
+    assert.equal(fresh.error, undefined)
+    assert.equal(fresh.observedAt, new Date(clock).toISOString())
+    assert.deepEqual(fresh.checklist, initial.checklist)
+    assert.equal(fresh.items[0].confirmed, false)
+  } finally {
+    monitor.stopWing15Monitor()
+    receiver.terminate()
   }
 })
 

@@ -1,4 +1,5 @@
 import { distanceKm, LIGHTNING_LOOKBACK_MS, LIGHTNING_RADIUS_KM, strikeKey, type NearbyStrike } from './lightning-rules'
+import { createLogger } from './logger'
 
 // This is the public map request made by the AMO lightning web page, not APIhub.
 // https://global.amo.go.kr/_js/wgis/kmap/kmap-wrap-v2.js (KMAP_layers.lgt)
@@ -7,6 +8,8 @@ export const AMO_LIGHTNING_URL = 'https://www.weather.go.kr/wgis-nuri/lgt?date=&
 export const AMO_MAX_DATA_AGE_MS = 25 * 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 const MIN_REQUEST_INTERVAL_MS = 60_000
+const RETRYABLE_HTTP_STATUSES = new Set([500, 502, 503, 504])
+const log = createLogger('amo-lightning')
 
 export interface LightningObservation {
   observedAt: string
@@ -65,27 +68,45 @@ export function parseAmoLightning(body: unknown, now = Date.now()): LightningObs
 let lastRequest = -Infinity
 let request: Promise<LightningObservation> | null = null
 
+async function fetchLightningAttempt(allowRetry: boolean): Promise<LightningObservation> {
+  try {
+    // Each attempt gets its own deadline; an expired signal cannot be reused.
+    const response = await fetch(AMO_LIGHTNING_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+    if (!response.ok) {
+      const message = `항공기상청 낙뢰 조회 실패 (HTTP ${response.status})`
+      // Release the failed response before opening another request.
+      await response.body?.cancel().catch(() => {})
+      if (allowRetry && RETRYABLE_HTTP_STATUSES.has(response.status) && !response.headers.has('retry-after')) {
+        log.warn(`즉시 1회 재시도 (${new Date().toISOString()}): ${message}`)
+        return fetchLightningAttempt(false)
+      }
+      throw new Error(message)
+    }
+    const observation = parseAmoLightning(await response.json())
+    if (!allowRetry) log.info(`낙뢰 즉시 재시도 성공 (자료시각 ${observation.observedAt})`)
+    return observation
+  } catch (error) {
+    if (error instanceof Error) {
+      const cause = error.cause as { code?: string } | undefined
+      const timedOut = error.name === 'TimeoutError' || cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || cause?.code === 'UND_ERR_BODY_TIMEOUT'
+      const connectionFailed = error instanceof TypeError && error.message === 'fetch failed'
+      const message = timedOut ? '항공기상청 낙뢰 응답 시간 초과' : connectionFailed ? '항공기상청 낙뢰 서버 연결 실패' : null
+      if (message) {
+        if (allowRetry) {
+          log.warn(`즉시 1회 재시도 (${new Date().toISOString()}): ${message}`)
+          return fetchLightningAttempt(false)
+        }
+        throw new Error(message, { cause: error })
+      }
+    }
+    throw error
+  }
+}
+
 export function fetchAmoLightning(): Promise<LightningObservation> {
-  // Toggles and overlapping polls share a request, including failed attempts.
+  // Toggles and overlapping polls share both attempts and the final outcome.
   if (request && Date.now() - lastRequest < MIN_REQUEST_INTERVAL_MS) return request
   lastRequest = Date.now()
-  request = (async () => {
-    try {
-      const response = await fetch(AMO_LIGHTNING_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-      if (!response.ok) throw new Error(`항공기상청 낙뢰 조회 실패 (HTTP ${response.status})`)
-      return parseAmoLightning(await response.json())
-    } catch (error) {
-      if (error instanceof Error) {
-        const cause = error.cause as { code?: string } | undefined
-        if (error.name === 'TimeoutError' || cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || cause?.code === 'UND_ERR_BODY_TIMEOUT') {
-          throw new Error('항공기상청 낙뢰 응답 시간 초과', { cause: error })
-        }
-        if (error instanceof TypeError && error.message === 'fetch failed') {
-          throw new Error('항공기상청 낙뢰 서버 연결 실패', { cause: error })
-        }
-      }
-      throw error
-    }
-  })()
+  request = fetchLightningAttempt(true)
   return request
 }
