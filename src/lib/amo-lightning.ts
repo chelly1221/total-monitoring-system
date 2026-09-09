@@ -8,6 +8,7 @@ export const AMO_LIGHTNING_URL = 'https://www.weather.go.kr/wgis-nuri/lgt?date=&
 export const AMO_MAX_DATA_AGE_MS = 25 * 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 const MIN_REQUEST_INTERVAL_MS = 60_000
+const MAX_IMMEDIATE_RETRIES = 5
 const RETRYABLE_HTTP_STATUSES = new Set([500, 502, 503, 504])
 const log = createLogger('amo-lightning')
 
@@ -65,10 +66,11 @@ export function parseAmoLightning(body: unknown, now = Date.now()): LightningObs
   return { observedAt: new Date(newest).toISOString(), strikes: [...strikes.values()].sort((a, b) => a.detectedAt - b.detectedAt) }
 }
 
-let lastRequest = -Infinity
+let lastCompletedAt = -Infinity
+let inFlight = false
 let request: Promise<LightningObservation> | null = null
 
-async function fetchLightningAttempt(allowRetry: boolean): Promise<LightningObservation> {
+async function fetchLightningAttempt(retryCount: number): Promise<LightningObservation> {
   try {
     // Each attempt gets its own deadline; an expired signal cannot be reused.
     const response = await fetch(AMO_LIGHTNING_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
@@ -76,14 +78,14 @@ async function fetchLightningAttempt(allowRetry: boolean): Promise<LightningObse
       const message = `항공기상청 낙뢰 조회 실패 (HTTP ${response.status})`
       // Release the failed response before opening another request.
       await response.body?.cancel().catch(() => {})
-      if (allowRetry && RETRYABLE_HTTP_STATUSES.has(response.status) && !response.headers.has('retry-after')) {
-        log.warn(`즉시 1회 재시도 (${new Date().toISOString()}): ${message}`)
-        return fetchLightningAttempt(false)
+      if (retryCount < MAX_IMMEDIATE_RETRIES && RETRYABLE_HTTP_STATUSES.has(response.status) && !response.headers.has('retry-after')) {
+        log.warn(`즉시 재시도 ${retryCount + 1}/${MAX_IMMEDIATE_RETRIES} (${new Date().toISOString()}): ${message}`)
+        return fetchLightningAttempt(retryCount + 1)
       }
       throw new Error(message)
     }
     const observation = parseAmoLightning(await response.json())
-    if (!allowRetry) log.info(`낙뢰 즉시 재시도 성공 (자료시각 ${observation.observedAt})`)
+    if (retryCount > 0) log.info(`낙뢰 즉시 재시도 성공 (${retryCount}/${MAX_IMMEDIATE_RETRIES}, 자료시각 ${observation.observedAt})`)
     return observation
   } catch (error) {
     if (error instanceof Error) {
@@ -92,9 +94,9 @@ async function fetchLightningAttempt(allowRetry: boolean): Promise<LightningObse
       const connectionFailed = error instanceof TypeError && error.message === 'fetch failed'
       const message = timedOut ? '항공기상청 낙뢰 응답 시간 초과' : connectionFailed ? '항공기상청 낙뢰 서버 연결 실패' : null
       if (message) {
-        if (allowRetry) {
-          log.warn(`즉시 1회 재시도 (${new Date().toISOString()}): ${message}`)
-          return fetchLightningAttempt(false)
+        if (retryCount < MAX_IMMEDIATE_RETRIES) {
+          log.warn(`즉시 재시도 ${retryCount + 1}/${MAX_IMMEDIATE_RETRIES} (${new Date().toISOString()}): ${message}`)
+          return fetchLightningAttempt(retryCount + 1)
         }
         throw new Error(message, { cause: error })
       }
@@ -104,9 +106,12 @@ async function fetchLightningAttempt(allowRetry: boolean): Promise<LightningObse
 }
 
 export function fetchAmoLightning(): Promise<LightningObservation> {
-  // Toggles and overlapping polls share both attempts and the final outcome.
-  if (request && Date.now() - lastRequest < MIN_REQUEST_INTERVAL_MS) return request
-  lastRequest = Date.now()
-  request = fetchLightningAttempt(true)
+  // A retry sequence can exceed 60 seconds; share it until all attempts settle.
+  if (request && (inFlight || Date.now() - lastCompletedAt < MIN_REQUEST_INTERVAL_MS)) return request
+  inFlight = true
+  request = fetchLightningAttempt(0).finally(() => {
+    inFlight = false
+    lastCompletedAt = Date.now()
+  })
   return request
 }

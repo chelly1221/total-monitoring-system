@@ -380,7 +380,7 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
   let calls = 0
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     assert.equal(new URL(String(input)).hostname, 'www.weather.go.kr')
-    if (++calls <= 2) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    if (++calls <= 6) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
     return Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
   })
   const originalTimeout = globalThis.setTimeout
@@ -421,7 +421,7 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
     const repeated = nextState(false)
     monitor.triggerWing15Poll()
     await repeated
-    assert.equal(calls, 2, 'Manual triggers still share both failed attempts during cooldown')
+    assert.equal(calls, 6, 'Manual triggers still share all six failed attempts during cooldown')
     assert.equal(retries.length, 2)
 
     clock += 60_000
@@ -434,7 +434,7 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
     assert.equal(fresh.observedAt, new Date(clock).toISOString())
     assert.deepEqual(fresh.checklist, initial.checklist)
     assert.equal(fresh.items[0].confirmed, false)
-    assert.equal(calls, 3)
+    assert.equal(calls, 7)
     assert.equal(retries.length, 2, 'Recovery returns to the normal polling interval')
   } finally {
     monitor.stopWing15Monitor()
@@ -443,7 +443,7 @@ test('repeated lightning timeouts fall back to cooldown, preserve review and pub
   }
 })
 
-test('an immediate lightning retry publishes success without a transient dashboard error', async t => {
+test('the fifth immediate lightning retry publishes success without a transient dashboard error', async t => {
   const clock = Date.now() + 240_000
   t.mock.method(Date, 'now', () => clock)
   const strike: NearbyStrike = { detectedAt: clock - 2 * 3600_000, distanceKm: 0, lat: GIMPO.lat, lon: GIMPO.lon, confirmed: false }
@@ -452,7 +452,7 @@ test('an immediate lightning retry publishes success without a transient dashboa
   let calls = 0
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     assert.equal(new URL(String(input)).hostname, 'www.weather.go.kr')
-    return ++calls === 1 ? new Response('Bad Gateway', { status: 502 })
+    return ++calls <= 5 ? new Response('Bad Gateway', { status: 502 })
       : Response.json({ baseDateList: [new Date(clock).toISOString()], lgtList: [] })
   })
   const originalTimeout = globalThis.setTimeout
@@ -472,14 +472,16 @@ test('an immediate lightning retry publishes success without a transient dashboa
         const message = JSON.parse(data.toString())
         if (message.type !== 'wing15') return
         publishedStates.push(message.data.wing15.ok)
+        // Checklist notifications can arrive before this poll's fresh result.
+        if (message.data.wing15.observedAt !== new Date(clock).toISOString()) return
         clearTimeout(timeout)
         resolve()
       })
     })
     monitor.startWing15Monitor()
     await published
-    assert.deepEqual(publishedStates, [true])
-    assert.equal(calls, 2)
+    assert.ok(publishedStates.length > 0 && publishedStates.every(ok => ok))
+    assert.equal(calls, 6)
     assert.equal(delayedRetries, 0)
     const fresh = await (await stateApi.GET()).json()
     assert.equal(fresh.ok, true)

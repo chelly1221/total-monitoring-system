@@ -48,14 +48,14 @@ test('web outages are shared during cooldown and can recover on the next attempt
   let calls = 0
   t.mock.method(globalThis, 'fetch', async () => {
     calls++
-    return calls <= 2 ? new Response('Bad Gateway', { status: 502 }) : Response.json(body())
+    return calls <= 6 ? new Response('Bad Gateway', { status: 502 }) : Response.json(body())
   })
   await assert.rejects(fetchAmoLightning(), /HTTP 502/)
   await assert.rejects(fetchAmoLightning(), /HTTP 502/)
-  assert.equal(calls, 2)
+  assert.equal(calls, 6)
   clock += 60_000
   assert.deepEqual((await fetchAmoLightning()).strikes, [])
-  assert.equal(calls, 3)
+  assert.equal(calls, 7)
 })
 
 test('network timeouts and connection failures have Korean diagnostics and retain their cause', async t => {
@@ -67,7 +67,7 @@ test('network timeouts and connection failures have Korean diagnostics and retai
     [new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } }), /서버 연결 실패/],
   ] as const
   let calls = 0
-  t.mock.method(globalThis, 'fetch', async () => { throw failures[Math.floor(calls++ / 2)][0] })
+  t.mock.method(globalThis, 'fetch', async () => { throw failures[Math.floor(calls++ / 6)][0] })
   for (const [cause, message] of failures) {
     await assert.rejects(fetchAmoLightning(), error => {
       assert.ok(error instanceof Error)
@@ -77,7 +77,7 @@ test('network timeouts and connection failures have Korean diagnostics and retai
     })
     clock += 60_000
   }
-  assert.equal(calls, failures.length * 2)
+  assert.equal(calls, failures.length * 6)
 })
 
 test('transient server failures share one immediate retry and release failed response bodies', async t => {
@@ -109,10 +109,13 @@ test('transient server failures share one immediate retry and release failed res
   }
 })
 
-test('a timeout gets a fresh deadline for its immediate retry', async t => {
+test('timeouts get fresh deadlines and can recover on the fifth immediate retry', async t => {
   const clock = now + 9 * 60_000
   t.mock.method(Date, 'now', () => clock)
-  const signals = [AbortSignal.abort(new DOMException('Timeout', 'TimeoutError')), new AbortController().signal]
+  const signals = [
+    ...Array.from({ length: 5 }, () => AbortSignal.abort(new DOMException('Timeout', 'TimeoutError'))),
+    new AbortController().signal,
+  ]
   let deadlines = 0
   t.mock.method(AbortSignal, 'timeout', (ms: number) => {
     assert.equal(ms, 15_000)
@@ -125,8 +128,8 @@ test('a timeout gets a fresh deadline for its immediate retry', async t => {
     return Response.json(body())
   })
   assert.deepEqual((await fetchAmoLightning()).strikes, [])
-  assert.equal(calls, 2)
-  assert.equal(deadlines, 2)
+  assert.equal(calls, 6)
+  assert.equal(deadlines, 6)
 })
 
 test('client errors, requested backoff and invalid data do not trigger immediate retries', async t => {
@@ -150,6 +153,31 @@ test('client errors, requested backoff and invalid data do not trigger immediate
     })
     clock += 60_000
   }
+})
+
+test('mixed failures share one five-retry budget beyond 60 seconds and cool down after completion', async t => {
+  let clock = now + 16 * 60_000
+  t.mock.method(Date, 'now', () => clock)
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    if (calls > 6) return Response.json(body())
+    clock += 15_000
+    if (calls >= 5) assert.equal(fetchAmoLightning(), pending, 'An active retry sequence must still be shared after 60 seconds')
+    if (calls % 2 === 0) throw new DOMException('Timeout', 'TimeoutError')
+    return new Response('Bad Gateway', { status: 502 })
+  })
+  const pending = fetchAmoLightning()
+  await assert.rejects(pending, /응답 시간 초과/)
+  assert.equal(calls, 6, 'The initial attempt plus five retries exhausts the shared budget')
+  assert.equal(clock, now + 17.5 * 60_000)
+  assert.equal(fetchAmoLightning(), pending)
+  clock += 59_999
+  assert.equal(fetchAmoLightning(), pending, 'Cooldown is measured from the final failure')
+  assert.equal(calls, 6)
+  clock++
+  assert.deepEqual((await fetchAmoLightning()).strikes, [])
+  assert.equal(calls, 7)
 })
 
 test('legacy rounded rows migrate without duplicate alerts or losing confirmation', () => {
