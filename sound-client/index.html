@@ -8,17 +8,15 @@
   </head>
   <body>
     <div id="app">
-      <!-- Custom titlebar (window is frameless) -->
-      <header class="titlebar" data-tauri-drag-region>
-        <div class="titlebar-left" data-tauri-drag-region>
-          <svg class="titlebar-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
-            <path d="M16 8.5a4.5 4.5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-          </svg>
-          <span class="titlebar-title" data-tauri-drag-region>통합알람감시 음성탐지기</span>
-          <span class="titlebar-ver" id="ver" data-tauri-drag-region></span>
-        </div>
-        <div class="titlebar-controls">
+      <!-- Tab row doubles as the drag handle; window controls sit at its right end -->
+      <nav class="tabs" data-tauri-drag-region>
+        <img class="tabs-icon" id="tabs-icon" src="/icons/state-normal.png" alt="" data-tauri-drag-region />
+        <button class="tab active" data-tab="status" type="button">상태</button>
+        <button class="tab" data-tab="mute" type="button">뮤트</button>
+        <button class="tab" data-tab="settings" type="button">설정</button>
+        <button class="tab" data-tab="info" type="button">정보</button>
+        <span class="tabs-spacer" data-tauri-drag-region></span>
+        <div class="tabs-controls">
           <button class="tb-btn" id="btn-min" type="button" title="최소화" aria-label="최소화">
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1" /></svg>
           </button>
@@ -26,13 +24,6 @@
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.1" /></svg>
           </button>
         </div>
-      </header>
-
-      <nav class="tabs">
-        <button class="tab active" data-tab="status" type="button">상태</button>
-        <button class="tab" data-tab="mute" type="button">뮤트</button>
-        <button class="tab" data-tab="settings" type="button">설정</button>
-        <button class="tab" data-tab="info" type="button">정보</button>
       </nav>
 
       <!-- 상태: 예전 디자인처럼 큰 상태 글자만 -->
@@ -160,6 +151,7 @@
           <div class="row"><span class="k">클라이언트 ID</span><span class="v mono tiny" id="st-id">-</span></div>
           <div class="row"><span class="k">오디오</span><span class="v tiny" id="st-audio">-</span></div>
           <div class="row"><span class="k">탐지 응답</span><span class="v tiny" id="st-discovery">-</span></div>
+          <div class="row"><span class="k">버전</span><span class="v tiny" id="st-ver">-</span></div>
         </div>
       </section>
     </div>

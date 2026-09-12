@@ -17,6 +17,7 @@ use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::image::Image;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use windows::Win32::Foundation::HWND;
@@ -29,6 +30,55 @@ const MAIN_WINDOW: &str = "main";
 const MUTE_WINDOW: &str = "mute";
 const TRAY_ID: &str = "main";
 const POPUP_MARGIN: i32 = 12;
+
+/// Which icon the tray and taskbar show. Sound wins over mute: an alarm is what matters.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum IconState {
+    Normal,
+    Muted,
+    Sound,
+}
+
+impl IconState {
+    fn of(snap: &Snapshot) -> Self {
+        if snap.sound {
+            IconState::Sound
+        } else if snap.muted {
+            IconState::Muted
+        } else {
+            IconState::Normal
+        }
+    }
+
+    fn image(self) -> Result<Image<'static>, tauri::Error> {
+        let bytes: &'static [u8] = match self {
+            IconState::Normal => include_bytes!("../icons/src/state-normal-64.png"),
+            IconState::Muted => include_bytes!("../icons/src/state-muted-64.png"),
+            IconState::Sound => include_bytes!("../icons/src/state-sound-64.png"),
+        };
+        Image::from_bytes(bytes)
+    }
+}
+
+/// Swap the tray icon and the main window (taskbar) icon to match the state.
+fn apply_icon(app: &AppHandle, state: IconState) {
+    match state.image() {
+        Ok(img) => {
+            if let Some(tray) = app.tray_by_id(TRAY_ID) {
+                if let Err(e) = tray.set_icon(Some(img.clone())) {
+                    log::warn!("tray icon update failed: {e}");
+                }
+            }
+            if let Some(w) = main_window(app) {
+                if let Err(e) = w.set_icon(img) {
+                    log::warn!("window icon update failed: {e}");
+                }
+            }
+            log::info!("icon -> {state:?}");
+        }
+        Err(e) => log::warn!("state icon decode failed: {e}"),
+    }
+}
 
 /// Tauri-managed context shared by commands and background tasks.
 pub struct Ctx {
@@ -288,10 +338,17 @@ fn format_remaining(sec: u64) -> String {
 async fn state_loop(app: AppHandle, state: AppState) {
     let mut ticker = tokio::time::interval(Duration::from_millis(500));
     let mut last_tooltip = String::new();
+    let mut last_icon: Option<IconState> = None;
     loop {
         ticker.tick().await;
         let snap = state.snapshot();
         let _ = app.emit("state", &snap);
+
+        let icon = IconState::of(&snap);
+        if last_icon != Some(icon) {
+            apply_icon(&app, icon);
+            last_icon = Some(icon);
+        }
 
         let mute_status = if snap.muted {
             match snap.unmute_remaining_sec {

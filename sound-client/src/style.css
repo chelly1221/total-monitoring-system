@@ -41,31 +41,24 @@ body { background: var(--bg); user-select: none; }
   border: 1px solid var(--border); /* frameless window edge */
 }
 
-/* ---------- custom titlebar ---------- */
-.titlebar {
-  height: 36px; flex: 0 0 36px; display: flex; align-items: center; justify-content: space-between;
-  background: var(--titlebar); border-bottom: 1px solid var(--border); -webkit-app-region: drag;
+/* ---------- tab row = title bar (drag handle + window controls) ---------- */
+.tabs {
+  display: flex; align-items: stretch; gap: 2px; padding: 0 0 0 8px; height: 34px; flex: 0 0 34px;
+  border-bottom: 1px solid var(--border-2); background: var(--bg);
 }
-.titlebar-left { display: flex; align-items: center; height: 100%; padding-left: 4px; min-width: 0; }
-.titlebar-icon { width: 36px; height: 36px; padding: 9px; color: var(--accent); flex: 0 0 36px; }
-.titlebar-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
-.titlebar-ver { margin-left: 8px; font-size: 11px; color: var(--muted); }
-.titlebar-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
+.tabs-icon { width: 18px; height: 18px; align-self: center; margin-right: 4px; object-fit: contain; }
+.tabs-spacer { flex: 1; }
+.tabs-controls { display: flex; height: 100%; }
 .tb-btn {
-  width: 46px; height: 36px; border: none; background: transparent; color: var(--text-2);
+  width: 40px; height: 100%; border: none; background: transparent; color: var(--text-2);
   display: flex; align-items: center; justify-content: center; cursor: default; border-radius: 0; padding: 0;
 }
 .tb-btn svg { width: 10px; height: 10px; }
-.tb-btn:hover { background: #dedede; color: var(--text); }
+.tb-btn:hover { background: #e6e6e6; color: var(--text); }
 .tb-btn.close:hover { background: var(--close-hover); color: #fff; }
-
-/* ---------- tabs ---------- */
-.tabs {
-  display: flex; gap: 2px; padding: 4px 12px 0; border-bottom: 1px solid var(--border-2); background: var(--bg);
-}
 .tab {
   background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted);
-  padding: 4px 10px 5px; cursor: pointer; font: inherit; font-weight: 500; border-radius: 0;
+  padding: 0 10px; cursor: pointer; font: inherit; font-weight: 500; border-radius: 0;
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }

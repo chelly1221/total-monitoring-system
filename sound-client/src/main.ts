@@ -126,7 +126,11 @@ function renderMuteGrid(defaultMinutes: number): void {
 
 function renderStatus(s: Snapshot): void {
   lastSnapshot = s;
-  $("ver").textContent = `v${s.version}`;
+  $("st-ver").textContent = `v${s.version}`;
+  const iconState = s.sound ? "sound" : s.muted ? "muted" : "normal";
+  const iconEl = $<HTMLImageElement>("tabs-icon");
+  const iconSrc = `/icons/state-${iconState}.png`;
+  if (!iconEl.src.endsWith(iconSrc)) iconEl.src = iconSrc;
 
   const ind = $("indicator");
   ind.classList.toggle("on", s.sound);
