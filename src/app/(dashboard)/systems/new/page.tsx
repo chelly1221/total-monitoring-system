@@ -21,12 +21,19 @@ import { SystemEquipmentConfig } from "@/components/forms/system-equipment-confi
 import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
 import { SystemAudioConfig } from "@/components/forms/system-audio-config"
 import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
+import {
+  SoundClientSection,
+  buildClientSelection,
+  provisionSoundClient,
+  type RegistrationMode,
+} from "@/components/forms/sound-client-section"
 import type {
   SystemType,
   EquipmentConfig,
   MetricsConfig,
   AudioConfig,
   DataMatchCondition,
+  DiscoveredClient,
 } from "@/types"
 
 const TYPE_LABELS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -80,6 +87,7 @@ function SystemNewForm() {
   const [encoding, setEncoding] = React.useState<"buffer" | "utf8">("buffer")
   const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [systemType, setSystemType] = React.useState<SystemType>(() => getSystemType(typeParam))
+  const [registrationMode, setRegistrationMode] = React.useState<RegistrationMode>("manual")
 
   // Config state
   const [equipmentConfig, setEquipmentConfig] = React.useState<EquipmentConfig>(
@@ -202,6 +210,25 @@ function SystemNewForm() {
       }
 
       const newSystem = await response.json()
+
+      // Auto-registered PC: hand it this server's address so it needs no manual setup.
+      const linkedClient = systemType === "equipment" ? equipmentConfig.client : undefined
+      if (linkedClient && portNum !== null) {
+        const provisioned = await provisionSoundClient({
+          client: linkedClient,
+          port: portNum,
+          config: equipmentConfig,
+          facilityName: name.trim(),
+        })
+        if (provisioned) {
+          await fetch(`/api/systems/${newSystem.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config: { ...equipmentConfig, client: provisioned } }),
+          }).catch(() => undefined)
+        }
+      }
+
       router.push(`/systems/${newSystem.id}`)
       router.refresh()
     } catch (err) {
@@ -213,6 +240,23 @@ function SystemNewForm() {
 
   const typeInfo = TYPE_LABELS[systemType]
   const isSensor = systemType === "sensor"
+
+  const handleClientSelect = (client: DiscoveredClient, suggestedPort: number | null) => {
+    const selection = buildClientSelection(client, suggestedPort, equipmentConfig)
+    if (!name.trim()) setName(selection.name)
+    setPort(selection.port)
+    setProtocol(selection.protocol)
+    setEncoding(selection.encoding)
+    setEquipmentConfig(selection.config)
+  }
+
+  const handleClientUnlink = () => {
+    setEquipmentConfig((prev) => {
+      const next = { ...prev }
+      delete next.client
+      return next
+    })
+  }
 
   const getConditionsForItem = (itemName: string): DataMatchCondition[] | undefined =>
     metricsConfig.displayItems.find((i) => i.name === itemName)?.dataMatchConditions
@@ -473,6 +517,16 @@ function SystemNewForm() {
                 onTopicChange={setTopic}
               />
             </div>
+
+            {/* 등록 방식 + 자동 탐지 (PC 클라이언트) */}
+            <SoundClientSection
+              mode={registrationMode}
+              onModeChange={setRegistrationMode}
+              client={equipmentConfig.client}
+              isEditMode
+              onSelect={handleClientSelect}
+              onUnlink={handleClientUnlink}
+            />
 
             {error && (
               <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">

@@ -14,6 +14,12 @@ import { SensorAlarmLog } from "@/components/forms/sensor-alarm-log"
 import { SensorSettingsCard } from "@/components/forms/sensor-settings-card"
 import { SensorDataPreviewCard } from "@/components/forms/sensor-data-preview-card"
 import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
+import {
+  SoundClientSection,
+  buildClientSelection,
+  provisionSoundClient,
+  type RegistrationMode,
+} from "@/components/forms/sound-client-section"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import type {
   SystemStatus,
@@ -23,6 +29,7 @@ import type {
   EquipmentConfig,
   AudioConfig,
   DataMatchCondition,
+  DiscoveredClient,
 } from "@/types"
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
@@ -114,6 +121,7 @@ export default function SystemDetailPage() {
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
   const [equipmentConfig, setEquipmentConfig] = React.useState<EquipmentConfig>(DEFAULT_EQUIPMENT_CONFIG)
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>(DEFAULT_AUDIO_CONFIG)
+  const [registrationMode, setRegistrationMode] = React.useState<RegistrationMode>("manual")
 
   // Data preview state
   const [previewMessages, setPreviewMessages] = React.useState<string[]>([])
@@ -238,6 +246,7 @@ export default function SystemDetailPage() {
             const parsed = JSON.parse(data.config)
             if (data.type === "equipment") {
               setEquipmentConfig(parsed as EquipmentConfig)
+              setRegistrationMode((parsed as EquipmentConfig).client ? "auto" : "manual")
             } else if (data.type === "sensor") {
               setMetricsConfig(parsed as MetricsConfig)
             }
@@ -395,8 +404,30 @@ export default function SystemDetailPage() {
         throw new Error(data.error || "저장에 실패했습니다")
       }
 
-      // Refetch system data
-      const updatedData = await response.json()
+      let updatedData = await response.json()
+
+      // Linked PC: push the (possibly changed) port/patterns to the client.
+      if (systemType === "equipment" && equipmentConfig.client && portNum !== null) {
+        const provisioned = await provisionSoundClient({
+          client: equipmentConfig.client,
+          port: portNum,
+          config: equipmentConfig,
+          facilityName: name.trim(),
+        })
+        if (provisioned) {
+          const nextConfig = { ...equipmentConfig, client: provisioned }
+          const patch = await fetch(`/api/systems/${systemId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config: nextConfig }),
+          }).catch(() => null)
+          if (patch?.ok) {
+            updatedData = await patch.json()
+            setEquipmentConfig(nextConfig)
+          }
+        }
+      }
+
       setSystem(updatedData)
       setIsEditMode(false)
       router.refresh()
@@ -419,12 +450,14 @@ export default function SystemDetailPage() {
           const parsed = JSON.parse(system.config)
           if (system.type === "equipment") {
             setEquipmentConfig(parsed as EquipmentConfig)
+            setRegistrationMode((parsed as EquipmentConfig).client ? "auto" : "manual")
           } else if (system.type === "sensor") {
             setMetricsConfig(parsed as MetricsConfig)
           }
         } catch {
           setMetricsConfig(DEFAULT_METRICS_CONFIG)
           setEquipmentConfig(DEFAULT_EQUIPMENT_CONFIG)
+          setRegistrationMode("manual")
         }
       }
       if (system.audioConfig) {
@@ -469,6 +502,23 @@ export default function SystemDetailPage() {
 
   const getConditionsForItem = (name: string): DataMatchCondition[] | undefined =>
     metricsConfig.displayItems.find((i) => i.name === name)?.dataMatchConditions
+
+  const handleClientSelect = (client: DiscoveredClient, suggestedPort: number | null) => {
+    const selection = buildClientSelection(client, suggestedPort, equipmentConfig)
+    if (!name.trim()) setName(selection.name)
+    setPort(selection.port)
+    setProtocol(selection.protocol)
+    setEncoding(selection.encoding)
+    setEquipmentConfig(selection.config)
+  }
+
+  const handleClientUnlink = () => {
+    setEquipmentConfig((prev) => {
+      const next = { ...prev }
+      delete next.client
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -556,6 +606,17 @@ export default function SystemDetailPage() {
             offlineThresholdMin={offlineThresholdMin}
             onEncodingChange={setEncoding}
             onOfflineThresholdChange={setOfflineThresholdMin}
+          />
+
+          {/* 등록 방식 + 연결된 PC (자동 탐지) */}
+          <SoundClientSection
+            mode={registrationMode}
+            onModeChange={setRegistrationMode}
+            client={equipmentConfig.client}
+            currentSystemId={systemId}
+            isEditMode={isEditMode}
+            onSelect={handleClientSelect}
+            onUnlink={handleClientUnlink}
           />
 
           {error && (
