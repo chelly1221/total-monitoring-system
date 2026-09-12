@@ -23,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use windows::core::w;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE};
 use windows::Win32::System::Diagnostics::Debug::MessageBeep;
 use windows::Win32::UI::WindowsAndMessaging::{
     FlashWindowEx, MessageBoxW, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG, MB_ICONERROR, MB_OK,
@@ -125,6 +126,30 @@ impl Ctx {
     fn send_mute(&self, cmd: MuteCmd) {
         if let Ok(tx) = self.mute_tx.lock() {
             let _ = tx.send(cmd);
+        }
+    }
+}
+
+/// Windows 11 paints a 1 px DWM border around frameless windows that keep a shadow,
+/// in the accent colour when "제목 표시줄 및 창 테두리에 테마 컬러 표시" is on — the blue
+/// line operators noticed. The CSS already draws the grey window edge, so turn it off.
+fn remove_dwm_border(w: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = w.hwnd() {
+        let hwnd = HWND(hwnd.0);
+        let color = DWMWA_COLOR_NONE;
+        // SAFETY: hwnd is a live window handle and `color` outlives the call.
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                &color as *const u32 as *const _,
+                std::mem::size_of::<u32>() as u32,
+            )
+        };
+        match result {
+            Ok(()) => log::info!("dwm border disabled for {}", w.label()),
+            // Pre-Windows 11 builds reject the attribute; they draw no such border anyway.
+            Err(e) => log::info!("dwm border attribute not applied for {}: {e}", w.label()),
         }
     }
 }
@@ -538,6 +563,7 @@ pub fn run() {
             build_tray(app)?;
 
             if let Some(w) = main_window(&handle) {
+                remove_dwm_border(&w);
                 let w2 = w.clone();
                 w.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
@@ -548,6 +574,7 @@ pub fn run() {
                 });
             }
             if let Some(mw) = mute_window(&handle) {
+                remove_dwm_border(&mw);
                 let mw2 = mw.clone();
                 mw.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
