@@ -1,0 +1,21 @@
+{
+  "name": "tms-soundsense",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "cargo tauri",
+    "icon": "node scripts/make-icon.mjs && cargo tauri icon icon.png -o src-tauri/icons",
+    "probe": "node scripts/probe-test.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}
