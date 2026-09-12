@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "TMS SoundSense",
+        "title": "통합알람감시 음성탐지기",
         "width": 460,
         "height": 620,
         "resizable": false,

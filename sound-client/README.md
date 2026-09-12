@@ -1,4 +1,4 @@
-# TMS SoundSense
+# 통합알람감시 음성탐지기 (TMS SoundSense)
 
 통합알람감시체계(TMS) 서버에 PC의 **소리 발생 여부**를 보고하고, PC가 **뮤트된 채로 방치되지 않도록** 일정 시간 뒤 자동으로 뮤트를 해제하는 Windows 데스크톱 클라이언트입니다. Tauri 2 + Rust로 만든 단일 실행 파일이며, 설치 없이 실행됩니다.
 
@@ -82,6 +82,8 @@ cargo tauri build                 # + NSIS 설치 파일 (선택)
 ```
 
 개발 모드는 `cargo tauri dev`(Vite dev 서버 자동 실행)입니다. 로그는 `RUST_LOG=info`로 제어합니다(릴리스 exe는 콘솔이 없습니다).
+
+> **주의**: `cargo build --release`만 실행하면 `custom-protocol` 기능이 빠져 프런트 자산이 포함되지 않은 개발 모드 exe가 만들어집니다. 그 exe는 실행 시 "localhost 연결을 거부했습니다" 오류를 띄웁니다. 배포용 exe는 반드시 `cargo tauri build`(또는 `--no-bundle`)로 만드세요.
 
 ## 프로토콜 테스트
 

@@ -224,7 +224,7 @@ async fn state_loop(app: AppHandle, state: AppState) {
         let _ = app.emit("state", &snap);
 
         let mut tooltip = format!(
-            "TMS SoundSense - {}",
+            "통합알람감시 음성탐지기 - {}",
             if snap.sound {
                 "소리 감지됨"
             } else {
@@ -258,7 +258,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("TMS SoundSense")
+        .tooltip("통합알람감시 음성탐지기")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
