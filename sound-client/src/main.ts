@@ -118,7 +118,7 @@ function renderMuteGrid(defaultMinutes: number): void {
     btn.type = "button";
     btn.className = `popup-opt${p.minutes === defaultMinutes ? " default" : ""}`;
     btn.textContent = p.label;
-    btn.title = "이 시간 뒤에 뮤트를 자동 해제합니다 (뮤트 상태일 때만)";
+    btn.title = "이 시간 뒤에 음소거를 자동 해제합니다 (음소거 상태일 때만)";
     btn.addEventListener("click", () => void invoke("mute_choose", { minutes: p.minutes }));
     grid.appendChild(btn);
   }
@@ -127,10 +127,6 @@ function renderMuteGrid(defaultMinutes: number): void {
 function renderStatus(s: Snapshot): void {
   lastSnapshot = s;
   $("st-ver").textContent = `v${s.version}`;
-  const iconState = s.sound ? "sound" : s.muted ? "muted" : "normal";
-  const iconEl = $<HTMLImageElement>("tabs-icon");
-  const iconSrc = `/icons/state-${iconState}.png`;
-  if (!iconEl.src.endsWith(iconSrc)) iconEl.src = iconSrc;
 
   const ind = $("indicator");
   ind.classList.toggle("on", s.sound);
@@ -150,16 +146,16 @@ function renderStatus(s: Snapshot): void {
   const chipMute = $("chip-mute");
   if (s.muted) {
     chipMute.textContent = s.unmuteRemainingSec !== null
-      ? `뮤트됨 · ${formatRemaining(s.unmuteRemainingSec)} 후 해제`
-      : "뮤트됨";
+      ? `음소거됨 · ${formatRemaining(s.unmuteRemainingSec)} 후 해제`
+      : "음소거됨";
     chipMute.className = "chip accent";
   } else {
-    chipMute.textContent = "뮤트 아님";
+    chipMute.textContent = "음소거 아님";
     chipMute.className = "chip";
   }
 
   const muteEl = $("mute-state");
-  muteEl.textContent = s.muted ? "뮤트됨" : "정상 (뮤트 아님)";
+  muteEl.textContent = s.muted ? "음소거됨" : "정상 (음소거 아님)";
   muteEl.className = `v ${s.muted ? "warn" : "ok"}`;
   const running = s.muted && s.unmuteRemainingSec !== null;
   $("mute-remaining").textContent = running

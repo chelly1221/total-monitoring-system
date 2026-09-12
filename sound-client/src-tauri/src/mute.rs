@@ -18,7 +18,7 @@ use windows::Win32::System::Com::{
 pub enum MuteCmd {
     /// Unmute immediately and set the volume to 100%.
     UnmuteNow,
-    /// Operator picked a duration in the popup or the 뮤트 tab.
+    /// Operator picked a duration in the popup or the 음소거 tab.
     StartCountdown(u32),
     /// Stop a running countdown; the PC stays muted.
     CancelCountdown,

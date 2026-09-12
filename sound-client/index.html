@@ -10,9 +10,8 @@
     <div id="app">
       <!-- Tab row doubles as the drag handle; window controls sit at its right end -->
       <nav class="tabs" data-tauri-drag-region>
-        <img class="tabs-icon" id="tabs-icon" src="/icons/state-normal.png" alt="" data-tauri-drag-region />
         <button class="tab active" data-tab="status" type="button">상태</button>
-        <button class="tab" data-tab="mute" type="button">뮤트</button>
+        <button class="tab" data-tab="mute" type="button">음소거</button>
         <button class="tab" data-tab="settings" type="button">설정</button>
         <button class="tab" data-tab="info" type="button">정보</button>
         <span class="tabs-spacer" data-tauri-drag-region></span>
@@ -35,15 +34,15 @@
         </div>
         <div class="status-footer">
           <span class="chip" id="chip-server">서버 미등록</span>
-          <span class="chip" id="chip-mute">뮤트 아님</span>
+          <span class="chip" id="chip-mute">음소거 아님</span>
         </div>
       </section>
 
-      <!-- 뮤트 -->
+      <!-- 음소거 -->
       <section class="view" id="view-mute">
         <div class="card">
           <div class="row">
-            <span class="k">뮤트 상태</span>
+            <span class="k">음소거 상태</span>
             <span class="v" id="mute-state">-</span>
           </div>
           <div class="row">
@@ -54,7 +53,7 @@
         <div class="card">
           <div class="field"><span>해제까지 기다릴 시간</span></div>
           <div class="opt-grid" id="mute-grid"></div>
-          <p class="hint">뮤트되면 트레이 위에 선택 창이 뜹니다. 시간을 고르면 카운트다운 후 해제하고 볼륨을 100%로 올립니다.</p>
+          <p class="hint">음소거되면 트레이 위에 선택 창이 뜹니다. 시간을 고르면 카운트다운 후 해제하고 볼륨을 100%로 올립니다.</p>
           <div class="row actions">
             <button id="btn-cancel-timer" type="button">타이머 취소</button>
             <button id="btn-unmute" type="button" class="primary">지금 해제</button>
@@ -83,7 +82,7 @@
               <input name="intervalMs" type="number" step="100" min="200" required />
             </label>
             <label class="field">
-              <span>뮤트 팝업 기본 선택 시간</span>
+              <span>음소거 팝업 기본 선택 시간</span>
               <select name="unmuteMinutes" id="settings-unmute"></select>
             </label>
             <label class="field">

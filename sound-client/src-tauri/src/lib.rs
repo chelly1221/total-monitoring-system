@@ -297,7 +297,7 @@ fn unmute_now(ctx: tauri::State<'_, Ctx>) {
     ctx.send_mute(MuteCmd::UnmuteNow);
 }
 
-/// Operator picked a duration (popup or 뮤트 tab): start the countdown.
+/// Operator picked a duration (popup or 음소거 tab): start the countdown.
 #[tauri::command]
 fn mute_choose(app: AppHandle, ctx: tauri::State<'_, Ctx>, minutes: u32) -> Result<(), String> {
     if !(1..=24 * 60).contains(&minutes) {

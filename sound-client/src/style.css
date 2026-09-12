@@ -43,10 +43,9 @@ body { background: var(--bg); user-select: none; }
 
 /* ---------- tab row = title bar (drag handle + window controls) ---------- */
 .tabs {
-  display: flex; align-items: stretch; gap: 2px; padding: 0 0 0 8px; height: 34px; flex: 0 0 34px;
+  display: flex; align-items: stretch; gap: 2px; padding: 0 0 0 4px; height: 34px; flex: 0 0 34px;
   border-bottom: 1px solid var(--border-2); background: var(--bg);
 }
-.tabs-icon { width: 18px; height: 18px; align-self: center; margin-right: 4px; object-fit: contain; }
 .tabs-spacer { flex: 1; }
 .tabs-controls { display: flex; height: 100%; }
 .tb-btn {

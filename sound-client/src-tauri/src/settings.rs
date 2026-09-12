@@ -67,7 +67,7 @@ impl Settings {
             return Err("탐지 포트가 올바르지 않습니다".into());
         }
         if self.unmute_minutes == 0 {
-            return Err("자동 뮤트 해제 시간이 올바르지 않습니다".into());
+            return Err("자동 음소거 해제 시간이 올바르지 않습니다".into());
         }
         if let Some(t) = &self.target {
             if t.ip.parse::<std::net::Ipv4Addr>().is_err() {
