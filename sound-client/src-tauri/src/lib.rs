@@ -1,6 +1,7 @@
 //! TMS SoundSense: WASAPI loopback sound detection + auto-unmute + LAN discovery client.
 
 mod audio;
+mod badge;
 mod discovery;
 mod firewall;
 mod mute;
@@ -54,19 +55,31 @@ impl IconState {
         }
     }
 
-    fn image(self) -> Result<Image<'static>, tauri::Error> {
-        let bytes: &'static [u8] = match self {
+    fn png(self) -> &'static [u8] {
+        match self {
             IconState::Normal => include_bytes!("../icons/src/state-normal-64.png"),
             IconState::Muted => include_bytes!("../icons/src/state-muted-64.png"),
             IconState::Sound => include_bytes!("../icons/src/state-sound-64.png"),
-        };
-        Image::from_bytes(bytes)
+        }
+    }
+
+    /// Plain icon, or the icon with the remaining unmute time drawn over it.
+    fn image(self, countdown_sec: Option<u64>) -> Result<Image<'static>, tauri::Error> {
+        match countdown_sec {
+            Some(sec) => {
+                // White minutes/hours; the last minute counts down in amber.
+                let rgb = if badge::is_final_minute(sec) { [255, 196, 0] } else { [255, 255, 255] };
+                badge::render(self.png(), &badge::countdown_label(sec), rgb)
+            }
+            None => Image::from_bytes(self.png()),
+        }
     }
 }
 
-/// Swap the tray icon and the main window (taskbar) icon to match the state.
-fn apply_icon(app: &AppHandle, state: IconState) {
-    match state.image() {
+/// Swap the tray icon and the main window (taskbar) icon to match the state, drawing the
+/// remaining unmute time on it while a countdown runs.
+fn apply_icon(app: &AppHandle, state: IconState, countdown_sec: Option<u64>) {
+    match state.image(countdown_sec) {
         Ok(img) => {
             match app.tray_by_id(TRAY_ID) {
                 Some(tray) => {
@@ -81,7 +94,10 @@ fn apply_icon(app: &AppHandle, state: IconState) {
                     log::warn!("window icon update failed: {e}");
                 }
             }
-            log::info!("icon -> {state:?}");
+            match countdown_sec {
+                Some(sec) => log::debug!("icon -> {state:?} ({})", badge::countdown_label(sec)),
+                None => log::info!("icon -> {state:?}"),
+            }
         }
         Err(e) => log::warn!("state icon decode failed: {e}"),
     }
@@ -347,16 +363,20 @@ fn format_remaining(sec: u64) -> String {
 async fn state_loop(app: AppHandle, state: AppState) {
     let mut ticker = tokio::time::interval(Duration::from_millis(500));
     let mut last_tooltip = String::new();
-    let mut last_icon: Option<IconState> = None;
+    let mut last_icon: Option<(IconState, Option<String>)> = None;
     loop {
         ticker.tick().await;
         let snap = state.snapshot();
         let _ = app.emit("state", &snap);
 
         let icon = IconState::of(&snap);
-        if last_icon != Some(icon) {
-            apply_icon(&app, icon);
-            last_icon = Some(icon);
+        // Re-render only when the state or the visible label changes (once a minute,
+        // once a second during the final minute).
+        let countdown = if snap.muted { snap.unmute_remaining_sec } else { None };
+        let key = (icon, countdown.map(badge::countdown_label));
+        if last_icon.as_ref() != Some(&key) {
+            apply_icon(&app, icon, countdown);
+            last_icon = Some(key);
         }
 
         let mute_status = if snap.muted {
