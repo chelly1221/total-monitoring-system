@@ -43,7 +43,7 @@ impl Default for Settings {
             discovery_port: 7790,
             token: String::new(),
             unmute_minutes: 10,
-            autostart: false,
+            autostart: true,
         }
     }
 }

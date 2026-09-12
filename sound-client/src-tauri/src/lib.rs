@@ -30,6 +30,10 @@ const MAIN_WINDOW: &str = "main";
 const MUTE_WINDOW: &str = "mute";
 const TRAY_ID: &str = "main";
 const POPUP_MARGIN: i32 = 12;
+/// Height of the Windows 11 volume / quick-settings flyout that pops up at the bottom-right
+/// when the operator mutes from the taskbar. The popup is placed above that band so the
+/// flyout never covers it (on 1080p this puts it in the top-right corner).
+const TASKBAR_FLYOUT_CLEARANCE: i32 = 700;
 
 /// Which icon the tray and taskbar show. Sound wins over mute: an alarm is what matters.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -124,8 +128,8 @@ fn mute_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window(MUTE_WINDOW)
 }
 
-/// Show the mute-duration popup docked at the bottom-right of the primary work area
-/// (just above the taskbar / tray), like the original UnmuteTimer popup.
+/// Show the mute-duration popup on the right edge of the primary work area, above the
+/// band where the taskbar volume flyout appears, so muting from the taskbar never hides it.
 pub fn show_mute_popup(app: &AppHandle) {
     let Some(w) = mute_window(app) else {
         log::warn!("mute popup window missing");
@@ -135,7 +139,9 @@ pub fn show_mute_popup(app: &AppHandle) {
         (Ok(Some(monitor)), Ok(size)) => {
             let area = monitor.work_area();
             let x = area.position.x + area.size.width as i32 - size.width as i32 - POPUP_MARGIN;
-            let y = area.position.y + area.size.height as i32 - size.height as i32 - POPUP_MARGIN;
+            let bottom = area.position.y + area.size.height as i32;
+            let y = (bottom - TASKBAR_FLYOUT_CLEARANCE - size.height as i32)
+                .max(area.position.y + POPUP_MARGIN);
             if let Err(e) = w.set_position(PhysicalPosition::new(x.max(0), y.max(0))) {
                 log::warn!("mute popup set_position failed: {e}");
             }
