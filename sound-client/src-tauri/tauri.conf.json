@@ -17,12 +17,14 @@
         "label": "main",
         "title": "통합알람감시 음성탐지기",
         "width": 460,
-        "height": 620,
+        "height": 600,
         "resizable": false,
         "maximizable": false,
         "visible": false,
         "center": true,
-        "url": "index.html"
+        "url": "index.html",
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -31,7 +33,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

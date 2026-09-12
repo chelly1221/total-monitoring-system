@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface Target {
   ip: string;
@@ -94,6 +95,15 @@ function fillPresetSelect(select: HTMLSelectElement, current: number): void {
   select.value = String(current);
 }
 
+// ------------------------------------------------------------------ titlebar
+
+function setupTitlebar(): void {
+  const win = getCurrentWindow();
+  $("btn-min").addEventListener("click", () => void win.minimize());
+  // Close hides to the tray (the Rust CloseRequested handler prevents exit).
+  $("btn-close").addEventListener("click", () => void win.close());
+}
+
 // ------------------------------------------------------------------ tabs
 
 function setupTabs(): void {
@@ -116,14 +126,32 @@ let statusPresetBusy = false;
 function renderStatus(s: Snapshot): void {
   lastSnapshot = s;
   $("ver").textContent = `v${s.version}`;
-  $("brand-dot").classList.toggle("on", s.sound);
 
   const ind = $("indicator");
   ind.classList.toggle("on", s.sound);
-  $("indicator-label").textContent = s.sound ? "소리 감지됨" : "무음";
+  $("indicator-label").textContent = s.sound ? "소리 감지" : "무음";
   $("indicator-peak").textContent = `피크 ${s.peak.toFixed(3)}`;
   const pct = Math.min(100, Math.round(Math.sqrt(Math.min(1, s.peak)) * 100));
   $("meter-fill").style.width = `${pct}%`;
+
+  const chipServer = $("chip-server");
+  if (s.target) {
+    chipServer.textContent = `서버 ${s.target.ip}:${s.target.port}`;
+    chipServer.className = "chip ok";
+  } else {
+    chipServer.textContent = "서버 미등록";
+    chipServer.className = "chip warn";
+  }
+  const chipMute = $("chip-mute");
+  if (s.muted) {
+    chipMute.textContent = s.unmuteRemainingSec !== null
+      ? `뮤트됨 · ${formatRemaining(s.unmuteRemainingSec)} 후 해제`
+      : "뮤트됨";
+    chipMute.className = "chip accent";
+  } else {
+    chipMute.textContent = "뮤트 아님";
+    chipMute.className = "chip";
+  }
 
   const muteEl = $("mute-state");
   muteEl.textContent = s.muted ? "뮤트됨" : "정상 (뮤트 아님)";
@@ -336,6 +364,7 @@ function showIdentify(sec: number): void {
 // ------------------------------------------------------------------ boot
 
 async function main(): Promise<void> {
+  setupTitlebar();
   setupTabs();
   setupStatusActions();
   setupSettingsForm();

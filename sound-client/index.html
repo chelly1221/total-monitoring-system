@@ -8,26 +8,48 @@
   </head>
   <body>
     <div id="app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-dot" id="brand-dot"></span>
-          <span>통합알람감시 음성탐지기</span>
-          <span class="ver" id="ver"></span>
+      <!-- Custom titlebar (window is frameless) -->
+      <header class="titlebar" data-tauri-drag-region>
+        <div class="titlebar-left" data-tauri-drag-region>
+          <svg class="titlebar-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+            <path d="M16 8.5a4.5 4.5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span class="titlebar-title" data-tauri-drag-region>통합알람감시 음성탐지기</span>
+          <span class="titlebar-ver" id="ver" data-tauri-drag-region></span>
         </div>
-        <nav class="tabs">
-          <button class="tab active" data-tab="status" type="button">상태</button>
-          <button class="tab" data-tab="settings" type="button">설정</button>
-        </nav>
+        <div class="titlebar-controls">
+          <button class="tb-btn" id="btn-min" type="button" title="최소화" aria-label="최소화">
+            <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1" /></svg>
+          </button>
+          <button class="tb-btn close" id="btn-close" type="button" title="트레이로 닫기" aria-label="닫기">
+            <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.1" /></svg>
+          </button>
+        </div>
       </header>
 
-      <!-- 상태 화면 -->
-      <section class="view active" id="view-status">
-        <div class="indicator" id="indicator">
-          <div class="indicator-label" id="indicator-label">무음</div>
-          <div class="indicator-sub" id="indicator-peak">피크 0.000</div>
-          <div class="meter"><div class="meter-fill" id="meter-fill"></div></div>
-        </div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="status" type="button">상태</button>
+        <button class="tab" data-tab="mute" type="button">뮤트</button>
+        <button class="tab" data-tab="settings" type="button">설정</button>
+        <button class="tab" data-tab="info" type="button">정보</button>
+      </nav>
 
+      <!-- 상태: 예전 디자인처럼 큰 상태 글자만 -->
+      <section class="view active" id="view-status">
+        <div class="hero" id="indicator">
+          <div class="hero-label" id="indicator-label">초기화 중...</div>
+          <div class="meter"><div class="meter-fill" id="meter-fill"></div></div>
+          <div class="hero-sub" id="indicator-peak">피크 0.000</div>
+        </div>
+        <div class="status-footer">
+          <span class="chip" id="chip-server">서버 미등록</span>
+          <span class="chip" id="chip-mute">뮤트 아님</span>
+        </div>
+      </section>
+
+      <!-- 뮤트 -->
+      <section class="view" id="view-mute">
         <div class="card">
           <div class="row">
             <span class="k">뮤트 상태</span>
@@ -37,38 +59,20 @@
             <span class="k">자동 해제까지</span>
             <span class="v mono" id="mute-remaining">-</span>
           </div>
+        </div>
+        <div class="card">
+          <label class="field">
+            <span>자동 뮤트 해제 시간</span>
+            <select id="unmute-preset"></select>
+          </label>
+          <p class="hint">PC가 뮤트되면 카운트다운이 시작되고, 시간이 지나면 뮤트를 해제하고 볼륨을 100%로 올립니다.</p>
           <div class="row actions">
-            <select id="unmute-preset" class="small"></select>
-            <button id="btn-unmute" type="button" class="secondary small">지금 해제</button>
+            <button id="btn-unmute" type="button" class="primary">지금 해제</button>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="row">
-            <span class="k">서버 대상</span>
-            <span class="v mono" id="target">-</span>
-          </div>
-          <div class="row">
-            <span class="k">마지막 전송</span>
-            <span class="v mono" id="last-sent">-</span>
-          </div>
-          <div class="row">
-            <span class="k">전송 횟수</span>
-            <span class="v mono" id="send-count">0</span>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="row"><span class="k">장비명</span><span class="v" id="st-name">-</span></div>
-          <div class="row"><span class="k">PC 이름</span><span class="v mono" id="st-host">-</span></div>
-          <div class="row"><span class="k">이 PC의 IP</span><span class="v mono" id="st-ip">-</span></div>
-          <div class="row"><span class="k">클라이언트 ID</span><span class="v mono tiny" id="st-id">-</span></div>
-          <div class="row"><span class="k">오디오</span><span class="v tiny" id="st-audio">-</span></div>
-          <div class="row"><span class="k">탐지 응답</span><span class="v tiny" id="st-discovery">-</span></div>
         </div>
       </section>
 
-      <!-- 설정 화면 -->
+      <!-- 설정 -->
       <section class="view" id="view-settings">
         <form id="settings-form" autocomplete="off">
           <label class="field">
@@ -141,6 +145,23 @@
             <button type="submit" class="primary">저장</button>
           </div>
         </form>
+      </section>
+
+      <!-- 정보 -->
+      <section class="view" id="view-info">
+        <div class="card">
+          <div class="row"><span class="k">서버 대상</span><span class="v mono" id="target">-</span></div>
+          <div class="row"><span class="k">마지막 전송</span><span class="v mono" id="last-sent">-</span></div>
+          <div class="row"><span class="k">전송 횟수</span><span class="v mono" id="send-count">0</span></div>
+        </div>
+        <div class="card">
+          <div class="row"><span class="k">장비명</span><span class="v" id="st-name">-</span></div>
+          <div class="row"><span class="k">PC 이름</span><span class="v mono" id="st-host">-</span></div>
+          <div class="row"><span class="k">이 PC의 IP</span><span class="v mono" id="st-ip">-</span></div>
+          <div class="row"><span class="k">클라이언트 ID</span><span class="v mono tiny" id="st-id">-</span></div>
+          <div class="row"><span class="k">오디오</span><span class="v tiny" id="st-audio">-</span></div>
+          <div class="row"><span class="k">탐지 응답</span><span class="v tiny" id="st-discovery">-</span></div>
+        </div>
       </section>
     </div>
 
