@@ -170,6 +170,20 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **ON/OFF**: 설정 > 기능 표시 설정 > "뇌전감시" 스위치 (Setting `wing15Enabled`, 기본 켜짐). OFF면 외부 조회를 건너뛰고(타이머 유지) 패널을 숨긴다. 설정 API가 `settings` WS 메시지로 패널 표시를 즉시 전파한다. ON/OFF는 정기 조회 주기를 앞당기지 않으며, 수집 여부는 다음 정기 조회에서 설정을 읽어 결정한다.
 - **데모 모드**: `PUT /api/settings {"wing15Demo":"true"}` 설정 시 다음 폴링(기본 ≤10분)부터 가짜 경보 카드 표시 (`src/lib/wing15-demo.ts`, 실데이터 조회 없음). `"false"`로 해제. 앱이 꺼진 상태에서는 `npx tsx scripts/set-wing15-demo.ts [off]`로 앱 DB에 직접 설정
 
+## PC 클라이언트 자동 탐지 (TMS SoundSense)
+
+2026-09-12 추가. 별도 Tauri 앱 `../sound-client`(TMS SoundSense: 시스템 오디오 감지 + 자동 뮤트 해제)를 시설로 등록할 때 서버가 같은 서브넷의 PC를 자동 탐지한다. 와이어 계약은 **`docs/sound-client-protocol.md`** 하나로 관리하며 서버·클라이언트 양쪽이 이 파일을 따른다.
+
+- **프로토콜**: 서버 주도 온디맨드 UDP. 서버가 인터페이스별 directed broadcast로 `probe`를 보내고(검색당 최대 2회, 약 2초 수집), 클라이언트(UDP 7790)가 유니캐스트 `here`로 응답. 같은 소켓 채널로 `identify`(PC 확인)와 `config`(서버 주소·페이로드 푸시)를 보내고 `ack`를 받는다. 클라이언트는 절대 브로드캐스트하거나 주기 광고하지 않는다. mDNS는 Windows 내장 응답기와의 5353 충돌 때문에 쓰지 않는다.
+- **`src/lib/client-discovery.ts`** — `discoverClients`, `sendClientCommand`, 순수 헬퍼(`computeBroadcast`, `parseHereReply`, `signCommand`, `suggestSoundClientPort`). 서명은 `HMAC-SHA256(clientToken, "t|nonce|ts")`, Setting `clientToken`이 비어 있으면 무서명. 자동 배정 포트 범위 6100~6199(기본 포트 테이블·등록 시설 제외).
+- **API**: `GET /api/discovery/clients`(스캔 + 등록 여부 + 추천 포트), `POST /api/discovery/identify {ip}`, `POST /api/discovery/provision {ip, port, on, off, name?}`. 응답 없음은 504, 클라이언트 거부는 409.
+- **UI**: 장비상태(equipment) 시설 추가/수정의 기본정보 바 아래 `SoundClientSection`(등록 방식 수동/자동, 연결된 PC, PC 확인, 다른 PC 선택, 연결 해제) + `ClientDiscoveryPanel`(탐지 목록, 행별 PC 확인·선택). PC 선택 시 시설명=클라이언트 장비명(없으면 PC 이름), UDP, UTF-8, 포트 자동, 패턴 `SILENCE`/`SOUND`. 저장 성공 후 `provision`을 보내고 성공하면 `config.client.provisionedAt`을 PATCH한다. 전송 실패는 토스트 경고만 하고 시설 저장은 유지한다.
+- **저장 위치**: 스키마 변경 없음. `System.config` JSON의 `client: { id, name, host, ip, mac, ver, provisionedAt }`. `validateSystemBody`가 `client.id`/`client.ip`를 검증한다.
+- **데이터 경로**: 클라이언트가 상태 변화 시 + 5초 하트비트로 `SOUND`/`SILENCE`를 보내므로 기존 오프라인 감지가 그대로 동작한다.
+- **설정**: 설정 > "PC 클라이언트 (SoundSense)" 카드에서 `clientToken` 편집.
+- **방화벽**: 서버는 새 인바운드 규칙이 필요 없다(응답은 상태 추적 UDP로 허용). 클라이언트는 UDP 7790 인바운드를 스스로 등록한다.
+- **테스트**: `tests/discovery.test.ts`가 루프백 가짜 클라이언트로 탐지·서명·거부·타임아웃을 검증한다.
+
 ## Code Style
 
 ### 이력 DB 관리
