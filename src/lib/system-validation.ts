@@ -51,6 +51,12 @@ export function validateSystemBody(body: unknown, partial = false): string | nul
       return '상태 패턴은 문자열 목록이어야 합니다'
     }
   }
+  if (config.client !== undefined && config.client !== null) {
+    const client = config.client
+    if (!isRecord(client) || typeof client.id !== 'string' || !client.id.trim() || typeof client.ip !== 'string') {
+      return '연결된 PC 정보가 올바르지 않습니다'
+    }
+  }
   if (config.displayItems !== undefined) {
     if (!Array.isArray(config.displayItems)) return '표시 항목은 목록이어야 합니다'
     const names = new Set<string>()
