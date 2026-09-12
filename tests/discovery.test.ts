@@ -152,6 +152,15 @@ test('commands are signed when a token is set, and rejections/timeouts surface a
   }
 })
 
+test('SoundSense-linked facilities alarm on the first SOUND, other equipment still needs three', async () => {
+  const { criticalConfirmations, DEFAULT_CRITICAL_CONFIRMATIONS } = await import('../src/lib/equipment-alarm')
+  const client = { id: 'c1', name: 'PC', host: 'h', ip: '192.168.1.186', ver: '3.0.0' }
+  assert.equal(criticalConfirmations({ client }), 1)
+  assert.equal(criticalConfirmations({}), DEFAULT_CRITICAL_CONFIRMATIONS)
+  assert.equal(criticalConfirmations(null), DEFAULT_CRITICAL_CONFIRMATIONS)
+  assert.equal(DEFAULT_CRITICAL_CONFIRMATIONS, 3)
+})
+
 test('download catalog resolves known ids and reports missing files', async () => {
   const { findDownload, listDownloads, locateDownload } = await import('../src/lib/downloads')
   assert.equal(findDownload('sound-client')?.file, 'tms-soundsense.zip')

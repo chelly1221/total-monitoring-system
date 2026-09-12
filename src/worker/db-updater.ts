@@ -14,6 +14,7 @@ import { syncSirenState } from './siren-trigger'
 import type { EquipmentConfig, MetricsConfig, SystemStatus } from '@/types'
 import { evaluateDisplayItemStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
+import { criticalConfirmations, DEFAULT_CRITICAL_CONFIRMATIONS } from '@/lib/equipment-alarm'
 import { executeCustomCode, clearCustomCodeCache } from './custom-code-executor'
 import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
@@ -56,8 +57,9 @@ export async function initDatabasePragmas(): Promise<void> {
 }
 
 // Critical signal must occur CRITICAL_THRESHOLD consecutive times before triggering fault
+// (equipment systems use criticalConfirmations(config) instead — 1 for SoundSense PCs)
 const criticalCounters = new Map<string, number>()
-const CRITICAL_THRESHOLD = 3
+const CRITICAL_THRESHOLD = DEFAULT_CRITICAL_CONFIRMATIONS
 
 // Per-metric confirmed critical state: "systemId:metricName" → true when counter reached threshold
 const metricCriticalState = new Map<string, boolean>()
@@ -343,15 +345,16 @@ async function processSystemMetric(
     // value feeds shared-port attribution (lastDataAt) in updateMetric.
     const patternMatched = newStatus !== null
 
-    // Critical threshold: require CRITICAL_THRESHOLD consecutive critical signals
+    // Critical threshold: require `threshold` consecutive critical signals
+    const threshold = criticalConfirmations(equipmentConfig)
     if (newStatus === 'critical') {
-      const count = Math.min((criticalCounters.get(system.id) ?? 0) + 1, CRITICAL_THRESHOLD)
+      const count = Math.min((criticalCounters.get(system.id) ?? 0) + 1, threshold)
       criticalCounters.set(system.id, count)
-      if (count < CRITICAL_THRESHOLD) {
-        log.debug(`${system.name}: critical count ${count}/${CRITICAL_THRESHOLD}`)
+      if (count < threshold) {
+        log.debug(`${system.name}: critical count ${count}/${threshold}`)
         newStatus = null // suppress until threshold reached
       } else {
-        log.debug(`${system.name}: critical threshold reached (${count}/${CRITICAL_THRESHOLD})`)
+        log.debug(`${system.name}: critical threshold reached (${count}/${threshold})`)
       }
     } else if (newStatus !== null) {
       // Non-critical matched status → decrement counter symmetrically
@@ -360,7 +363,7 @@ async function processSystemMetric(
         const count = prev - 1
         if (count > 0) {
           criticalCounters.set(system.id, count)
-          log.debug(`${system.name}: critical counter decrement ${prev}→${count}/${CRITICAL_THRESHOLD}`)
+          log.debug(`${system.name}: critical counter decrement ${prev}→${count}/${threshold}`)
           newStatus = null // suppress normal until counter reaches 0
         } else {
           criticalCounters.delete(system.id)
