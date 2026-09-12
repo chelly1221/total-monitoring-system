@@ -25,6 +25,22 @@
         "url": "index.html",
         "decorations": false,
         "shadow": true
+      },
+      {
+        "label": "mute",
+        "title": "뮤트 해제 시간 선택",
+        "url": "mute.html",
+        "width": 320,
+        "height": 336,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "shadow": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": true
       }
     ],
     "security": {

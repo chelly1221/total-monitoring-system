@@ -1,9 +1,14 @@
-//! Watches the default render endpoint's mute state (polling `IAudioEndpointVolume`)
-//! and auto-unmutes (mute off + master volume 100%) after the configured countdown.
+//! Watches the default render endpoint's mute state (polling `IAudioEndpointVolume`).
+//!
+//! Flow (mirrors the original UnmuteTimer app): when the PC becomes muted a small
+//! popup near the tray asks how long to wait; the countdown starts only after the
+//! operator picks a duration. When it expires (or 지금 해제 is pressed) the endpoint
+//! is unmuted and the master volume set to 100%. Unmuting by hand cancels everything.
 
 use crate::state::AppState;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
+use tauri::AppHandle;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{
@@ -13,8 +18,10 @@ use windows::Win32::System::Com::{
 pub enum MuteCmd {
     /// Unmute immediately and set the volume to 100%.
     UnmuteNow,
-    /// The configured duration changed: restart the countdown if one is running.
-    ResetCountdown,
+    /// Operator picked a duration in the popup or the 뮤트 tab.
+    StartCountdown(u32),
+    /// Stop a running countdown; the PC stays muted.
+    CancelCountdown,
 }
 
 const POLL: Duration = Duration::from_millis(500);
@@ -38,8 +45,8 @@ fn do_unmute(ep: &IAudioEndpointVolume) -> windows::core::Result<()> {
     }
 }
 
-/// Spawn the mute watcher thread. Commands arrive over `rx`.
-pub fn spawn(state: AppState, rx: Receiver<MuteCmd>) {
+/// Spawn the mute watcher thread. Commands arrive over `rx`; the popup is driven via `app`.
+pub fn spawn(app: AppHandle, state: AppState, rx: Receiver<MuteCmd>) {
     let _ = std::thread::Builder::new()
         .name("mute-watch".into())
         .spawn(move || {
@@ -51,13 +58,17 @@ pub fn spawn(state: AppState, rx: Receiver<MuteCmd>) {
             let mut endpoint: Option<IAudioEndpointVolume> = None;
             let mut acquired_at = Instant::now() - REACQUIRE;
             let mut disconnected = false;
+            // True once the popup was shown for the current mute episode; cleared on unmute.
+            let mut prompted = false;
 
             while !disconnected {
                 let mut force_unmute = false;
-                let mut reset = false;
+                let mut start: Option<u32> = None;
+                let mut cancel = false;
                 match rx.recv_timeout(POLL) {
                     Ok(MuteCmd::UnmuteNow) => force_unmute = true,
-                    Ok(MuteCmd::ResetCountdown) => reset = true,
+                    Ok(MuteCmd::StartCountdown(m)) => start = Some(m),
+                    Ok(MuteCmd::CancelCountdown) => cancel = true,
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => disconnected = true,
                 }
@@ -92,20 +103,49 @@ pub fn spawn(state: AppState, rx: Receiver<MuteCmd>) {
                 };
 
                 let now = Instant::now();
-                let expired = {
+                let (expired, show_popup, hide_popup) = {
                     let mut g = state.lock();
+                    let was_muted = g.muted;
                     g.muted = muted;
+                    let mut show_popup = false;
+                    let mut hide_popup = false;
                     if muted {
-                        let dur = Duration::from_secs(u64::from(g.settings.unmute_minutes) * 60);
-                        if g.unmute_deadline.is_none() || reset {
-                            g.unmute_deadline = Some(now + dur);
+                        if let Some(m) = start {
+                            g.unmute_deadline = Some(now + Duration::from_secs(u64::from(m) * 60));
+                            prompted = true;
+                            hide_popup = true;
                         }
-                        matches!(g.unmute_deadline, Some(d) if d <= now)
+                        if cancel {
+                            g.unmute_deadline = None;
+                            hide_popup = true;
+                        }
+                        if !was_muted {
+                            prompted = false;
+                        }
+                        if !prompted && g.unmute_deadline.is_none() && !force_unmute {
+                            prompted = true;
+                            show_popup = true;
+                        }
+                        (
+                            matches!(g.unmute_deadline, Some(d) if d <= now),
+                            show_popup,
+                            hide_popup,
+                        )
                     } else {
-                        g.unmute_deadline = None;
-                        false
+                        // Unmuted by hand, by us, or never muted: nothing pending.
+                        if g.unmute_deadline.take().is_some() || was_muted {
+                            hide_popup = true;
+                        }
+                        prompted = false;
+                        (false, false, hide_popup)
                     }
                 };
+
+                if show_popup {
+                    crate::show_mute_popup(&app);
+                } else if hide_popup {
+                    crate::hide_mute_popup(&app);
+                }
 
                 if (expired || force_unmute) && muted {
                     match do_unmute(ep) {
@@ -116,6 +156,9 @@ pub fn spawn(state: AppState, rx: Receiver<MuteCmd>) {
                             let mut g = state.lock();
                             g.muted = false;
                             g.unmute_deadline = None;
+                            prompted = false;
+                            drop(g);
+                            crate::hide_mute_popup(&app);
                         }
                         Err(e) => {
                             log::warn!("unmute failed: {e}");

@@ -15,9 +15,9 @@ use state::{AppState, Shared, Snapshot};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::Duration;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Diagnostics::Debug::MessageBeep;
@@ -26,7 +26,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 const MAIN_WINDOW: &str = "main";
+const MUTE_WINDOW: &str = "mute";
 const TRAY_ID: &str = "main";
+const POPUP_MARGIN: i32 = 12;
 
 /// Tauri-managed context shared by commands and background tasks.
 pub struct Ctx {
@@ -36,6 +38,13 @@ pub struct Ctx {
     identify_gen: AtomicU64,
     /// Whether the window was hidden before the current identify sequence started.
     identify_restore_hide: AtomicBool,
+    /// Tray menu entries updated by the state loop (status line, 타이머 취소).
+    tray_items: Mutex<Option<TrayItems>>,
+}
+
+struct TrayItems {
+    status: MenuItem<Wry>,
+    cancel: MenuItem<Wry>,
 }
 
 impl Ctx {
@@ -55,6 +64,46 @@ pub fn show_window(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+    }
+}
+
+fn mute_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window(MUTE_WINDOW)
+}
+
+/// Show the mute-duration popup docked at the bottom-right of the primary work area
+/// (just above the taskbar / tray), like the original UnmuteTimer popup.
+pub fn show_mute_popup(app: &AppHandle) {
+    let Some(w) = mute_window(app) else {
+        log::warn!("mute popup window missing");
+        return;
+    };
+    match (w.primary_monitor(), w.outer_size()) {
+        (Ok(Some(monitor)), Ok(size)) => {
+            let area = monitor.work_area();
+            let x = area.position.x + area.size.width as i32 - size.width as i32 - POPUP_MARGIN;
+            let y = area.position.y + area.size.height as i32 - size.height as i32 - POPUP_MARGIN;
+            if let Err(e) = w.set_position(PhysicalPosition::new(x.max(0), y.max(0))) {
+                log::warn!("mute popup set_position failed: {e}");
+            }
+        }
+        (m, s) => log::warn!("mute popup geometry unavailable: monitor={m:?} size={s:?}"),
+    }
+    if let Err(e) = w.show() {
+        log::warn!("mute popup show failed: {e}");
+    }
+    if let Err(e) = w.set_focus() {
+        log::warn!("mute popup focus failed: {e}");
+    }
+    log::info!("mute popup shown");
+    let _ = app.emit("mute-popup", true);
+}
+
+pub fn hide_mute_popup(app: &AppHandle) {
+    if let Some(w) = mute_window(app) {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+        }
     }
 }
 
@@ -94,9 +143,6 @@ pub fn apply_settings(app: &AppHandle, new: Settings) -> Result<Settings, String
     }
     if old.autostart != new.autostart {
         apply_autostart(app, new.autostart);
-    }
-    if old.unmute_minutes != new.unmute_minutes {
-        ctx.send_mute(MuteCmd::ResetCountdown);
     }
     // Target / payload / interval may have changed: send right away.
     state.sender_notify.notify_one();
@@ -201,6 +247,30 @@ fn unmute_now(ctx: tauri::State<'_, Ctx>) {
     ctx.send_mute(MuteCmd::UnmuteNow);
 }
 
+/// Operator picked a duration (popup or 뮤트 tab): start the countdown.
+#[tauri::command]
+fn mute_choose(app: AppHandle, ctx: tauri::State<'_, Ctx>, minutes: u32) -> Result<(), String> {
+    if !(1..=24 * 60).contains(&minutes) {
+        return Err("1분~24시간 사이로 선택하세요".into());
+    }
+    ctx.send_mute(MuteCmd::StartCountdown(minutes));
+    hide_mute_popup(&app);
+    Ok(())
+}
+
+/// Stop the countdown; the PC stays muted.
+#[tauri::command]
+fn mute_cancel(app: AppHandle, ctx: tauri::State<'_, Ctx>) {
+    ctx.send_mute(MuteCmd::CancelCountdown);
+    hide_mute_popup(&app);
+}
+
+/// 나중에: close the popup without starting a timer.
+#[tauri::command]
+fn mute_popup_dismiss(app: AppHandle) {
+    hide_mute_popup(&app);
+}
+
 // ---------------------------------------------------------------- app
 
 fn format_remaining(sec: u64) -> String {
@@ -223,25 +293,30 @@ async fn state_loop(app: AppHandle, state: AppState) {
         let snap = state.snapshot();
         let _ = app.emit("state", &snap);
 
-        let mut tooltip = format!(
-            "통합알람감시 음성탐지기 - {}",
-            if snap.sound {
-                "소리 감지됨"
-            } else {
-                "무음"
-            }
-        );
-        if snap.muted {
+        let mute_status = if snap.muted {
             match snap.unmute_remaining_sec {
-                Some(r) => {
-                    tooltip.push_str(&format!("\n뮤트 자동해제까지 {}", format_remaining(r)))
-                }
-                None => tooltip.push_str("\n뮤트 상태"),
+                Some(r) => format!("음소거 해제까지 {}", format_remaining(r)),
+                None => "음소거 감지됨".to_string(),
             }
-        }
+        } else {
+            "감시 중".to_string()
+        };
+        let tooltip = format!(
+            "통합알람감시 음성탐지기 - {}\n{}",
+            if snap.sound { "소리 감지됨" } else { "무음" },
+            mute_status
+        );
         if tooltip != last_tooltip {
             if let Some(tray) = app.tray_by_id(TRAY_ID) {
                 let _ = tray.set_tooltip(Some(&tooltip));
+            }
+            if let Ok(items) = app.state::<Ctx>().tray_items.lock() {
+                if let Some(items) = items.as_ref() {
+                    let _ = items.status.set_text(&mute_status);
+                    let _ = items
+                        .cancel
+                        .set_enabled(snap.muted && snap.unmute_remaining_sec.is_some());
+                }
             }
             last_tooltip = tooltip;
         }
@@ -249,9 +324,16 @@ async fn state_loop(app: AppHandle, state: AppState) {
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let status = MenuItem::with_id(app, "status", "감시 중", false, None::<&str>)?;
+    let cancel = MenuItem::with_id(app, "cancel-timer", "타이머 취소", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "열기", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&status, &cancel, &sep1, &open, &sep2, &quit])?;
+    if let Ok(mut slot) = app.state::<Ctx>().tray_items.lock() {
+        *slot = Some(TrayItems { status, cancel });
+    }
     let icon = app
         .default_window_icon()
         .cloned()
@@ -263,6 +345,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_window(app),
+            "cancel-timer" => {
+                app.state::<Ctx>().send_mute(MuteCmd::CancelCountdown);
+                hide_mute_popup(app);
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -304,6 +390,7 @@ pub fn run() {
         mute_tx: Mutex::new(mute_tx),
         identify_gen: AtomicU64::new(0),
         identify_restore_hide: AtomicBool::new(false),
+        tray_items: Mutex::new(None),
     };
 
     tauri::Builder::default()
@@ -321,7 +408,10 @@ pub fn run() {
             get_settings,
             save_settings,
             set_unmute_minutes,
-            unmute_now
+            unmute_now,
+            mute_choose,
+            mute_cancel,
+            mute_popup_dismiss
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -338,6 +428,15 @@ pub fn run() {
                     }
                 });
             }
+            if let Some(mw) = mute_window(&handle) {
+                let mw2 = mw.clone();
+                mw.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = mw2.hide();
+                    }
+                });
+            }
             if settings.name.trim().is_empty() {
                 // First run: the UI shows the mandatory 장비명 dialog.
                 show_window(&handle);
@@ -349,7 +448,7 @@ pub fn run() {
             let meter = audio::PeakMeter::new();
             audio::spawn(meter.clone(), state.clone());
             tauri::async_runtime::spawn(audio::detector_loop(meter, state.clone()));
-            mute::spawn(state.clone(), mute_rx);
+            mute::spawn(handle.clone(), state.clone(), mute_rx);
             tauri::async_runtime::spawn(sender::run(state.clone()));
             tauri::async_runtime::spawn(discovery::run(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(state_loop(handle, state.clone()));

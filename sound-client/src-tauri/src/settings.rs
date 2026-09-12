@@ -125,7 +125,8 @@ pub fn load() -> Settings {
     let path = settings_path();
     let mut settings = std::fs::read_to_string(&path)
         .ok()
-        .and_then(|s| serde_json::from_str::<Settings>(&s).ok())
+        // Notepad saves UTF-8 with a BOM; serde_json rejects it, so strip it first.
+        .and_then(|s| serde_json::from_str::<Settings>(s.trim_start_matches('﻿')).ok())
         .unwrap_or_default();
     let mut dirty = false;
     if uuid::Uuid::parse_str(&settings.id).is_err() {

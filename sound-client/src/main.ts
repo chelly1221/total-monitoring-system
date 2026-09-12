@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { UNMUTE_PRESETS, presetLabel } from "./presets";
 
 interface Target {
   ip: string;
@@ -41,16 +42,6 @@ interface Snapshot {
   unmuteMinutes: number;
 }
 
-const UNMUTE_PRESETS: { minutes: number; label: string }[] = [
-  { minutes: 1, label: "1분" },
-  { minutes: 10, label: "10분" },
-  { minutes: 30, label: "30분" },
-  { minutes: 60, label: "1시간" },
-  { minutes: 120, label: "2시간" },
-  { minutes: 180, label: "3시간" },
-  { minutes: 300, label: "5시간" },
-];
-
 const NO_TARGET_TEXT = "서버 미등록 (서버에서 자동탐지로 추가하세요)";
 
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -73,12 +64,6 @@ function formatRemaining(sec: number): string {
 function formatTime(ms: number): string {
   const d = new Date(ms);
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function presetLabel(minutes: number): string {
-  const p = UNMUTE_PRESETS.find((x) => x.minutes === minutes);
-  if (p) return p.label;
-  return minutes % 60 === 0 ? `${minutes / 60}시간` : `${minutes}분`;
 }
 
 function fillPresetSelect(select: HTMLSelectElement, current: number): void {
@@ -121,7 +106,23 @@ function setupTabs(): void {
 // ------------------------------------------------------------------ status
 
 let lastSnapshot: Snapshot | null = null;
-let statusPresetBusy = false;
+let gridDefault = -1;
+
+function renderMuteGrid(defaultMinutes: number): void {
+  if (gridDefault === defaultMinutes) return;
+  gridDefault = defaultMinutes;
+  const grid = $("mute-grid");
+  grid.innerHTML = "";
+  for (const p of UNMUTE_PRESETS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `popup-opt${p.minutes === defaultMinutes ? " default" : ""}`;
+    btn.textContent = p.label;
+    btn.title = "이 시간 뒤에 뮤트를 자동 해제합니다 (뮤트 상태일 때만)";
+    btn.addEventListener("click", () => void invoke("mute_choose", { minutes: p.minutes }));
+    grid.appendChild(btn);
+  }
+}
 
 function renderStatus(s: Snapshot): void {
   lastSnapshot = s;
@@ -156,13 +157,12 @@ function renderStatus(s: Snapshot): void {
   const muteEl = $("mute-state");
   muteEl.textContent = s.muted ? "뮤트됨" : "정상 (뮤트 아님)";
   muteEl.className = `v ${s.muted ? "warn" : "ok"}`;
-  $("mute-remaining").textContent =
-    s.muted && s.unmuteRemainingSec !== null ? formatRemaining(s.unmuteRemainingSec) : "-";
-
-  const preset = $<HTMLSelectElement>("unmute-preset");
-  if (!statusPresetBusy && preset.value !== String(s.unmuteMinutes)) {
-    fillPresetSelect(preset, s.unmuteMinutes);
-  }
+  const running = s.muted && s.unmuteRemainingSec !== null;
+  $("mute-remaining").textContent = running
+    ? formatRemaining(s.unmuteRemainingSec as number)
+    : s.muted ? "타이머 없음" : "-";
+  renderMuteGrid(s.unmuteMinutes);
+  $<HTMLButtonElement>("btn-cancel-timer").disabled = !running;
 
   const targetEl = $("target");
   if (s.target) {
@@ -184,21 +184,9 @@ function renderStatus(s: Snapshot): void {
 }
 
 function setupStatusActions(): void {
-  const preset = $<HTMLSelectElement>("unmute-preset");
-  fillPresetSelect(preset, 10);
-  preset.addEventListener("focus", () => (statusPresetBusy = true));
-  preset.addEventListener("blur", () => (statusPresetBusy = false));
-  preset.addEventListener("change", async () => {
-    statusPresetBusy = false;
-    try {
-      await invoke("set_unmute_minutes", { minutes: Number(preset.value) });
-    } catch (e) {
-      console.error(e);
-    }
-  });
-  $("btn-unmute").addEventListener("click", () => {
-    void invoke("unmute_now");
-  });
+  renderMuteGrid(10);
+  $("btn-cancel-timer").addEventListener("click", () => void invoke("mute_cancel"));
+  $("btn-unmute").addEventListener("click", () => void invoke("unmute_now"));
 }
 
 // ------------------------------------------------------------------ settings
