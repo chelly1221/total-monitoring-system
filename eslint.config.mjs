@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "src-tauri/gen/**",
     "public/tv/vendor/**",
     ".review/**",
+    // Separate Vite + Tauri project with its own tsconfig; linted on its own.
+    "sound-client/**",
   ]),
   {
     files: ["scripts/**/*.{js,cjs}"],

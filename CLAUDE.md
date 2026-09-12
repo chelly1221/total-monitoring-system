@@ -172,7 +172,7 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## PC 클라이언트 자동 탐지 (TMS SoundSense)
 
-2026-09-12 추가. 별도 Tauri 앱 `../sound-client`(TMS SoundSense: 시스템 오디오 감지 + 자동 뮤트 해제)를 시설로 등록할 때 서버가 같은 서브넷의 PC를 자동 탐지한다. 와이어 계약은 **`docs/sound-client-protocol.md`** 하나로 관리하며 서버·클라이언트 양쪽이 이 파일을 따른다.
+2026-09-12 추가. 별도 Tauri 앱 `sound-client/`(같은 저장소, 독립 빌드: `cd sound-client && npm run build && cargo tauri build --no-bundle`)(TMS SoundSense: 시스템 오디오 감지 + 자동 뮤트 해제)를 시설로 등록할 때 서버가 같은 서브넷의 PC를 자동 탐지한다. 와이어 계약은 **`docs/sound-client-protocol.md`** 하나로 관리하며 서버·클라이언트 양쪽이 이 파일을 따른다.
 
 - **프로토콜**: 서버 주도 온디맨드 UDP. 서버가 인터페이스별 directed broadcast로 `probe`를 보내고(검색당 최대 2회, 약 2초 수집), 클라이언트(UDP 7790)가 유니캐스트 `here`로 응답. 같은 소켓 채널로 `identify`(PC 확인)와 `config`(서버 주소·페이로드 푸시)를 보내고 `ack`를 받는다. 클라이언트는 절대 브로드캐스트하거나 주기 광고하지 않는다. mDNS는 Windows 내장 응답기와의 5353 충돌 때문에 쓰지 않는다.
 - **`src/lib/client-discovery.ts`** — `discoverClients`, `sendClientCommand`, 순수 헬퍼(`computeBroadcast`, `parseHereReply`, `signCommand`, `suggestSoundClientPort`). 서명은 `HMAC-SHA256(clientToken, "t|nonce|ts")`, Setting `clientToken`이 비어 있으면 무서명. 자동 배정 포트 범위 6100~6199(기본 포트 테이블·등록 시설 제외).
