@@ -7,6 +7,11 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { X, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  MAX_CRITICAL_CONFIRMATIONS,
+  MIN_CRITICAL_CONFIRMATIONS,
+  defaultCriticalConfirmations,
+} from "@/lib/equipment-alarm"
 import type { EquipmentConfig } from "@/types"
 
 interface SystemEquipmentConfigProps {
@@ -68,6 +73,54 @@ export function SystemEquipmentConfig({
       addPattern(type, value)
     }
   }
+
+  // Consecutive critical messages before the worker raises a fault. Empty = default,
+  // which depends on whether a SoundSense PC is linked (1) or a device reports on
+  // its own (3) — an analogue detector keeps the glitch filter, a debounced PC does not.
+  const defaultConfirmations = defaultCriticalConfirmations(config)
+  const setConfirmations = (raw: string) => {
+    const next = { ...config }
+    if (raw.trim() === "") {
+      delete next.criticalConfirmations
+    } else {
+      const n = Number.parseInt(raw, 10)
+      if (!Number.isFinite(n)) return
+      next.criticalConfirmations = Math.min(MAX_CRITICAL_CONFIRMATIONS, Math.max(MIN_CRITICAL_CONFIRMATIONS, n))
+    }
+    onChange(next)
+  }
+  const confirmationsField = (
+    <div className="rounded-lg border bg-card p-4">
+      <Label htmlFor="critical-confirmations" className="text-sm font-medium">
+        심각 판정 연속 횟수
+      </Label>
+      <div className="mt-3 flex items-center gap-3">
+        <Input
+          id="critical-confirmations"
+          type="number"
+          inputMode="numeric"
+          min={MIN_CRITICAL_CONFIRMATIONS}
+          max={MAX_CRITICAL_CONFIRMATIONS}
+          step={1}
+          value={config.criticalConfirmations ?? ""}
+          onChange={(e) => setConfirmations(e.target.value)}
+          placeholder={String(defaultConfirmations)}
+          className="w-24"
+          disabled={disabled}
+        />
+        <span className="text-xs text-muted-foreground">
+          {config.criticalConfirmations === undefined
+            ? `기본값 ${defaultConfirmations}회 (${config.client ? "PC 클라이언트 연결됨" : "장비 직접 송신"})`
+            : `기본값은 ${defaultConfirmations}회`}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        심각 패턴이 이 횟수만큼 연속으로 수신돼야 알람을 냅니다. 아날로그 탐지장비처럼 잡음 신호가
+        섞이는 송신측은 2~3회, 음성탐지기(SoundSense) PC처럼 이미 걸러진 신호는 1회가 알맞습니다.
+        비우면 기본값을 사용합니다.
+      </p>
+    </div>
+  )
 
   if (layout === "horizontal") {
     return (
@@ -177,6 +230,8 @@ export function SystemEquipmentConfig({
             )}
           </div>
         </div>
+
+        <div className="col-span-2">{confirmationsField}</div>
       </div>
     )
   }
@@ -289,6 +344,8 @@ export function SystemEquipmentConfig({
             )}
           </div>
         </div>
+
+        {confirmationsField}
       </div>
     </div>
   )

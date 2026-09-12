@@ -49,6 +49,9 @@ export interface EquipmentConfig {
   criticalPatterns: string[]
   matchMode: 'exact'
   client?: SoundClientInfo
+  // Consecutive critical messages before a fault is raised; unset = default
+  // (1 with a linked SoundSense PC, 3 otherwise). See src/lib/equipment-alarm.ts.
+  criticalConfirmations?: number
 }
 
 // Condition-based threshold types (for sensor)

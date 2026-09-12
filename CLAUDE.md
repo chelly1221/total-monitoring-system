@@ -179,7 +179,7 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **API**: `GET /api/discovery/clients`(스캔 + 등록 여부 + 추천 포트), `POST /api/discovery/identify {ip}`, `POST /api/discovery/provision {ip, port, on, off, name?}`. 응답 없음은 504, 클라이언트 거부는 409.
 - **UI**: 장비상태(equipment) 시설 추가/수정의 기본정보 바 아래 `SoundClientSection`(등록 방식 수동/자동, 연결된 PC, PC 확인, 다른 PC 선택, 연결 해제) + `ClientDiscoveryPanel`(탐지 목록, 행별 PC 확인·선택). PC 선택 시 시설명=클라이언트 장비명(없으면 PC 이름), UDP, UTF-8, 포트 자동, 패턴 `SILENCE`/`SOUND`. 저장 성공 후 `provision`을 보내고 성공하면 `config.client.provisionedAt`을 PATCH한다. 전송 실패는 토스트 경고만 하고 시설 저장은 유지한다.
 - **저장 위치**: 스키마 변경 없음. `System.config` JSON의 `client: { id, name, host, ip, mac, ver, provisionedAt }`. `validateSystemBody`가 `client.id`/`client.ip`를 검증한다.
-- **데이터 경로**: 클라이언트가 상태 변화 시 + 5초 하트비트로 `SOUND`/`SILENCE`를 보내므로 기존 오프라인 감지가 그대로 동작한다. 워커의 "심각 3회 연속" 필터는 초당 보고하는 장비용이라 5초 하트비트 클라이언트에는 약 10초 지연이 됐다. `config.client`가 있는 시설은 `src/lib/equipment-alarm.ts`의 `criticalConfirmations`가 1을 돌려 첫 `SOUND`에 바로 알람을 낸다(2026-09-12). 짧은 소음까지 알람이 되는 것이 문제면 클라이언트 쪽에 최소 지속 시간(attack) 설정을 넣는다.
+- **데이터 경로**: 클라이언트가 상태 변화 시 + 5초 하트비트로 `SOUND`/`SILENCE`를 보내므로 기존 오프라인 감지가 그대로 동작한다. 워커의 "심각 3회 연속" 필터는 초당 보고하는 장비용이라 5초 하트비트 클라이언트에는 약 10초 지연이 됐다. 횟수는 시설별 `config.criticalConfirmations`(1~10, 장비 추가/수정 폼의 "심각 판정 연속 횟수")로 정하고, 비어 있으면 `src/lib/equipment-alarm.ts`의 `criticalConfirmations`가 기본값을 준다 — `config.client`가 있으면 1(첫 `SOUND`에 바로 알람), 아니면 3. 아날로그 탐지장비처럼 잡음이 섞이는 송신측은 PC를 연결했더라도 3으로 두면 된다(2026-09-12). 짧은 소음까지 알람이 되는 것이 문제면 클라이언트 쪽에 최소 지속 시간(attack) 설정을 넣는다.
 - **설정**: 설정 > "PC 클라이언트 (SoundSense)" 카드에서 `clientToken` 편집.
 - **방화벽**: 서버는 새 인바운드 규칙이 필요 없다(응답은 상태 추적 UDP로 허용). 클라이언트는 UDP 7790 인바운드를 스스로 등록한다.
 - **테스트**: `tests/discovery.test.ts`가 루프백 가짜 클라이언트로 탐지·서명·거부·타임아웃을 검증한다.

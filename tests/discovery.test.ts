@@ -159,6 +159,17 @@ test('SoundSense-linked facilities alarm on the first SOUND, other equipment sti
   assert.equal(criticalConfirmations({}), DEFAULT_CRITICAL_CONFIRMATIONS)
   assert.equal(criticalConfirmations(null), DEFAULT_CRITICAL_CONFIRMATIONS)
   assert.equal(DEFAULT_CRITICAL_CONFIRMATIONS, 3)
+  // A facility's own count wins over the default (analogue detector behind a PC keeps 3)
+  assert.equal(criticalConfirmations({ client, criticalConfirmations: 3 }), 3)
+  assert.equal(criticalConfirmations({ criticalConfirmations: 1 }), 1)
+  // Out-of-range or non-integer values fall back to the default
+  assert.equal(criticalConfirmations({ client, criticalConfirmations: 0 }), 1)
+  assert.equal(criticalConfirmations({ criticalConfirmations: 2.5 }), DEFAULT_CRITICAL_CONFIRMATIONS)
+  const base = { normalPatterns: ['SILENCE'], criticalPatterns: ['SOUND'], matchMode: 'exact' }
+  assert.equal(validateSystemBody({ config: { ...base, criticalConfirmations: 3 } }, true), null)
+  assert.ok(validateSystemBody({ config: { ...base, criticalConfirmations: 0 } }, true))
+  assert.ok(validateSystemBody({ config: { ...base, criticalConfirmations: 11 } }, true))
+  assert.ok(validateSystemBody({ config: { ...base, criticalConfirmations: '3' } }, true))
 })
 
 test('download catalog resolves known ids and reports missing files', async () => {

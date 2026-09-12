@@ -1,4 +1,5 @@
 import { validateCustomCode } from './validate-custom-code'
+import { isValidCriticalConfirmations, MAX_CRITICAL_CONFIRMATIONS, MIN_CRITICAL_CONFIRMATIONS } from './equipment-alarm'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -56,6 +57,9 @@ export function validateSystemBody(body: unknown, partial = false): string | nul
     if (!isRecord(client) || typeof client.id !== 'string' || !client.id.trim() || typeof client.ip !== 'string') {
       return '연결된 PC 정보가 올바르지 않습니다'
     }
+  }
+  if (config.criticalConfirmations != null && !isValidCriticalConfirmations(config.criticalConfirmations)) {
+    return `심각 판정 연속 횟수는 ${MIN_CRITICAL_CONFIRMATIONS}~${MAX_CRITICAL_CONFIRMATIONS} 사이의 정수여야 합니다`
   }
   if (config.displayItems !== undefined) {
     if (!Array.isArray(config.displayItems)) return '표시 항목은 목록이어야 합니다'
