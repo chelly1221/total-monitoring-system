@@ -136,7 +136,7 @@ export function DownloadMenu() {
         <DropdownMenuSeparator />
         <div className="px-2 py-1 text-[10px] text-muted-foreground">
           {isTauri
-            ? '저장 위치를 고르는 창이 열립니다. 저장한 파일을 시설 PC로 옮겨 실행하면 됩니다.'
+            ? '저장 위치를 고르는 창이 열립니다. 저장한 파일을 시설 PC로 옮겨 압축을 풀고 실행하면 됩니다.'
             : '시설 PC의 브라우저에서 이 화면을 열어 내려받으면 됩니다.'}
         </div>
       </DropdownMenuContent>

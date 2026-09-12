@@ -111,49 +111,22 @@ for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
 fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
 
 // Bundle client programs offered from the header 다운로드 menu (see src/lib/downloads.ts).
-// The sound client must have been built first (cd sound-client && cargo tauri build --no-bundle).
+// The sound client must have been built first (cd sound-client && cargo tauri build --no-bundle);
+// its package script zips the exe together with the WebView2 fixed runtime folder it carries.
 const downloadsDir = path.join(RESOURCES, 'downloads');
 fs.mkdirSync(downloadsDir, { recursive: true });
-const soundClientExe = path.join(ROOT, 'sound-client', 'src-tauri', 'target', 'release', 'tms-soundsense.exe');
+const soundClientDir = path.join(ROOT, 'sound-client');
+const soundClientExe = path.join(soundClientDir, 'src-tauri', 'target', 'release', 'tms-soundsense.exe');
+const soundClientZip = path.join(soundClientDir, 'src-tauri', 'target', 'release', 'tms-soundsense.zip');
 const manifest = {};
 if (fs.existsSync(soundClientExe)) {
-  fs.cpSync(soundClientExe, path.join(downloadsDir, 'tms-soundsense.exe'));
-  const conf = JSON.parse(fs.readFileSync(path.join(ROOT, 'sound-client', 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  execSync('node scripts/package.mjs', { cwd: soundClientDir, stdio: 'inherit' });
+  fs.cpSync(soundClientZip, path.join(downloadsDir, 'tms-soundsense.zip'));
+  const conf = JSON.parse(fs.readFileSync(path.join(soundClientDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
   manifest['sound-client'] = { version: conf.version, builtAt: new Date().toISOString() };
-  console.log(`  downloads: tms-soundsense.exe v${conf.version}`);
+  console.log(`  downloads: tms-soundsense.zip v${conf.version}`);
 } else {
   console.warn('  ⚠ sound-client exe not found; the 다운로드 menu will show it as unavailable');
-}
-
-// Microsoft Edge WebView2 Evergreen standalone (offline) installer, x64. Facility PCs are
-// usually offline and some lack the runtime the sound client needs, so the installer is offered
-// next to the client in the same menu. Cached in downloads/ (gitignored) so a clean build does
-// not re-download ~200MB; delete the cached file to pick up a newer runtime.
-const WEBVIEW2_INSTALLER = 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe';
-const WEBVIEW2_URL = 'https://go.microsoft.com/fwlink/?linkid=2124701';
-const webview2Cache = path.join(ROOT, 'downloads', WEBVIEW2_INSTALLER);
-if (!fs.existsSync(webview2Cache)) {
-  fs.mkdirSync(path.dirname(webview2Cache), { recursive: true });
-  const partial = `${webview2Cache}.part`;
-  try {
-    console.log(`  downloading ${WEBVIEW2_INSTALLER} ...`);
-    execSync(`curl.exe -fsSL --retry 3 -o "${partial}" "${WEBVIEW2_URL}"`, { stdio: 'inherit' });
-    fs.renameSync(partial, webview2Cache);
-  } catch (e) {
-    fs.rmSync(partial, { force: true });
-    console.warn(`  ⚠ could not download ${WEBVIEW2_INSTALLER} (${e.message.split('\n')[0]}); the 다운로드 menu will show it as unavailable`);
-  }
-}
-if (fs.existsSync(webview2Cache)) {
-  fs.cpSync(webview2Cache, path.join(downloadsDir, WEBVIEW2_INSTALLER));
-  let version = null;
-  try {
-    version = execSync(`powershell -NoProfile -Command "(Get-Item '${webview2Cache}').VersionInfo.ProductVersion"`, { encoding: 'utf8' }).trim() || null;
-  } catch {
-    // version is informational only
-  }
-  manifest['webview2-runtime'] = { version, builtAt: new Date().toISOString() };
-  console.log(`  downloads: ${WEBVIEW2_INSTALLER}${version ? ` v${version}` : ''}`);
 }
 fs.writeFileSync(path.join(downloadsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
