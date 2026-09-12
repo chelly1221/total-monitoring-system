@@ -197,9 +197,19 @@ function setMsg(id: string, text: string, kind: "" | "error" | "ok" = ""): void 
   el.className = `msg ${kind}`.trim();
 }
 
+type FieldEl = HTMLInputElement | HTMLSelectElement;
+
+/** Settings inputs live in two tabs (설정 / 서버); look them up by name across both. */
+function fields(): Record<string, FieldEl> {
+  const out: Record<string, FieldEl> = {};
+  document
+    .querySelectorAll<FieldEl>("#view-settings [name], #view-server [name]")
+    .forEach((el) => (out[el.name] = el));
+  return out;
+}
+
 function fillSettingsForm(s: Settings): void {
-  const form = $<HTMLFormElement>("settings-form");
-  const f = form.elements as unknown as Record<string, HTMLInputElement | HTMLSelectElement>;
+  const f = fields();
   f.name.value = s.name;
   f.threshold.value = String(s.threshold);
   f.silenceMs.value = String(s.silenceMs);
@@ -215,19 +225,18 @@ function fillSettingsForm(s: Settings): void {
 
   const t = $("settings-target");
   if (s.target) {
-    t.textContent = `${s.target.ip}:${s.target.port}  (${s.on} / ${s.off})`;
-    t.className = "v mono";
-    $("settings-target-hint").textContent = "서버에서 자동탐지로 설정된 값입니다. 필요할 때만 수동으로 바꾸세요.";
+    t.textContent = `${s.target.ip}:${s.target.port} (${s.on} / ${s.off})`;
+    t.className = "v ok";
+    $("settings-target-hint").textContent = "서버 자동탐지로 설정된 값입니다. 필요할 때만 직접 바꾸세요.";
   } else {
-    t.textContent = NO_TARGET_TEXT;
+    t.textContent = "미등록";
     t.className = "v warn";
-    $("settings-target-hint").textContent = "서버에서 자동탐지로 이 PC를 선택하면 자동 설정됩니다.";
+    $("settings-target-hint").textContent = "서버에서 자동탐지로 이 PC를 선택하면 자동 설정됩니다. 필요할 때만 직접 입력하세요.";
   }
 }
 
 function readSettingsForm(base: Settings): Settings {
-  const form = $<HTMLFormElement>("settings-form");
-  const f = form.elements as unknown as Record<string, HTMLInputElement | HTMLSelectElement>;
+  const f = fields();
   const ip = f.targetIp.value.trim();
   const port = Number(f.targetPort.value);
   const target: Target | null = ip && port > 0 ? { ip, port } : null;
@@ -257,23 +266,36 @@ async function loadSettings(): Promise<Settings> {
 }
 
 function setupSettingsForm(): void {
-  const form = $<HTMLFormElement>("settings-form");
-  form.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
+  // Both tabs save the whole settings object; the message shows on the tab that was used.
+  const save = async (msgId: string) => {
     if (!currentSettings) return;
+    const invalid = Object.values(fields()).find((el) => el instanceof HTMLInputElement && !el.checkValidity());
+    if (invalid) {
+      invalid.reportValidity();
+      return;
+    }
     const next = readSettingsForm(currentSettings);
     try {
       const saved = await invoke<Settings>("save_settings", { settings: next });
       currentSettings = saved;
       fillSettingsForm(saved);
-      setMsg("settings-msg", "저장했습니다", "ok");
-      setTimeout(() => setMsg("settings-msg", ""), 2500);
+      setMsg(msgId, "저장했습니다", "ok");
+      setTimeout(() => setMsg(msgId, ""), 2500);
     } catch (e) {
-      setMsg("settings-msg", String(e), "error");
+      setMsg(msgId, String(e), "error");
     }
+  };
+  document.querySelectorAll<HTMLButtonElement>(".btn-save").forEach((btn) => {
+    const msgId = btn.closest("#view-server") ? "server-msg" : "settings-msg";
+    btn.addEventListener("click", () => void save(msgId));
+  });
+  document.querySelectorAll<HTMLInputElement>("#view-settings input, #view-server input").forEach((el) => {
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") void save(el.closest("#view-server") ? "server-msg" : "settings-msg");
+    });
   });
   $("btn-clear-target").addEventListener("click", () => {
-    const f = form.elements as unknown as Record<string, HTMLInputElement>;
+    const f = fields();
     f.targetIp.value = "";
     f.targetPort.value = "";
   });

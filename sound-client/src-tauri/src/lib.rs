@@ -64,10 +64,13 @@ impl IconState {
 fn apply_icon(app: &AppHandle, state: IconState) {
     match state.image() {
         Ok(img) => {
-            if let Some(tray) = app.tray_by_id(TRAY_ID) {
-                if let Err(e) = tray.set_icon(Some(img.clone())) {
-                    log::warn!("tray icon update failed: {e}");
+            match app.tray_by_id(TRAY_ID) {
+                Some(tray) => {
+                    if let Err(e) = tray.set_icon(Some(img.clone())) {
+                        log::warn!("tray icon update failed: {e}");
+                    }
                 }
+                None => log::warn!("tray icon not found; cannot update"),
             }
             if let Some(w) = main_window(app) {
                 if let Err(e) = w.set_icon(img) {

@@ -108,7 +108,7 @@ body { background: var(--bg); user-select: none; }
 /* ---------- controls ---------- */
 button, input, select {
   font: inherit; color: var(--text); border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg); padding: 6px 9px; outline: none;
+  background: var(--bg); padding: 5px 8px; outline: none; min-width: 0;
 }
 input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(127, 13, 0, .12); }
 input:invalid { border-color: #e53935; }
@@ -119,14 +119,21 @@ button.primary:hover { background: var(--accent-hover); border-color: var(--acce
 button.link { background: none; border: none; color: var(--muted); padding: 4px 0; text-decoration: underline; }
 .small { padding: 4px 8px; font-size: 12px; }
 
-.field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 7px; }
+.field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; min-width: 0; }
+.field .pair { display: flex; gap: 6px; }
+.field .pair input { flex: 1; }
+.field .pair input.narrow { flex: 0 0 72px; }
+.target-row { padding: 2px 0 0; }
+.target-row .v { flex: 1; }
+.card.compact { padding: 4px 10px; }
+.card.compact .row { padding: 2px 0; }
 .field > span { color: var(--text-2); font-size: 12px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
-.toggle { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; cursor: pointer; }
+.toggle { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; cursor: pointer; }
 .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
-.hint { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.hint { color: var(--muted); font-size: 11px; margin: 0 0 6px; }
 details summary { cursor: pointer; color: var(--text-2); margin: 4px 0 8px; }
-.form-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 4px; }
+.form-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 2px; }
 .msg { color: var(--muted); font-size: 12px; }
 .msg.error { color: #c62828; }
 .msg.ok { color: var(--ok); }

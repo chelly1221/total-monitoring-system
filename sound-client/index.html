@@ -13,6 +13,7 @@
         <button class="tab active" data-tab="status" type="button">상태</button>
         <button class="tab" data-tab="mute" type="button">음소거</button>
         <button class="tab" data-tab="settings" type="button">설정</button>
+        <button class="tab" data-tab="server" type="button">서버</button>
         <button class="tab" data-tab="info" type="button">정보</button>
         <span class="tabs-spacer" data-tauri-drag-region></span>
         <div class="tabs-controls">
@@ -61,93 +62,87 @@
         </div>
       </section>
 
-      <!-- 설정 -->
+      <!-- 설정: 감지·동작 -->
       <section class="view" id="view-settings">
-        <form id="settings-form" autocomplete="off">
+        <div class="grid2">
           <label class="field">
             <span>장비명</span>
             <input name="name" type="text" maxlength="60" placeholder="예: 1레이더 LCMS PC" required />
           </label>
-          <div class="grid2">
-            <label class="field">
-              <span>감지 임계값 (0~1)</span>
-              <input name="threshold" type="number" step="0.001" min="0.001" max="1" required />
-            </label>
-            <label class="field">
-              <span>무음 판정 시간 (ms)</span>
-              <input name="silenceMs" type="number" step="100" min="0" required />
-            </label>
-            <label class="field">
-              <span>하트비트 주기 (ms)</span>
-              <input name="intervalMs" type="number" step="100" min="200" required />
-            </label>
-            <label class="field">
-              <span>음소거 팝업 기본 선택 시간</span>
-              <select name="unmuteMinutes" id="settings-unmute"></select>
-            </label>
-            <label class="field">
-              <span>탐지 포트 (UDP)</span>
-              <input name="discoveryPort" type="number" min="1" max="65535" required />
-            </label>
-            <label class="field">
-              <span>인증 토큰</span>
-              <input name="token" type="password" placeholder="서버와 동일하게 (선택)" />
-            </label>
-          </div>
-          <label class="toggle">
-            <input name="autostart" type="checkbox" />
-            <span>Windows 시작 시 자동 실행</span>
+          <label class="field">
+            <span>음소거 팝업 기본 선택 시간</span>
+            <select name="unmuteMinutes" id="settings-unmute"></select>
           </label>
+          <label class="field">
+            <span>감지 임계값 (0~1)</span>
+            <input name="threshold" type="number" step="0.001" min="0.001" max="1" required />
+          </label>
+          <label class="field">
+            <span>무음 판정 시간 (ms)</span>
+            <input name="silenceMs" type="number" step="100" min="0" required />
+          </label>
+        </div>
+        <label class="toggle">
+          <input name="autostart" type="checkbox" />
+          <span>Windows 시작 시 자동 실행</span>
+        </label>
+        <div class="form-footer">
+          <span class="msg" id="settings-msg"></span>
+          <button type="button" class="primary btn-save">저장</button>
+        </div>
+      </section>
 
-          <div class="card subtle">
-            <div class="row">
-              <span class="k">서버 전송 대상</span>
-              <span class="v mono" id="settings-target">-</span>
-            </div>
-            <div class="hint" id="settings-target-hint">서버에서 자동탐지로 이 PC를 선택하면 자동 설정됩니다.</div>
-            <details id="manual-target">
-              <summary>수동 설정</summary>
-              <div class="grid2">
-                <label class="field">
-                  <span>서버 IP</span>
-                  <input name="targetIp" type="text" placeholder="192.168.0.10" />
-                </label>
-                <label class="field">
-                  <span>포트</span>
-                  <input name="targetPort" type="number" min="1" max="65535" placeholder="6100" />
-                </label>
-                <label class="field">
-                  <span>소리 감지 시 전송 (on)</span>
-                  <input name="on" type="text" maxlength="200" />
-                </label>
-                <label class="field">
-                  <span>무음 시 전송 (off)</span>
-                  <input name="off" type="text" maxlength="200" />
-                </label>
-              </div>
-              <button type="button" id="btn-clear-target" class="link">대상 지우기</button>
-            </details>
-          </div>
-
-          <div class="form-footer">
-            <span class="msg" id="settings-msg"></span>
-            <button type="submit" class="primary">저장</button>
-          </div>
-        </form>
+      <!-- 서버: 전송 대상·탐지 -->
+      <section class="view" id="view-server">
+        <div class="row target-row">
+          <span class="k">서버 전송 대상</span>
+          <span class="v" id="settings-target">-</span>
+          <button type="button" id="btn-clear-target" class="link small">지우기</button>
+        </div>
+        <div class="hint" id="settings-target-hint">서버에서 자동탐지로 이 PC를 선택하면 자동 설정됩니다. 필요할 때만 직접 입력하세요.</div>
+        <div class="grid2">
+          <label class="field">
+            <span>서버 IP</span>
+            <input name="targetIp" type="text" placeholder="192.168.0.10" />
+          </label>
+          <label class="field">
+            <span>포트</span>
+            <input name="targetPort" type="number" min="1" max="65535" placeholder="6100" />
+          </label>
+          <label class="field">
+            <span>소리 감지 시 전송 (on)</span>
+            <input name="on" type="text" maxlength="200" />
+          </label>
+          <label class="field">
+            <span>무음 시 전송 (off)</span>
+            <input name="off" type="text" maxlength="200" />
+          </label>
+          <label class="field">
+            <span>하트비트 주기 (ms)</span>
+            <input name="intervalMs" type="number" step="100" min="200" required />
+          </label>
+          <label class="field">
+            <span>탐지 포트 (UDP) · 인증 토큰</span>
+            <span class="pair">
+              <input name="discoveryPort" type="number" min="1" max="65535" required class="narrow" />
+              <input name="token" type="password" placeholder="토큰 (선택)" />
+            </span>
+          </label>
+        </div>
+        <div class="form-footer">
+          <span class="msg" id="server-msg"></span>
+          <button type="button" class="primary btn-save">저장</button>
+        </div>
       </section>
 
       <!-- 정보 -->
       <section class="view" id="view-info">
-        <div class="card">
-          <div class="row"><span class="k">서버 대상</span><span class="v mono" id="target">-</span></div>
-          <div class="row"><span class="k">마지막 전송</span><span class="v mono" id="last-sent">-</span></div>
-          <div class="row"><span class="k">전송 횟수</span><span class="v mono" id="send-count">0</span></div>
-        </div>
-        <div class="card">
+        <div class="card compact">
+          <div class="row"><span class="k">서버 대상</span><span class="v" id="target">-</span></div>
+          <div class="row"><span class="k">마지막 전송 · 횟수</span><span class="v"><span id="last-sent">-</span> · <span id="send-count">0</span>회</span></div>
           <div class="row"><span class="k">장비명</span><span class="v" id="st-name">-</span></div>
-          <div class="row"><span class="k">PC 이름</span><span class="v mono" id="st-host">-</span></div>
-          <div class="row"><span class="k">이 PC의 IP</span><span class="v mono" id="st-ip">-</span></div>
-          <div class="row"><span class="k">클라이언트 ID</span><span class="v mono tiny" id="st-id">-</span></div>
+          <div class="row"><span class="k">PC 이름 · IP</span><span class="v"><span id="st-host">-</span> · <span id="st-ip">-</span></span></div>
+          <div class="row"><span class="k">클라이언트 ID</span><span class="v tiny" id="st-id">-</span></div>
           <div class="row"><span class="k">오디오</span><span class="v tiny" id="st-audio">-</span></div>
           <div class="row"><span class="k">탐지 응답</span><span class="v tiny" id="st-discovery">-</span></div>
           <div class="row"><span class="k">버전</span><span class="v tiny" id="st-ver">-</span></div>
