@@ -18,6 +18,14 @@ export const DOWNLOAD_ITEMS: DownloadItem[] = [
     description: '시설 PC용 소리 감지·음소거 자동 해제 클라이언트 (Windows, 설치 없이 실행)',
     file: 'tms-soundsense.exe',
   },
+  {
+    // Facility PCs are usually offline and some lack the WebView2 runtime the sound client
+    // needs; the client tells the operator to fetch this from here. Bundled by build-standalone.js.
+    id: 'webview2-runtime',
+    name: 'WebView2 런타임 설치 파일',
+    description: '음성탐지기 실행 시 "WebView2 런타임이 없습니다"가 뜨는 PC에 한 번 설치 (Microsoft 오프라인 설치 파일, x64)',
+    file: 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe',
+  },
 ]
 
 export interface DownloadInfo extends DownloadItem {

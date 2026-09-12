@@ -155,6 +155,7 @@ test('commands are signed when a token is set, and rejections/timeouts surface a
 test('download catalog resolves known ids and reports missing files', async () => {
   const { findDownload, listDownloads, locateDownload } = await import('../src/lib/downloads')
   assert.equal(findDownload('sound-client')?.file, 'tms-soundsense.exe')
+  assert.equal(findDownload('webview2-runtime')?.file, 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
   assert.equal(findDownload('../etc/passwd'), undefined)
   assert.equal(await locateDownload({ id: 'x', name: 'x', description: '', file: 'definitely-missing.exe' }), null)
   const items = await listDownloads()

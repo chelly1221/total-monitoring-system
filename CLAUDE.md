@@ -190,7 +190,7 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 - **카탈로그**: `src/lib/downloads.ts`의 `DOWNLOAD_ITEMS`. 새 프로그램은 여기에 `{ id, name, description, file }`을 추가하고 파일을 다운로드 폴더에 넣으면 메뉴에 나타난다(목록은 메뉴를 열 때마다 조회).
 - **파일 위치**: `DOWNLOADS_DIR`(패키지 앱에서 Tauri가 `resources/downloads`로 지정) → 개발용 `downloads/`(gitignore) → `sound-client/src-tauri/target/release` 순서로 찾는다. 파일이 없으면 메뉴에 비활성으로 표시된다.
-- **번들링**: `scripts/build-standalone.js`가 `sound-client`의 릴리스 exe를 `resources/downloads/`에 복사하고 버전이 든 `manifest.json`을 만든다. 서버 전체 빌드 전에 `cd sound-client && cargo tauri build --no-bundle`로 클라이언트를 먼저 빌드해야 최신 exe가 포함된다.
+- **번들링**: `scripts/build-standalone.js`가 `sound-client`의 릴리스 exe를 `resources/downloads/`에 복사하고 버전이 든 `manifest.json`을 만든다. 서버 전체 빌드 전에 `cd sound-client && cargo tauri build --no-bundle`로 클라이언트를 먼저 빌드해야 최신 exe가 포함된다. 같은 스크립트가 Microsoft WebView2 Evergreen 오프라인 설치 파일(`MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, 약 200MB, 항목 `webview2-runtime`)을 `downloads/`에 내려받아 캐시하고 함께 번들한다. 클라이언트는 WebView2 런타임이 없는 PC에서 실행되면 한국어 안내 대화상자(`ensure_webview2`)로 이 항목을 받으라고 알리고 종료한다. 캐시 파일을 지우면 다음 빌드에서 최신 런타임을 다시 받는다.
 - **API**: `GET /api/downloads`(항목, 존재 여부, 크기, 수정 시각, 버전), `GET /api/downloads/[id]`(스트리밍, Content-Disposition attachment). 테스트는 `tests/discovery.test.ts`의 카탈로그 테스트.
 
 ## Code Style
