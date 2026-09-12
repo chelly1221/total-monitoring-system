@@ -3,6 +3,7 @@ import { GateSettingsCard } from '@/components/settings/gate-settings-card'
 import { SirenSettingsCard } from '@/components/settings/siren-settings-card'
 import { FeatureSettingsCard } from '@/components/settings/feature-settings-card'
 import { DataManagementCard } from '@/components/settings/data-management-card'
+import { SoundClientSettingsCard } from '@/components/settings/sound-client-settings-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,7 @@ export default async function SettingsPage() {
             initialWing15Enabled={settings.wing15Enabled !== 'false'}
           />
           <DataManagementCard initialHistoryMaxMb={settings.historyMaxSizeMb} />
+          <SoundClientSettingsCard initialToken={settings.clientToken} />
         </div>
 
         <SirenSettingsCard initialSirens={sirens} />
