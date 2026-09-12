@@ -58,3 +58,6 @@ screenshots/
 
 # isolated review builds and verification logs
 /.review/
+
+# client programs dropped locally for the 다운로드 menu (dev only)
+/downloads/

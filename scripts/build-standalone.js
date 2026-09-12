@@ -110,4 +110,20 @@ for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
 // Copy init-db script
 fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
 
+// Bundle client programs offered from the header 다운로드 menu (see src/lib/downloads.ts).
+// The sound client must have been built first (cd sound-client && cargo tauri build --no-bundle).
+const downloadsDir = path.join(RESOURCES, 'downloads');
+fs.mkdirSync(downloadsDir, { recursive: true });
+const soundClientExe = path.join(ROOT, 'sound-client', 'src-tauri', 'target', 'release', 'tms-soundsense.exe');
+const manifest = {};
+if (fs.existsSync(soundClientExe)) {
+  fs.cpSync(soundClientExe, path.join(downloadsDir, 'tms-soundsense.exe'));
+  const conf = JSON.parse(fs.readFileSync(path.join(ROOT, 'sound-client', 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  manifest['sound-client'] = { version: conf.version, builtAt: new Date().toISOString() };
+  console.log(`  downloads: tms-soundsense.exe v${conf.version}`);
+} else {
+  console.warn('  ⚠ sound-client exe not found; the 다운로드 menu will show it as unavailable');
+}
+fs.writeFileSync(path.join(downloadsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
 console.log('\n✅ Build complete. Resources ready in src-tauri/resources/');
