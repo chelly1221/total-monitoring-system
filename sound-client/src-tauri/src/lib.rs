@@ -21,10 +21,11 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::image::Image;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent, Wry};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use windows::core::w;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Diagnostics::Debug::MessageBeep;
 use windows::Win32::UI::WindowsAndMessaging::{
-    FlashWindowEx, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG, MB_OK,
+    FlashWindowEx, MessageBoxW, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG, MB_ICONERROR, MB_OK,
 };
 
 const MAIN_WINDOW: &str = "main";
@@ -458,10 +459,31 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The UI lives in a WebView2 window, so on a PC without the runtime Tauri can only fail with
+/// an English panic dialog. Check up front and tell the operator in Korean where to get it: the
+/// server's 다운로드 menu offers the offline runtime installer next to this client.
+fn ensure_webview2() {
+    if let Ok(version) = tauri::webview_version() {
+        log::info!("WebView2 runtime {version}");
+        return;
+    }
+    log::error!("WebView2 runtime not installed; exiting");
+    unsafe {
+        MessageBoxW(
+            None,
+            w!("이 PC에 Microsoft Edge WebView2 런타임이 없어 음성탐지기를 실행할 수 없습니다.\n\n통합알람감시체계 화면 오른쪽 위의 다운로드 메뉴에서 \"WebView2 런타임 설치 파일\"을 내려받아 이 PC에 설치한 뒤 다시 실행해 주세요."),
+            w!("통합알람감시 음성탐지기"),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+    std::process::exit(1);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .try_init();
+    ensure_webview2();
 
     let settings = settings::load();
     log::info!(

@@ -1,6 +1,6 @@
 # 통합알람감시 음성탐지기 (TMS SoundSense)
 
-통합알람감시체계(TMS) 서버에 PC의 **소리 발생 여부**를 보고하고, PC가 **뮤트된 채로 방치되지 않도록** 일정 시간 뒤 자동으로 뮤트를 해제하는 Windows 데스크톱 클라이언트입니다. Tauri 2 + Rust로 만든 단일 실행 파일이며, 설치 없이 실행됩니다.
+통합알람감시체계(TMS) 서버에 PC의 **소리 발생 여부**를 보고하고, PC가 **뮤트된 채로 방치되지 않도록** 일정 시간 뒤 자동으로 뮤트를 해제하는 Windows 데스크톱 클라이언트입니다. Tauri 2 + Rust로 만든 단일 실행 파일이며, 설치 없이 실행됩니다. 화면을 그리는 데 Windows의 **Microsoft Edge WebView2 런타임**을 사용하므로, 런타임이 없는 PC(Edge 업데이트가 막힌 Windows 10, Windows Server 등)에서는 먼저 런타임을 설치해야 합니다(아래 포터블 사용법 참조).
 
 이전 두 도구를 하나로 합쳤습니다.
 
@@ -23,7 +23,8 @@
 
 ## 포터블 사용법
 
-1. `tms-soundsense.exe`를 원하는 폴더에 복사합니다.
+1. `tms-soundsense.exe`를 원하는 폴더에 복사합니다. 서버(통합알람감시체계) 화면 오른쪽 위 다운로드 메뉴에서 받을 수 있습니다.
+   - 실행했을 때 **"WebView2 런타임이 없어 음성탐지기를 실행할 수 없습니다"** 대화상자가 뜨면, 같은 다운로드 메뉴의 **WebView2 런타임 설치 파일**(`MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, Microsoft 오프라인 설치 파일)을 그 PC에서 한 번 실행한 뒤 다시 시작합니다. 인터넷 연결이 필요 없습니다. Windows 11과 최신 Windows 10에는 이미 들어 있어 이 단계가 필요 없습니다.
 2. 실행하면 같은 폴더에 `soundsense-settings.json`이 생성됩니다. exe와 설정 파일을 **나란히** 두고 함께 옮기면 됩니다.
    - exe 폴더에 쓸 수 없는 경우(예: 읽기 전용 위치)에만 `%APPDATA%\tms-soundsense\soundsense-settings.json`을 사용합니다.
 3. 설정 파일 예시:
