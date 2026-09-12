@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "node scripts/fetch-webview2.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "cargo tauri",
     "icon": "node scripts/make-icon.mjs && cargo tauri icon icon.png -o src-tauri/icons",
-    "probe": "node scripts/probe-test.mjs"
+    "probe": "node scripts/probe-test.mjs",
+    "webview2": "node scripts/fetch-webview2.mjs",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.0"

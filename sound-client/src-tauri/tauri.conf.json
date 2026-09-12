@@ -59,6 +59,10 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "fixedRuntime",
+        "path": "webview2"
+      },
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false

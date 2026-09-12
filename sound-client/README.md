@@ -1,6 +1,6 @@
 # 통합알람감시 음성탐지기 (TMS SoundSense)
 
-통합알람감시체계(TMS) 서버에 PC의 **소리 발생 여부**를 보고하고, PC가 **뮤트된 채로 방치되지 않도록** 일정 시간 뒤 자동으로 뮤트를 해제하는 Windows 데스크톱 클라이언트입니다. Tauri 2 + Rust로 만든 단일 실행 파일이며, 설치 없이 실행됩니다. 화면을 그리는 데 Windows의 **Microsoft Edge WebView2 런타임**을 사용하므로, 런타임이 없는 PC(Edge 업데이트가 막힌 Windows 10, Windows Server 등)에서는 먼저 런타임을 설치해야 합니다(아래 포터블 사용법 참조).
+통합알람감시체계(TMS) 서버에 PC의 **소리 발생 여부**를 보고하고, PC가 **뮤트된 채로 방치되지 않도록** 일정 시간 뒤 자동으로 뮤트를 해제하는 Windows 데스크톱 클라이언트입니다. Tauri 2 + Rust로 만들었고 설치 없이 실행됩니다. 화면을 그리는 **Microsoft Edge WebView2 런타임**을 exe 옆 `webview2` 폴더에 함께 담아(Fixed Version) 배포하므로, 인터넷이 없거나 런타임이 설치되지 않은 Windows 10 PC에서도 압축만 풀면 바로 동작합니다.
 
 이전 두 도구를 하나로 합쳤습니다.
 
@@ -23,9 +23,8 @@
 
 ## 포터블 사용법
 
-1. `tms-soundsense.exe`를 원하는 폴더에 복사합니다. 서버(통합알람감시체계) 화면 오른쪽 위 다운로드 메뉴에서 받을 수 있습니다.
-   - 실행했을 때 **"WebView2 런타임이 없어 음성탐지기를 실행할 수 없습니다"** 대화상자가 뜨면, 같은 다운로드 메뉴의 **WebView2 런타임 설치 파일**(`MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, Microsoft 오프라인 설치 파일)을 그 PC에서 한 번 실행한 뒤 다시 시작합니다. 인터넷 연결이 필요 없습니다. Windows 11과 최신 Windows 10에는 이미 들어 있어 이 단계가 필요 없습니다.
-2. 실행하면 같은 폴더에 `soundsense-settings.json`이 생성됩니다. exe와 설정 파일을 **나란히** 두고 함께 옮기면 됩니다.
+1. 서버(통합알람감시체계) 화면 오른쪽 위 다운로드 메뉴에서 `tms-soundsense.zip`을 받아 원하는 폴더에 **통째로** 풉니다. 풀면 `tms-soundsense.exe`와 `webview2` 폴더(WebView2 Fixed Version 런타임, 64비트)가 나오며 둘은 반드시 같은 위치에 있어야 합니다. exe만 복사하면 **"webview2 폴더가 없거나 손상되어 화면을 열 수 없습니다"** 대화상자가 뜹니다.
+2. 실행하면 같은 폴더에 `soundsense-settings.json`이 생성됩니다. exe·`webview2` 폴더·설정 파일을 **나란히** 두고 함께 옮기면 됩니다.
    - exe 폴더에 쓸 수 없는 경우(예: 읽기 전용 위치)에만 `%APPDATA%\tms-soundsense\soundsense-settings.json`을 사용합니다.
 3. 설정 파일 예시:
 
@@ -79,12 +78,15 @@
 ```powershell
 npm install
 npm run icon                      # icon.png 생성 후 src-tauri/icons 재생성 (아이콘을 바꿀 때만)
-npm run build                     # 프런트엔드 (dist/)
-cargo tauri build --no-bundle     # 포터블 exe: src-tauri\target\release\tms-soundsense.exe
+npm run build                     # WebView2 Fixed Version 런타임 내려받기(최초 1회) + 프런트엔드 (dist/)
+cargo tauri build --no-bundle     # 포터블 exe: src-tauri\target\release\tms-soundsense.exe (+ webview2\ 복사)
+npm run package                   # 배포 zip: src-tauri\target\release\tms-soundsense.zip (exe + webview2\)
 cargo tauri build                 # + NSIS 설치 파일 (선택)
 ```
 
-개발 모드는 `cargo tauri dev`(Vite dev 서버 자동 실행)입니다. 로그는 `RUST_LOG=info`로 제어합니다(릴리스 exe는 콘솔이 없습니다).
+`npm run build`(또는 `npm run webview2`)는 `scripts/fetch-webview2.mjs`로 Microsoft의 Fixed Version 런타임 CAB(버전·주소는 스크립트 상단 상수)을 `.cache/`에 내려받아 `src-tauri/webview2/`에 풉니다. 두 경로 모두 gitignore이며 이미 풀려 있으면 건너뜁니다. `tauri.conf.json`의 `bundle.windows.webviewInstallMode`가 `fixedRuntime`이라 Tauri가 빌드 때 이 폴더를 exe 옆으로 복사하고 실행 시 그 런타임만 사용합니다. `path`는 `"webview2"`처럼 슬래시 없이 적어야 합니다 — `"./webview2/"`로 두면 WebView2 로더가 경로를 무시하고 설치된 런타임으로 조용히 되돌아갑니다. 확인 방법: 실행 후 `msedgewebview2.exe` 프로세스 경로가 exe 옆 `webview2\`이면 정상입니다. 런타임을 올리려면 스크립트의 버전·주소를 고치고 `src-tauri/webview2/`를 지운 뒤 다시 빌드합니다.
+
+개발 모드는 `cargo tauri dev`(Vite dev 서버 자동 실행)입니다. 처음이라면 먼저 `npm run webview2`로 런타임을 받아 두어야 합니다. 로그는 `RUST_LOG=info`로 제어합니다(릴리스 exe는 콘솔이 없습니다).
 
 > **주의**: `cargo build --release`만 실행하면 `custom-protocol` 기능이 빠져 프런트 자산이 포함되지 않은 개발 모드 exe가 만들어집니다. 그 exe는 실행 시 "localhost 연결을 거부했습니다" 오류를 띄웁니다. 배포용 exe는 반드시 `cargo tauri build`(또는 `--no-bundle`)로 만드세요.
 
@@ -104,8 +106,11 @@ sound-client/
 ├── index.html, src/main.ts, src/style.css   # Vite + 순수 TypeScript UI
 ├── scripts/make-icon.mjs                    # 의존성 없는 PNG 아이콘 생성기
 ├── scripts/probe-test.mjs                   # 프로토콜 테스트 도구
+├── scripts/fetch-webview2.mjs               # WebView2 Fixed Version 런타임 다운로드·해제
+├── scripts/package.mjs                      # 배포 zip(exe + webview2/) 생성
 └── src-tauri/
     ├── tauri.conf.json, capabilities/default.json
+    ├── webview2/                            # (빌드 시 생성, gitignore) Fixed Version 런타임
     └── src/
         ├── lib.rs        # 앱 조립, 트레이, 명령, identify 처리
         ├── settings.rs   # 포터블 설정 파일

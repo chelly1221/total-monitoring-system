@@ -5,3 +5,5 @@ src-tauri/gen/schemas/
 icon.png
 *.log
 soundsense-settings.json
+src-tauri/webview2/
+.cache/

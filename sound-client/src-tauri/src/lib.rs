@@ -459,19 +459,30 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The UI lives in a WebView2 window, so on a PC without the runtime Tauri can only fail with
-/// an English panic dialog. Check up front and tell the operator in Korean where to get it: the
-/// server's 다운로드 menu offers the offline runtime installer next to this client.
+/// Folder next to the exe holding the WebView2 fixed runtime (tauri.conf.json
+/// `bundle.windows.webviewInstallMode`). Facility PCs are offline and may lack the Evergreen
+/// runtime, so the client carries its own and never depends on what is installed.
+const WEBVIEW2_DIR: &str = "webview2";
+
+/// Tauri points WebView2 at `WEBVIEW2_DIR` only while building the app, and a missing folder
+/// would surface as an English panic dialog. Point it there first, verify the runtime loads,
+/// and otherwise tell the operator in Korean that the whole zip must be extracted.
 fn ensure_webview2() {
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join(WEBVIEW2_DIR)))
+    {
+        std::env::set_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", &dir);
+    }
     if let Ok(version) = tauri::webview_version() {
         log::info!("WebView2 runtime {version}");
         return;
     }
-    log::error!("WebView2 runtime not installed; exiting");
+    log::error!("WebView2 fixed runtime not found next to the exe; exiting");
     unsafe {
         MessageBoxW(
             None,
-            w!("이 PC에 Microsoft Edge WebView2 런타임이 없어 음성탐지기를 실행할 수 없습니다.\n\n통합알람감시체계 화면 오른쪽 위의 다운로드 메뉴에서 \"WebView2 런타임 설치 파일\"을 내려받아 이 PC에 설치한 뒤 다시 실행해 주세요."),
+            w!("음성탐지기 실행 파일 옆에 \"webview2\" 폴더가 없거나 손상되어 화면을 열 수 없습니다.\n\n내려받은 압축 파일(tms-soundsense.zip)을 통째로 풀어 tms-soundsense.exe와 webview2 폴더를 같은 위치에 두고 다시 실행해 주세요."),
             w!("통합알람감시 음성탐지기"),
             MB_OK | MB_ICONERROR,
         );
