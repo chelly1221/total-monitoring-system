@@ -186,7 +186,7 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## 클라이언트 프로그램 다운로드 메뉴
 
-2026-09-12 추가. 헤더의 다운로드 아이콘(`src/components/layout/download-menu.tsx`)을 누르면 서버가 배포하는 클라이언트 프로그램 목록이 뜨고, 항목을 누르면 `GET /api/downloads/<id>`로 첨부 파일을 내려받는다. 시설 PC 브라우저에서 서버 화면을 열어 내려받는 것이 기본 사용 흐름이다.
+2026-09-12 추가. 헤더의 다운로드 아이콘(`src/components/layout/download-menu.tsx`)을 누르면 서버가 배포하는 클라이언트 프로그램 목록이 뜬다. 브라우저에서는 항목이 `GET /api/downloads/<id>` 첨부 링크이고, 데스크톱 앱 안에서는 WebView2가 링크 다운로드를 조용히 처리해 아무 반응이 없어 보이므로 대신 Rust 명령 `save_download`를 호출한다. 이 명령은 `tauri-plugin-dialog`로 Windows "다른 이름으로 저장" 창을 띄우고(기본 위치는 다운로드 폴더) 고른 경로에 `resources/downloads/<file>`을 복사한다. 취소하면 `null`을 돌려주고 토스트를 띄우지 않는다.
 
 - **카탈로그**: `src/lib/downloads.ts`의 `DOWNLOAD_ITEMS`. 새 프로그램은 여기에 `{ id, name, description, file }`을 추가하고 파일을 다운로드 폴더에 넣으면 메뉴에 나타난다(목록은 메뉴를 열 때마다 조회).
 - **파일 위치**: `DOWNLOADS_DIR`(패키지 앱에서 Tauri가 `resources/downloads`로 지정) → 개발용 `downloads/`(gitignore) → `sound-client/src-tauri/target/release` 순서로 찾는다. 파일이 없으면 메뉴에 비활성으로 표시된다.

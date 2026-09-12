@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 
@@ -408,13 +409,52 @@ async fn open_sub_window(app: tauri::AppHandle, label: String, title: String, pa
     Ok(())
 }
 
+/// Save a bundled client program (resources/downloads/<file>) to a location the user
+/// picks in a native "다른 이름으로 저장" dialog. WebView2 saves link downloads silently
+/// (no bar, no prompt), so the in-app 다운로드 menu calls this instead.
+/// Returns the saved path, or `None` when the user cancelled the dialog.
+#[tauri::command]
+async fn save_download(app: tauri::AppHandle, file: String) -> Result<Option<String>, String> {
+    if file.is_empty() || file.contains(['/', '\\', ':']) || file.starts_with('.') {
+        return Err("잘못된 파일 이름입니다".into());
+    }
+    let source = get_resource_dir(&app).join("downloads").join(&file);
+    if !source.is_file() {
+        return Err(format!("서버에 {file} 파일이 없습니다"));
+    }
+
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("클라이언트 프로그램 저장")
+        .set_file_name(&file);
+    if let Ok(dir) = app.path().download_dir() {
+        dialog = dialog.set_directory(dir);
+    }
+    if let Some(ext) = std::path::Path::new(&file).extension().and_then(|e| e.to_str()) {
+        dialog = dialog.add_filter(format!("{} 파일", ext.to_uppercase()), &[ext]);
+    }
+    // blocking_save_file must not run on the main thread; async commands run on the
+    // tokio runtime, so it is safe here.
+    let Some(picked) = dialog.blocking_save_file() else {
+        return Ok(None);
+    };
+    let dest = picked.into_path().map_err(|e| e.to_string())?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(&source, &dest).map_err(|e| format!("저장하지 못했습니다: {e}"))?;
+    Ok(Some(dest.display().to_string()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (shutdown_tx, _shutdown_rx) = watch::channel(false);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![open_sub_window])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![open_sub_window, save_download])
         .manage(AppState {
             shutdown_tx,
             #[cfg(windows)]
