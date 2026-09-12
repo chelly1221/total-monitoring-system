@@ -14,7 +14,7 @@ import { syncSirenState } from './siren-trigger'
 import type { EquipmentConfig, MetricsConfig, SystemStatus } from '@/types'
 import { evaluateDisplayItemStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
-import { criticalConfirmations, DEFAULT_CRITICAL_CONFIRMATIONS } from '@/lib/equipment-alarm'
+import { criticalConfirmations } from '@/lib/equipment-alarm'
 import { executeCustomCode, clearCustomCodeCache } from './custom-code-executor'
 import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
@@ -56,10 +56,11 @@ export async function initDatabasePragmas(): Promise<void> {
   }
 }
 
-// Critical signal must occur CRITICAL_THRESHOLD consecutive times before triggering fault
-// (equipment systems use criticalConfirmations(config) instead — 1 for SoundSense PCs)
+// UPS/sensor metrics: a critical reading must repeat CRITICAL_THRESHOLD times before a
+// fault (spike guard). Equipment systems use criticalConfirmations(config) instead —
+// default 1, raised per facility in the form for noisy senders.
 const criticalCounters = new Map<string, number>()
-const CRITICAL_THRESHOLD = DEFAULT_CRITICAL_CONFIRMATIONS
+const CRITICAL_THRESHOLD = 3
 
 // Per-metric confirmed critical state: "systemId:metricName" → true when counter reached threshold
 const metricCriticalState = new Map<string, boolean>()

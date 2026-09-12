@@ -152,19 +152,18 @@ test('commands are signed when a token is set, and rejections/timeouts surface a
   }
 })
 
-test('SoundSense-linked facilities alarm on the first SOUND, other equipment still needs three', async () => {
+test('equipment alarms on the first critical message unless the facility sets its own count', async () => {
   const { criticalConfirmations, DEFAULT_CRITICAL_CONFIRMATIONS } = await import('../src/lib/equipment-alarm')
-  const client = { id: 'c1', name: 'PC', host: 'h', ip: '192.168.1.186', ver: '3.0.0' }
-  assert.equal(criticalConfirmations({ client }), 1)
-  assert.equal(criticalConfirmations({}), DEFAULT_CRITICAL_CONFIRMATIONS)
-  assert.equal(criticalConfirmations(null), DEFAULT_CRITICAL_CONFIRMATIONS)
-  assert.equal(DEFAULT_CRITICAL_CONFIRMATIONS, 3)
-  // A facility's own count wins over the default (analogue detector behind a PC keeps 3)
-  assert.equal(criticalConfirmations({ client, criticalConfirmations: 3 }), 3)
+  assert.equal(DEFAULT_CRITICAL_CONFIRMATIONS, 1)
+  assert.equal(criticalConfirmations({}), 1)
+  assert.equal(criticalConfirmations(null), 1)
+  // Only an explicit per-facility count (the analogue 1레이더 LCMS) restores the filter
+  assert.equal(criticalConfirmations({ criticalConfirmations: 3 }), 3)
   assert.equal(criticalConfirmations({ criticalConfirmations: 1 }), 1)
   // Out-of-range or non-integer values fall back to the default
-  assert.equal(criticalConfirmations({ client, criticalConfirmations: 0 }), 1)
-  assert.equal(criticalConfirmations({ criticalConfirmations: 2.5 }), DEFAULT_CRITICAL_CONFIRMATIONS)
+  assert.equal(criticalConfirmations({ criticalConfirmations: 0 }), 1)
+  assert.equal(criticalConfirmations({ criticalConfirmations: 11 }), 1)
+  assert.equal(criticalConfirmations({ criticalConfirmations: 2.5 }), 1)
   const base = { normalPatterns: ['SILENCE'], criticalPatterns: ['SOUND'], matchMode: 'exact' }
   assert.equal(validateSystemBody({ config: { ...base, criticalConfirmations: 3 } }, true), null)
   assert.ok(validateSystemBody({ config: { ...base, criticalConfirmations: 0 } }, true))

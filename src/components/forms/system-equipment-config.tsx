@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { X, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
+  DEFAULT_CRITICAL_CONFIRMATIONS,
   MAX_CRITICAL_CONFIRMATIONS,
   MIN_CRITICAL_CONFIRMATIONS,
-  defaultCriticalConfirmations,
 } from "@/lib/equipment-alarm"
 import type { EquipmentConfig } from "@/types"
 
@@ -74,10 +74,9 @@ export function SystemEquipmentConfig({
     }
   }
 
-  // Consecutive critical messages before the worker raises a fault. Empty = default,
-  // which depends on whether a SoundSense PC is linked (1) or a device reports on
-  // its own (3) — an analogue detector keeps the glitch filter, a debounced PC does not.
-  const defaultConfirmations = defaultCriticalConfirmations(config)
+  // Consecutive critical messages before the worker raises a fault. Empty = default (1):
+  // only a facility fed by a noisy analogue sender needs more, and sets it here.
+  const defaultConfirmations = DEFAULT_CRITICAL_CONFIRMATIONS
   const setConfirmations = (raw: string) => {
     const next = { ...config }
     if (raw.trim() === "") {
@@ -110,14 +109,14 @@ export function SystemEquipmentConfig({
         />
         <span className="text-xs text-muted-foreground">
           {config.criticalConfirmations === undefined
-            ? `기본값 ${defaultConfirmations}회 (${config.client ? "PC 클라이언트 연결됨" : "장비 직접 송신"})`
+            ? `기본값 ${defaultConfirmations}회 — 첫 심각 신호에 바로 알람`
             : `기본값은 ${defaultConfirmations}회`}
         </span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        심각 패턴이 이 횟수만큼 연속으로 수신돼야 알람을 냅니다. 아날로그 탐지장비처럼 잡음 신호가
-        섞이는 송신측은 2~3회, 음성탐지기(SoundSense) PC처럼 이미 걸러진 신호는 1회가 알맞습니다.
-        비우면 기본값을 사용합니다.
+        심각 패턴이 이 횟수만큼 연속으로 수신돼야 알람을 냅니다. 프로그램이 보내는 상태(FMS·LCMS
+        소프트웨어, 음성탐지기 PC)는 기본값 1회를 그대로 두고, 아날로그 탐지장비처럼 잡음 신호가
+        섞이는 송신측만 2~3회로 올리세요. 비우면 기본값을 사용합니다.
       </p>
     </div>
   )
