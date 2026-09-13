@@ -14,7 +14,7 @@ export function SettingsWorkspace({ features, gate, sirens, data }: Record<Secti
         <div className="settings-column settings-main-column">{features}{gate}{data}</div>
         <div className="settings-column settings-siren-column">{sirens}</div>
       </div>
-      <p className="settings-page-footer">기능 표시와 사이렌 사용 여부는 즉시 저장 · 연결·용량은 버튼으로 저장</p>
+      <p className="settings-page-footer">설정 변경은 자동 저장됩니다. 연결 정보는 입력을 마치면 저장됩니다.</p>
     </div>
   )
 }

@@ -3,10 +3,12 @@
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { useSettingsAutosave } from '@/hooks/use-settings-autosave'
+import { AutosaveStatus } from './autosave-status'
 
 export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHistoryMaxMb?: string }) {
   const [historyLimit, setHistoryLimit] = useState(initialHistoryMaxMb)
-  const [savingLimit, setSavingLimit] = useState(false)
+  const autosave = useSettingsAutosave()
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
@@ -89,21 +91,16 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
       <div>
         <div className="settings-history-limit mb-3 flex items-center gap-2 text-sm">
           <label htmlFor="history-size-limit">이력 DB 용량 상한</label>
-          <select id="history-size-limit" className="rounded border border-input bg-background px-2 py-1" value={historyLimit} onChange={event => setHistoryLimit(event.target.value)} disabled={savingLimit}>
+          <select id="history-size-limit" className="rounded border border-input bg-background px-2 py-1" value={historyLimit} aria-describedby="history-save-status" onChange={event => {
+            setHistoryLimit(event.target.value)
+            autosave.schedule({ historyMaxSizeMb: event.target.value }, 0)
+          }}>
             <option value="1024">1GB</option>
             <option value="2048">2GB</option>
             <option value="5120">5GB</option>
             <option value="10240">10GB</option>
           </select>
-          <Button size="sm" disabled={savingLimit} onClick={async () => {
-            setSavingLimit(true)
-            try {
-              const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ historyMaxSizeMb: historyLimit }) })
-              if (!response.ok) throw new Error('Save failed')
-              toast.success('이력 DB 용량 상한을 저장했습니다')
-            } catch { toast.error('용량 상한 저장에 실패했습니다') }
-            finally { setSavingLimit(false) }
-          }}>{savingLimit ? '저장 중...' : '용량 저장'}</Button>
+          <AutosaveStatus id="history-save-status" status={autosave.status} />
         </div>
         <p className="settings-data-description mb-6 text-[20px] text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
         <h3 className="settings-backup-heading mb-4 border-t border-border pt-6 text-[24px] font-semibold">설정 백업 및 복원</h3>

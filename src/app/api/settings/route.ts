@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { HISTORY_LIMIT_KEY, validHistoryLimit } from '@/lib/history-storage'
+import { gateSettingsError } from '@/lib/gate-settings'
 import {
   notifySirenSync,
   notifyAudioSettingsChanged,
@@ -39,6 +40,9 @@ export async function PUT(request: Request) {
     if ('clientToken' in body) {
       return NextResponse.json({ error: 'PC 클라이언트 인증 토큰 설정은 더 이상 사용하지 않습니다' }, { status: 400 })
     }
+
+    const gateError = gateSettingsError(body)
+    if (gateError) return NextResponse.json({ error: gateError }, { status: 400 })
 
     const updates = Object.entries(body).map(([key, value]) =>
       prisma.setting.upsert({

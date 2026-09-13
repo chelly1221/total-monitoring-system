@@ -41,6 +41,10 @@
 .settings-overview .settings-gate-content { display: flex; flex-direction: column; gap: 12px; }
 .settings-overview .settings-gate-content > div { margin-block: 0; }
 .settings-overview .settings-gate-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.settings-overview .settings-save-status { align-self: center; font-size: 14px; line-height: 1.4; color: #c7c7c7; }
+.settings-overview .settings-save-status[data-status="saved"] { color: #a0e7b5; }
+.settings-overview .settings-save-status:is([data-status="invalid"], [data-status="error"]) { color: #ffb7b7; }
+.settings-overview .settings-gate-actions .settings-save-status { margin-right: auto; }
 .settings-siren-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .settings-siren-table { width: 100%; min-width: 480px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .settings-siren-table .settings-device-col { width: 42%; }
@@ -60,7 +64,7 @@
 .settings-siren-empty p { margin-top: 8px; font-size: 16px; color: #c7c7c7; }
 .settings-overview .settings-history-limit { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
 .settings-overview .settings-history-limit select { width: 120px; }
-.settings-overview .settings-history-limit [data-slot="button"] { margin-left: auto; }
+.settings-overview .settings-history-limit .settings-save-status { margin-left: auto; }
 .settings-overview .settings-data-description { font-size: 14px; color: #c7c7c7; margin-bottom: 12px; }
 .settings-overview .settings-backup-heading { font-size: 18px; padding-top: 12px; margin-bottom: 10px; }
 .settings-overview .settings-backup-actions { display: flex; gap: 10px; }

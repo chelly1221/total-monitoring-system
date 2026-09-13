@@ -6,6 +6,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useSettingsAutosave } from '@/hooks/use-settings-autosave'
+import { gateSettingsError } from '@/lib/gate-settings'
+import { AutosaveStatus } from './autosave-status'
 
 interface GateSettingsCardProps {
   initialIp?: string
@@ -21,38 +24,23 @@ export function GateSettingsCard({
   const [ip, setIp] = useState(initialIp)
   const [port, setPort] = useState(initialPort)
   const [protocol, setProtocol] = useState(initialProtocol)
-  const [saving, setSaving] = useState(false)
+  const autosave = useSettingsAutosave()
   const [testing, setTesting] = useState(false)
 
-  const handleSave = async () => {
-    const portNum = parseInt(port)
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      toast.error('포트 번호는 1-65535 범위여야 합니다')
-      return
-    }
+  const draft = { gateIp: ip.trim(), gatePort: port, gateProtocol: protocol }
+  const error = gateSettingsError(draft)
+  const canTest = !error && (autosave.status === 'idle' || autosave.status === 'saved')
 
-    setSaving(true)
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gateIp: ip,
-          gatePort: port,
-          gateProtocol: protocol,
-        }),
-      })
-
-      if (!res.ok) throw new Error('저장 실패')
-      toast.success('게이트 설정이 저장되었습니다')
-    } catch {
-      toast.error('설정 저장에 실패했습니다')
-    } finally {
-      setSaving(false)
-    }
+  const update = (next: typeof draft, immediate = false) => {
+    setIp(next.gateIp)
+    setPort(next.gatePort)
+    setProtocol(next.gateProtocol)
+    const value = { ...next, gateIp: next.gateIp.trim() }
+    autosave.schedule(gateSettingsError(value) ? undefined : value, immediate ? 0 : 500)
   }
 
   const handleTest = async () => {
+    if (!canTest) return
     setTesting(true)
     try {
       const res = await fetch('/api/gate', { method: 'POST' })
@@ -77,13 +65,15 @@ export function GateSettingsCard({
           <p>게이트 열림 명령을 보낼 장비 주소입니다.</p></div>
       </header>
       <div className="settings-gate-content space-y-6">
-        <div className="settings-gate-fields grid gap-4 sm:grid-cols-3">
+        <div className="settings-gate-fields grid gap-4 sm:grid-cols-3" onBlur={() => { void autosave.flush() }}>
           <div className="space-y-2">
             <Label htmlFor="gate-ip">IP 주소</Label>
             <Input
               id="gate-ip"
               value={ip}
-              onChange={(e) => setIp(e.target.value)}
+              onChange={(e) => update({ ...draft, gateIp: e.target.value })}
+              aria-describedby="gate-save-status"
+              aria-invalid={autosave.status === 'invalid' && !!gateSettingsError({ gateIp: ip.trim() })}
               placeholder="192.168.1.150"
             />
           </div>
@@ -95,13 +85,15 @@ export function GateSettingsCard({
               min={1}
               max={65535}
               value={port}
-              onChange={(e) => setPort(e.target.value)}
+              onChange={(e) => update({ ...draft, gatePort: e.target.value })}
+              aria-describedby="gate-save-status"
+              aria-invalid={autosave.status === 'invalid' && !!gateSettingsError({ gatePort: port })}
               placeholder="6722"
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="gate-protocol">프로토콜</Label>
-            <select id="gate-protocol" value={protocol} onChange={(event) => setProtocol(event.target.value)}>
+            <select id="gate-protocol" value={protocol} onChange={(event) => update({ ...draft, gateProtocol: event.target.value }, true)}>
               <option value="tcp">TCP</option>
               <option value="udp">UDP</option>
             </select>
@@ -109,13 +101,10 @@ export function GateSettingsCard({
         </div>
 
         <div className="settings-gate-actions">
-          <Button variant="outline" onClick={handleTest} disabled={testing}>
+          <AutosaveStatus id="gate-save-status" status={autosave.status} error={error} />
+          <Button variant="outline" onClick={handleTest} disabled={testing || !canTest}>
             {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             게이트 열림 테스트
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            연결 설정 저장
           </Button>
         </div>
       </div>

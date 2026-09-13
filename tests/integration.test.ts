@@ -217,6 +217,19 @@ test('history capacity settings reject invalid values without storing them', asy
   assert.equal((await readHistoryStorage(db)).limitMb, 5120)
 })
 
+test('incomplete automatic gate edits cannot partially replace a saved connection', async () => {
+  const api = await import('../src/app/api/settings/route')
+  const valid = { gateIp: '192.0.2.150', gatePort: '6722', gateProtocol: 'tcp' }
+  assert.equal((await api.PUT(request(valid, 'PUT'))).status, 200)
+  for (const invalid of [
+    { ...valid, gateIp: '192.0.2.', gatePort: '5000' },
+    { ...valid, gatePort: '6722x' },
+    { ...valid, gatePort: '0' },
+    { ...valid, gateProtocol: 'other' },
+  ]) assert.equal((await api.PUT(request(invalid, 'PUT'))).status, 400)
+  assert.deepEqual(await (await api.GET()).json(), valid)
+})
+
 test('retired client tokens are neither exposed, accepted, nor restored from old backups', async () => {
   const api = await import('../src/app/api/settings/route')
   const legacy = await db.setting.create({ data: { key: 'clientToken', value: 'old-value' } })
