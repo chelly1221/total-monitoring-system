@@ -1,3 +1,4 @@
+import { theme } from './theme.js';
 // renderer/topoEditor.js — 2D Network Topology Editor
 (function () {
   'use strict';
@@ -22,11 +23,11 @@
   const SIZE_MIN = 0.5, SIZE_MAX = 3.0;
 
   const TYPES = {
-    hub_center: { name: '네트워크 감시PC', fill: '#e0f7fa', stroke: '#00bcd4' },
-    router: { name: '라우터', fill: '#fff3e0', stroke: '#e67e22' },
-    switch: { name: '스위치', fill: '#e8f5e9', stroke: '#4caf50' },
-    pc: { name: 'PC', fill: '#e3f2fd', stroke: '#a60739' },
-    server: { name: '서버', fill: '#f3e5f5', stroke: '#9b59b6' }
+    hub_center: { name: '네트워크 감시PC', fill: theme.accentTint, stroke: theme.accent },
+    router: { name: '라우터', fill: theme.surface, stroke: theme.text2 },
+    switch: { name: '스위치', fill: theme.surface, stroke: theme.text2 },
+    pc: { name: 'PC', fill: theme.surface, stroke: theme.accent },
+    server: { name: '서버', fill: theme.surface, stroke: theme.text2 }
   };
 
   let _uidSeq = 0;
@@ -141,17 +142,17 @@
     var w = canvas._logicalW || canvas.width, h = canvas._logicalH || canvas.height;
     if (!w || !h) return;
 
-    ctx.fillStyle = '#0b1523';
+    ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, w, h);
 
     // Grid
-    ctx.strokeStyle = 'rgba(164,196,234,0.06)';
+    ctx.strokeStyle = 'rgba(85,85,85,0.06)';
     ctx.lineWidth = 1;
     var step = GRID_STEP * w / REF_W;
     for (var gx = step; gx < w; gx += step) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
     for (var gy = step; gy < h; gy += step) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
     // Grid intersection dots
-    ctx.fillStyle = 'rgba(164,196,234,0.10)';
+    ctx.fillStyle = 'rgba(85,85,85,0.10)';
     for (var gx2 = step; gx2 < w; gx2 += step) {
       for (var gy2 = step; gy2 < h; gy2 += step) {
         ctx.beginPath(); ctx.arc(gx2, gy2, 1.5, 0, Math.PI * 2); ctx.fill();
@@ -168,7 +169,7 @@
         ctx.beginPath();
         ctx.moveTo(sx(from.x), sy(from.y));
         ctx.lineTo(mouseX, mouseY);
-        ctx.strokeStyle = 'rgba(164,196,234,0.3)';
+        ctx.strokeStyle = 'rgba(85,85,85,0.3)';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 5]);
         ctx.stroke();
@@ -191,7 +192,7 @@
     else if (mode === 'delete') hint = '삭제할 장비 또는 연결선을 클릭하세요';
     else if (mode.startsWith('add_')) hint = '캔버스를 클릭하여 배치하세요';
     if (hint) {
-      ctx.fillStyle = 'rgba(164,196,234,0.4)';
+      ctx.fillStyle = 'rgba(85,85,85,0.4)';
       ctx.font = Math.max(11, 12 * w / REF_W).toFixed(0) + 'px Pretendard, Segoe UI, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(hint, w / 2, h - 10);
@@ -205,12 +206,12 @@
     ctx.beginPath();
     ctx.moveTo(sx(from.x), sy(from.y));
     ctx.lineTo(sx(to.x), sy(to.y));
-    ctx.strokeStyle = sel ? 'rgba(164,196,234,0.4)' : 'rgba(164,196,234,0.15)';
+    ctx.strokeStyle = sel ? 'rgba(85,85,85,0.4)' : 'rgba(85,85,85,0.15)';
     ctx.lineWidth = sel ? 2.5 : 1.5;
     ctx.stroke();
     // Port dots at endpoints
     var dotR = 3;
-    ctx.fillStyle = sel ? 'rgba(164,196,234,0.5)' : 'rgba(164,196,234,0.2)';
+    ctx.fillStyle = sel ? 'rgba(85,85,85,0.5)' : 'rgba(85,85,85,0.2)';
     ctx.beginPath(); ctx.arc(sx(from.x), sy(from.y), dotR, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(sx(to.x), sy(to.y), dotR, 0, Math.PI * 2); ctx.fill();
   }
@@ -281,11 +282,11 @@
     // Labels
     var fs = Math.max(9, 10 * (dev.size || 1.0) * (canvas._logicalW || canvas.width) / REF_W);
     ctx.textAlign = 'center';
-    ctx.fillStyle = sel ? '#e4efff' : '#bdcee5';
+    ctx.fillStyle = sel ? theme.accent : theme.text;
     ctx.font = (sel ? 'bold ' : '') + fs.toFixed(0) + 'px Pretendard, Segoe UI, sans-serif';
     ctx.fillText(dev.name, x, y + r + fs + 2);
     if (dev.ip) {
-      ctx.fillStyle = '#819bbb';
+      ctx.fillStyle = theme.text2;
       ctx.font = Math.max(7, 8 * (dev.size || 1.0) * (canvas._logicalW || canvas.width) / REF_W).toFixed(0) + 'px Consolas, monospace';
       ctx.fillText(dev.ip, x, y + r + fs + 12);
     }
@@ -296,8 +297,8 @@
     var pos = getResizeHandlePos(dev);
     var hs = 5;
     ctx.save();
-    ctx.fillStyle = '#a60739';
-    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = theme.accent;
+    ctx.strokeStyle = theme.bg;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y - hs);

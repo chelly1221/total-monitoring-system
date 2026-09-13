@@ -20,13 +20,13 @@
   --text-primary: #1a1a2e;
   --text-secondary: #5a6478;
   --text-muted: #6b7590;
-  --accent-blue: #a60739;
-  --accent-blue-hover: #8a062f;
+  --accent-blue: var(--accent);
+  --accent-blue-hover: var(--accent-hover);
   --accent-green: #2ecc71;
-  --accent-green-dim: rgba(46, 204, 113, 0.12);
+  --accent-green-dim: rgba(46, 125, 50, 0.12);
   --accent-red: #e74c3c;
-  --accent-red-dim: rgba(231, 76, 60, 0.10);
-  --accent-red-row: rgba(231, 76, 60, 0.10);
+  --accent-red-dim: rgba(127, 13, 0, 0.10);
+  --accent-red-row: rgba(127, 13, 0, 0.10);
   --accent-orange: #e67e22;
   --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.08);
   --radius-sm: 4px;
@@ -49,7 +49,7 @@ body {
 }
 
 ::selection {
-  background: rgba(166, 7, 57, 0.85);
+  background: rgba(127, 13, 0, 0.85);
   color: #fff;
 }
 
@@ -325,36 +325,36 @@ h1.titlebar-title,
 }
 
 .btn-primary {
-  background: #a60739;
-  border-color: #a60739;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #ffffff;
 }
 
 .btn-primary:hover {
-  background: #8a062f;
-  border-color: #8a062f;
-  box-shadow: 0 0 12px rgba(166, 7, 57, 0.25);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow:none;
 }
 
 .btn-primary:active {
-  background: #750528;
-  border-color: #750528;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .btn-danger {
-  background: rgba(231, 76, 60, 0.08);
-  border-color: rgba(231, 76, 60, 0.3);
+  background: rgba(127, 13, 0, 0.08);
+  border-color: rgba(127, 13, 0, 0.3);
   color: var(--accent-red);
 }
 
 .btn-danger:hover {
-  background: rgba(231, 76, 60, 0.15);
-  border-color: rgba(231, 76, 60, 0.5);
-  box-shadow: 0 0 12px rgba(231, 76, 60, 0.12);
+  background: rgba(127, 13, 0, 0.15);
+  border-color: rgba(127, 13, 0, 0.5);
+  box-shadow:none;
 }
 
 .btn-danger:active {
-  background: rgba(231, 76, 60, 0.12);
+  background: rgba(127, 13, 0, 0.12);
 }
 
 .btn-sm {
@@ -485,11 +485,11 @@ tr.status-failed {
 }
 
 tr.status-failed td {
-  color: #b91c1c;
+  color: var(--accent);
 }
 
 tr.status-failed:hover {
-  background: rgba(231, 76, 60, 0.16) !important;
+  background: rgba(127, 13, 0, 0.16) !important;
 }
 
 tr.status-disabled {
@@ -501,27 +501,27 @@ tr.status-disabled td {
 }
 
 tr.log-error {
-  background: rgba(231, 76, 60, 0.07) !important;
+  background: rgba(127, 13, 0, 0.07) !important;
 }
 
 tr.log-error td {
-  color: #c0392b;
+  color: var(--accent);
 }
 
 tr.log-error:hover {
-  background: rgba(231, 76, 60, 0.13) !important;
+  background: rgba(127, 13, 0, 0.13) !important;
 }
 
 tr.log-recovery {
-  background: rgba(46, 204, 113, 0.08) !important;
+  background: rgba(46, 125, 50, 0.08) !important;
 }
 
 tr.log-recovery td {
-  color: #1a8a4a;
+  color: var(--ok);
 }
 
 tr.log-recovery:hover {
-  background: rgba(46, 204, 113, 0.14) !important;
+  background: rgba(46, 125, 50, 0.14) !important;
 }
 
 
@@ -560,7 +560,7 @@ tr.log-recovery:hover {
 
 .status-indicator.running {
   background: var(--accent-green);
-  box-shadow: 0 0 6px rgba(46, 204, 113, 0.5);
+  box-shadow:none;
 }
 
 
@@ -674,8 +674,8 @@ tr.log-recovery:hover {
 
 .modal input[type="text"]:focus,
 .modal input[type="number"]:focus {
-  border-color: #a60739;
-  box-shadow: 0 0 0 2px rgba(166, 7, 57, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(127, 13, 0, 0.15);
 }
 
 .modal input[type="text"][readonly] {
@@ -684,7 +684,7 @@ tr.log-recovery:hover {
 }
 
 .modal input[type="checkbox"] {
-  accent-color: #a60739;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -747,7 +747,7 @@ tr.log-recovery:hover {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  accent-color: #a60739;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -834,13 +834,13 @@ tr.log-recovery:hover {
 }
 
 .target-settings-table input[type="text"]:focus {
-  border-color: #a60739;
-  box-shadow: 0 0 0 1px rgba(166, 7, 57, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(127, 13, 0, 0.15);
 }
 
 .target-settings-table input[type="checkbox"] {
   transform: scale(1.2);
-  accent-color: #a60739;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -860,8 +860,8 @@ tr.log-recovery:hover {
 }
 
 .target-settings-table select:focus {
-  border-color: #a60739;
-  box-shadow: 0 0 0 1px rgba(166, 7, 57, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(127, 13, 0, 0.15);
 }
 
 .target-settings-table tbody tr:nth-child(even) {
@@ -949,8 +949,8 @@ tr.log-recovery:hover {
 }
 
 .view-toggle-btn.active {
-  background: rgba(166, 7, 57, 0.10);
-  color: #a60739;
+  background: rgba(127, 13, 0, 0.10);
+  color: var(--accent);
 }
 
 .view-toggle-btn:hover:not(.active) {
@@ -959,17 +959,17 @@ tr.log-recovery:hover {
 }
 
 .view-toggle-btn:focus-visible {
-  outline: 2px solid #a60739;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
 .btn:focus-visible {
-  outline: 2px solid #a60739;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .titlebar-btn:focus-visible {
-  outline: 2px solid #a60739;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -1000,70 +1000,11 @@ tr.log-recovery:hover {
   display: block;
 }
 
-/* Discovered nodes panel */
-.view-2d-discovered {
-  flex-shrink: 0;
-  max-height: 160px;
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--border-medium);
-  background: var(--bg-panel);
-}
-
-.discovered-header {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-}
-
-.discovered-table-wrap {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.view-2d-discovered table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.view-2d-discovered th {
-  background: var(--bg-surface);
-  padding: 4px 10px;
-  text-align: center;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
-}
-
-.view-2d-discovered td {
-  padding: 3px 10px;
-  text-align: center;
-  font-size: 11px;
-  font-family: Consolas, monospace;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.view-2d-discovered tbody tr:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
-
 /* ============================================================
    NPCAP STATUS BADGE
    ============================================================ */
 .npcap-badge {
-  font-size: 10px;
+  font-size:11px;
   font-weight: 700;
   letter-spacing: 0.5px;
   padding: 1px 5px;
@@ -1075,8 +1016,8 @@ tr.log-recovery:hover {
 }
 
 .npcap-badge.active {
-  background: rgba(46, 204, 113, 0.1);
-  border-color: rgba(46, 204, 113, 0.3);
+  background: rgba(46, 125, 50, 0.1);
+  border-color: rgba(46, 125, 50, 0.3);
   color: var(--accent-green);
   opacity: 1;
 }
@@ -1123,9 +1064,9 @@ tr.log-recovery:hover {
 }
 
 .topo-tool-btn.active {
-  background: rgba(166, 7, 57, 0.08);
-  border-color: rgba(166, 7, 57, 0.3);
-  color: #a60739;
+  background: rgba(127, 13, 0, 0.08);
+  border-color: rgba(127, 13, 0, 0.3);
+  color: var(--accent);
 }
 
 .topo-tool-btn svg {
@@ -1138,7 +1079,7 @@ tr.log-recovery:hover {
 }
 
 .topo-tool-btn:focus-visible {
-  outline: 2px solid #a60739;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -1159,7 +1100,7 @@ tr.log-recovery:hover {
   min-height: 0;
   position: relative;
   overflow: hidden;
-  background: #f8f9fb;
+  background: var(--bg-2);
 }
 
 .topo-canvas-wrap canvas {
@@ -1206,8 +1147,8 @@ tr.log-recovery:hover {
 }
 
 .topo-props-row input[type="text"]:focus {
-  border-color: #a60739;
-  box-shadow: 0 0 0 1px rgba(166, 7, 57, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(127, 13, 0, 0.15);
 }
 
 .topo-props-row select {
@@ -1223,8 +1164,8 @@ tr.log-recovery:hover {
 }
 
 .topo-props-row select:focus {
-  border-color: #a60739;
-  box-shadow: 0 0 0 1px rgba(166, 7, 57, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(127, 13, 0, 0.15);
 }
 
 .topo-props-row input[type="text"]:disabled,

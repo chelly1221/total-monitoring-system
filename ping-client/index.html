@@ -10,25 +10,6 @@
 
 
 <header id="titlebar" data-tauri-drag-region>
-  <div class="brand" data-tauri-drag-region><span class="brand-icon">⌁</span><div><h1>네트워크 ping 감시</h1><span>TMS · 네트워크 클라이언트</span></div></div>
-  <span id="hostName" class="host-name"></span><div class="titlebar-window-controls">
-      <button type="button" class="titlebar-btn window-btn" id="btnMinimize" title="최소화">
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6"/></svg>
-      </button>
-      <button type="button" class="titlebar-btn window-btn" id="btnMaximize" title="최대화">
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5"/></svg>
-      </button>
-      <button type="button" class="titlebar-btn window-btn window-btn-close" id="btnClose" title="트레이로 숨기기 (감시 유지)">
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.2"/></svg>
-      </button></div>
-</header>
-<section class="overview" aria-label="감시 요약">
-  <div class="overview-title"><span class="eyebrow">실시간 네트워크 상태</span><h2 id="overviewTitle">감시를 준비하세요</h2><p id="overviewDescription">감시 대상을 등록하면 네트워크 상태를 확인할 수 있습니다.</p></div>
-  <div class="metric"><span>활성 대상</span><strong id="metricTotal">0</strong><small>최대 20개 장비</small></div>
-  <div class="metric good"><span>정상</span><strong id="metricHealthy">0</strong><small>응답 수신</small></div>
-  <div class="metric bad"><span>장애</span><strong id="metricFailed">0</strong><small id="metricPending">대기 0개</small></div>
-  <div class="metric"><span>평균 응답</span><strong id="metricRtt">—</strong><small>밀리초 · ms</small></div>
-</section>
 <nav class="toolbar" aria-label="감시 설정"><div class="titlebar-menu">
       <button type="button" class="titlebar-btn menu-btn" id="menuTargets" title="감시대상 설정">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 012.5 1h3A1.5 1.5 0 017 2.5v3A1.5 1.5 0 015.5 7h-3A1.5 1.5 0 011 5.5v-3zm8 0A1.5 1.5 0 0110.5 1h3A1.5 1.5 0 0115 2.5v3A1.5 1.5 0 0113.5 7h-3A1.5 1.5 0 019 5.5v-3zm-8 8A1.5 1.5 0 012.5 9h3A1.5 1.5 0 017 10.5v3A1.5 1.5 0 015.5 15h-3A1.5 1.5 0 011 13.5v-3zm8 0A1.5 1.5 0 0110.5 9h3a1.5 1.5 0 011.5 1.5v3a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 13.5v-3z"/></svg>
@@ -54,24 +35,58 @@
       <button type="button" class="titlebar-btn menu-btn" id="menuTopo" title="물리 토폴로지 편집">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 1v3H1V1h5zM1 0a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1H1zm14 12v3h-5v-3h5zm-5-1a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1v-3a1 1 0 00-1-1h-5zM6 8v7H1V8h5zM1 7a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V8a1 1 0 00-1-1H1zm14-6v7h-5V1h5zm-5-1a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1h-5z"/></svg>
         <span>토폴로지</span>
-      </button></div><button class="btn" id="menuImport">기존 설정 가져오기</button><button class="btn" id="menuClient">클라이언트 설정</button></nav>
-<section class="connection-strip" aria-label="통합 감시 서버 연결"><span class="connection-dot" id="connectionDot"></span><strong id="connectionTarget">서버 자동 연결 대기</strong><span id="connectionStatus">시설 등록 화면에서 이 PC를 검색하세요.</span><span id="lastSent"></span></section>
+      </button></div><button type="button" class="titlebar-btn menu-btn" id="menuClient" title="설정"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 3-.5 2-2 1-2-.5-2 3 1.5 1.5v3L2.5 15l2 3 2-.5 2 1L9 21h4l.5-2.5 2-1 2 .5 2-3-1.5-2v-3L19.5 8l-2-3-2 .5-2-1L13 3Z"/><circle cx="11" cy="12" r="3"/></svg><span>설정</span></button></nav>
+  <div class="titlebar-drag-space" data-tauri-drag-region aria-hidden="true"></div>
+  <div class="titlebar-window-controls">
+      <button type="button" class="titlebar-btn window-btn" id="btnMinimize" title="최소화">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6"/></svg>
+      </button>
+      <button type="button" class="titlebar-btn window-btn" id="btnMaximize" title="최대화">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5"/></svg>
+      </button>
+      <button type="button" class="titlebar-btn window-btn window-btn-close" id="btnClose" title="트레이로 숨기기 (감시 유지)">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button></div>
+</header>
+<section class="overview" aria-label="감시 제어 및 요약">
+      <div class="control-group">
+        <button type="button" class="btn btn-primary" id="btnStart">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/></svg>
+          시작
+        </button>
+        <button type="button" class="btn btn-danger" id="btnStop" disabled>
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+          정지
+        </button>
+      </div>
+      <div class="view-toggle" id="viewToggle" data-view="2d" role="group" aria-label="화면 표시 방식">
+        <button type="button" class="view-toggle-btn" data-view="table" aria-pressed="false" title="테이블 보기">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="1" width="14" height="2.5" rx="0.5"/><rect x="0" y="5.5" width="14" height="2.5" rx="0.5"/><rect x="0" y="10" width="14" height="2.5" rx="0.5"/></svg><span>목록</span>
+        </button>
+        <button type="button" class="view-toggle-btn active" data-view="2d" aria-pressed="true" title="토폴로지 보기">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg><span>토폴로지</span>
+        </button>
+      </div>
+
+  <div class="metric"><span>활성 대상</span><strong id="metricTotal">0</strong><small>최대 20개 장비</small></div>
+  <div class="metric good"><span>정상</span><strong id="metricHealthy">0</strong><small>응답 수신</small></div>
+  <div class="metric bad"><span>장애</span><strong id="metricFailed">0</strong><small id="metricPending">대기 0개</small></div>
+  <div class="metric"><span>평균 응답</span><strong id="metricRtt">—</strong><small>밀리초 · ms</small></div>
+      <label class="mute-toggle">
+        <input type="checkbox" id="chkMute" class="sr-only">
+        <svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
+        <svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg>
+        <span>음소거</span>
+      </label>
+
+</section>
+
+
 <!-- Main Content -->
 <div class="main-container">
   <!-- Left Panel: Targets -->
   <div class="panel panel-left">
-    <div class="panel-header">
-      <span class="panel-header-title">감시 현황</span>
-      <div class="view-toggle" id="viewToggle">
-        <button type="button" class="view-toggle-btn active" data-view="table" title="테이블 보기">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="1" width="14" height="2.5" rx="0.5"/><rect x="0" y="5.5" width="14" height="2.5" rx="0.5"/><rect x="0" y="10" width="14" height="2.5" rx="0.5"/></svg>
-        </button>
-        <button type="button" class="view-toggle-btn" data-view="2d" title="토폴로지 보기">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg>
-        </button>
-      </div>
-      <span class="panel-header-badge" id="targetCount">0개 대상</span>
-    </div>
+
     <div class="table-container">
       <table>
         <thead>
@@ -91,52 +106,15 @@
       <div class="view-2d-canvas-wrap" id="view2dContainer">
         <canvas id="view2dCanvas" role="img" aria-label="네트워크 토폴로지 시각화"></canvas>
       </div>
-      <div class="view-2d-discovered" id="discoveredList">
-        <div class="discovered-header">미등록 노드</div>
-        <div class="discovered-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">IP 주소</th>
-                <th scope="col">트래픽</th>
-                <th scope="col">연결</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
+
     </div>
-    <div class="panel-footer">
-      <div class="control-group">
-        <button type="button" class="btn btn-primary" id="btnStart">
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/></svg>
-          시작
-        </button>
-        <button type="button" class="btn btn-danger" id="btnStop" disabled>
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
-          정지
-        </button>
-      </div>
-      <label class="mute-toggle">
-        <input type="checkbox" id="chkMute" class="sr-only">
-        <svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
-        <svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg>
-        <span>음소거</span>
-      </label>
-    </div>
+
   </div>
 
   <!-- Right Panel: Fail Logs -->
   <div class="panel panel-right">
-    <div class="panel-header">
-      <span class="panel-header-title">장애 · 복구 이력</span>
-      <button type="button" class="btn btn-sm" id="btnClearLogs">
-        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H5.5l1-1h3l1 1h2.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-        초기화
-      </button>
-    </div>
-    <div class="table-container">
+    <div class="log-tools"><span id="logCount">0건</span><button type="button" class="btn btn-sm" id="btnLogDetails">상세 조회</button><button type="button" class="btn btn-sm" id="btnClearLogs">초기화</button></div>
+    <div class="table-container" id="logScroll">
       <table>
         <thead>
           <tr>
@@ -155,6 +133,8 @@
 
 <!-- Status Bar -->
 <div id="statusbar">
+<section class="connection-strip" aria-label="통합 감시 서버 연결"><span class="connection-dot" id="connectionDot"></span><strong id="connectionTarget">서버 자동 연결 대기</strong><span id="connectionStatus">시설 등록 화면에서 이 PC를 검색하세요.</span><span id="lastSent"></span></section>
+  <span id="hostName" class="host-name"></span>
   <div class="statusbar-left">
     <span class="status-indicator" id="statusIndicator"></span>
     <span id="statusText">대기 중</span>
@@ -380,15 +360,22 @@
 
 
 <div class="modal-overlay" id="clientModal" role="dialog" aria-modal="true" aria-labelledby="clientModalTitle"><div class="modal client-modal">
-  <div class="modal-header"><h3 id="clientModalTitle">클라이언트 설정</h3><p>서버에서 이 PC를 선택하면 연결 정보가 자동으로 저장됩니다.</p></div>
+  <div class="modal-header"><h3 id="clientModalTitle">설정</h3><p>서버에서 이 PC를 선택하면 연결 정보가 자동으로 저장됩니다.</p></div>
   <div class="modal-body">
     <div class="form-row"><label for="clientName">장비명</label><input id="clientName" maxlength="64" placeholder="예: 레이더 네트워크 감시 PC"></div>
-    <div class="form-row"><label><input type="checkbox" id="clientAutostart"> Windows 로그인 시 자동 실행</label></div>
+    <div class="form-row"><label><input type="checkbox" id="clientAutostart" checked> Windows 로그인 시 자동 실행</label></div>
     <div class="form-row"><label><input type="checkbox" id="clientAutoMonitor"> 프로그램 실행 시 감시 자동 시작</label></div>
     <div class="client-help"><strong>자동 연결 방법</strong><p>통합알람감시체계 → 시설 추가 → 자동 탐지 (PC)에서<br>‘네트워크 ping 감시’를 선택하고 시설을 저장하세요.</p><p>닫기 버튼은 감시를 유지하며 트레이로 숨깁니다.<br>완전히 종료하려면 트레이 메뉴의 ‘종료’를 누르세요.</p></div>
+    <section class="settings-transfer" aria-label="설정 백업"><strong>설정 백업</strong><p>감시 대상·토폴로지·서버 연결·환경 설정을 JSON 파일로 저장하고 불러옵니다.</p><div><button type="button" class="btn" id="btnImportSettings">설정 가져오기</button><button type="button" class="btn" id="btnExportSettings">설정 내보내기</button></div></section>
     <p id="clientDiscovery" class="muted"></p>
   </div>
   <div class="modal-footer"><button class="btn" id="cancelClient">취소</button><button class="btn btn-primary" id="saveClient">저장</button></div>
+</div></div>
+<div class="modal-overlay" id="logModal" role="dialog" aria-modal="true" aria-labelledby="logModalTitle"><div class="modal log-modal">
+  <div class="modal-header"><h3 id="logModalTitle">로그 상세 조회</h3><p>최대 5 GB까지 보관하며, 초과하기 전에 오래된 로그 파일부터 자동 삭제합니다.</p></div>
+  <div class="log-filters"><input type="search" id="logSearch" aria-label="장비명 또는 주소 검색" placeholder="장비명 또는 주소 검색"><select id="logFilter" aria-label="상태 필터"><option value="">전체 상태</option><option value="장애 발생">장애 발생</option><option value="정상 복구">정상 복구</option></select><span id="logResultCount"></span><button type="button" class="btn btn-sm" id="refreshLogs">새로고침</button></div>
+  <div class="log-detail-layout"><div class="log-results" id="logResults" aria-label="조회 이력"></div><div class="log-event" id="logEvent" aria-live="polite"></div></div>
+  <div class="modal-footer log-pagination"><span id="logStorage"></span><button type="button" class="btn btn-sm" id="prevLogPage" disabled>이전</button><span id="logPageNumber">1페이지</span><button type="button" class="btn btn-sm" id="nextLogPage" disabled>다음</button><button type="button" class="btn" id="closeLogModal">닫기</button></div>
 </div></div>
 <div id="identifyBanner" hidden role="alert"><span>이 PC를 확인 중입니다</span><strong>네트워크 ping 감시</strong><p>통합알람감시체계에서 보낸 PC 확인 요청입니다.</p></div>
 <div id="toast" hidden role="status"></div>

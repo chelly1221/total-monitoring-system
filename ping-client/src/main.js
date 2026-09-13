@@ -7,7 +7,7 @@ import './view2d.js';
 
 const win = getCurrentWindow();
 const callbacks = new Map();
-const eventNames = ['ping-result', 'failure-log', 'traffic-stats', 'internode-stats', 'discovered-nodes', 'asterix-flows', 'capture-error', 'window-maximized', 'window-unmaximized'];
+const eventNames = ['ping-result', 'failure-log', 'traffic-stats', 'internode-stats', 'asterix-flows', 'capture-error', 'window-maximized', 'window-unmaximized'];
 const on = (name, callback) => { if (!callbacks.has(name)) callbacks.set(name, new Set()); callbacks.get(name).add(callback); return () => callbacks.get(name)?.delete(callback); };
 let toastTimer;
 window.notify = (message) => {
@@ -23,9 +23,11 @@ window.api = {
   startPinging: () => invoke('set_running', { running: true }),
   stopPinging: () => invoke('set_running', { running: false }),
   clearLogs: () => invoke('clear_logs'),
+  queryLogs: (cursor, search, status) => invoke('query_logs', { cursor, search, status }),
   browseSoundFile: () => invoke('browse_sound'),
   testSound: (path = '') => invoke('test_sound', { path }),
   importSettings: () => invoke('import_settings'),
+  exportSettings: patch => invoke('export_settings', { patch }),
   updateMute: async mute => { await invoke('save_settings', { patch: { mute_state: mute } }); return true; },
   windowMinimize: () => win.minimize(),
   windowMaximize: () => win.toggleMaximize(),

@@ -1,8 +1,8 @@
+import { theme } from './theme.js';
 // State
 let settings = {};
 let isRunning = false;
-let failLogs = [];
-let currentView = 'table';
+let currentView = '2d';
 let npcapAvailable = false;
 let ipToIndex = {};
 
@@ -20,6 +20,7 @@ let lastLogKey = "";
 // --- Initialize ---
 async function init() {
   syncSnapshot(await window.api.snapshot());
+  switchView(currentView);
   npcapAvailable = await window.api.isNpcapAvailable();
   updateNpcapIndicator();
 }
@@ -81,34 +82,112 @@ function updateTargetRow(data) {
   ctx.clearRect(0, 0, 120, 28);
   const history = data.history || [];
   const max = Math.max(10, ...history.filter(n => n != null));
-  history.forEach((n, i) => { ctx.fillStyle = n == null ? '#ef4444' : '#34d399'; const h = n == null ? 25 : Math.max(3, n / max * 25); ctx.fillRect(i * 2, 28 - h, 1.3, h); });
+  history.forEach((n, i) => { ctx.fillStyle = n == null ? theme.danger : theme.ok; const h = n == null ? 25 : Math.max(3, n / max * 25); ctx.fillRect(i * 2, 28 - h, 1.3, h); });
 }
 
 // --- Failure Log ---
-function addLogEntry(data) {
-  const tr = document.createElement('tr');
-  tr.className = data.status === '정상 복구' ? 'log-recovery' : 'log-error';
-  tr.innerHTML = `
-    <td>${escapeHtml(formatTime(data.at, true))}</td>
-    <td>${escapeHtml(data.name)}</td>
-    <td>${escapeHtml(data.address)}</td>
-    <td>${escapeHtml(data.status)}</td>
-  `;
-  logTableBody.appendChild(tr);
-  failLogs.push(data);
-
-  // Keep max 100
-  if (failLogs.length > 100) {
-    failLogs.shift();
-    if (logTableBody.firstElementChild) {
-      logTableBody.removeChild(logTableBody.firstElementChild);
-    }
+let selectedLog = null;
+let detailLogs = [];
+let logCursors = [null];
+let logPage = 0;
+let nextLogCursor = null;
+let logRequest = 0;
+let logSearchTimer;
+let logLoading = false;
+const logScroll = document.getElementById('logScroll');
+function logIdentity(log) { return JSON.stringify([log.at, log.address, log.status]); }
+function renderLogs(logs) {
+  const oldTop = logScroll.scrollTop;
+  const atBottom = logScroll.scrollHeight - oldTop - logScroll.clientHeight < 10;
+  logTableBody.replaceChildren();
+  for (const data of logs) {
+    const tr = document.createElement('tr');
+    tr.className = data.status === '정상 복구' ? 'log-recovery' : 'log-error';
+    tr.innerHTML = '<td>' + escapeHtml(formatTime(data.at, true)) + '</td><td><button type="button" class="log-open">' + escapeHtml(data.name) + '</button></td><td>' + escapeHtml(data.address) + '</td><td>' + escapeHtml(data.status) + '</td>';
+    tr.querySelector('button').addEventListener('click', () => openLogDetails(data));
+    logTableBody.appendChild(tr);
   }
-
-  // Auto-scroll to bottom
-  const container = logTableBody.closest('.table-container');
-  if (container) container.scrollTop = container.scrollHeight;
+  if (!logs.length) logTableBody.innerHTML = '<tr><td colspan="4" class="empty-state"><strong>아직 장애 이력이 없습니다</strong><p>장애 발생과 정상 복구 시 이곳에 기록됩니다.</p></td></tr>';
+  logScroll.scrollTop = atBottom ? logScroll.scrollHeight : oldTop;
+  setText('logCount', '최근 ' + logs.length + '건');
 }
+function openLogDetails(log = null) {
+  selectedLog = log ? logIdentity(log) : null;
+  document.getElementById('logSearch').value = '';
+  document.getElementById('logFilter').value = '';
+  showModal('logModal');
+  resetLogQuery();
+}
+function renderLogDetails() {
+  const logs = detailLogs;
+  let selected = logs.find(log => logIdentity(log) === selectedLog) || logs[0];
+  selectedLog = selected ? logIdentity(selected) : null;
+  setText('logResultCount', logs.length + '건');
+  setText('logPageNumber', (logPage + 1) + '페이지');
+  document.getElementById('prevLogPage').disabled = logLoading || logPage === 0;
+  document.getElementById('nextLogPage').disabled = logLoading || !nextLogCursor;
+  const results = document.getElementById('logResults');
+  results.replaceChildren();
+  for (const log of logs) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'log-result';
+    button.setAttribute('aria-pressed', String(logIdentity(log) === selectedLog));
+    button.innerHTML = '<span class="log-result-meta">' + escapeHtml(formatTime(log.at, true)) + '<b class="' + (log.status === '정상 복구' ? 'recovered' : 'failed') + '">' + escapeHtml(log.status) + '</b></span><strong>' + escapeHtml(log.name) + '</strong><small>' + escapeHtml(log.address) + '</small>';
+    button.addEventListener('click', () => { selectedLog = logIdentity(log); renderLogDetails(); results.querySelector('[aria-pressed="true"]')?.focus(); });
+    results.appendChild(button);
+  }
+  if (!logs.length) results.innerHTML = '<p class="empty-state">조건에 맞는 이력이 없습니다.</p>';
+  const detail = document.getElementById('logEvent');
+  if (!selected) { detail.innerHTML = '<p class="muted">조회할 이력이 없습니다.</p>'; return; }
+  const value = (n, suffix = '') => n == null ? '기록 없음' : n + suffix;
+  const rows = [
+    ['발생 시각', new Date(selected.at).toLocaleString('ko-KR', { hour12: false })],
+    ['주소', selected.address], ['상태', selected.status],
+    ['응답 시간', selected.rttMs == null ? (selected.sent == null ? '기록 없음' : '응답 없음') : selected.rttMs + ' ms'],
+    ['전송 / 손실', selected.sent == null ? '기록 없음' : selected.sent + '회 / ' + selected.lost + '회'],
+    ['연속 실패', value(selected.consecutiveFailures, '회')],
+    ['응답 대기', value(selected.timeoutMs, ' ms')], ['장애 판정 기준', value(selected.failureThreshold, '회 연속 실패')],
+  ];
+  detail.innerHTML = '<h4>' + escapeHtml(selected.name) + '</h4><dl>' + rows.map(([label, val]) => '<div><dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(String(val)) + '</dd></div>').join('') + '</dl>';
+}
+document.getElementById('btnLogDetails').addEventListener('click', () => openLogDetails());
+document.getElementById('closeLogModal').addEventListener('click', () => hideModal('logModal'));
+async function loadLogPage(cursor, pageNumber) {
+  const request = ++logRequest;
+  const search = document.getElementById('logSearch').value;
+  const status = document.getElementById('logFilter').value;
+  logLoading = true;
+  document.getElementById('prevLogPage').disabled = true;
+  document.getElementById('nextLogPage').disabled = true;
+  document.getElementById('logResults').innerHTML = '<p class="empty-state">저장된 로그를 조회하고 있습니다…</p>';
+  setText('logEvent', ''); setText('logResultCount', '조회 중');
+  try {
+    let page;
+    let next = cursor;
+    do {
+      page = await window.api.queryLogs(next, search, status);
+      if (request !== logRequest || !document.getElementById('logModal').classList.contains('show')) return;
+      next = page.nextCursor;
+    } while (!page.entries.length && next);
+    detailLogs = page.entries; nextLogCursor = page.nextCursor; logPage = pageNumber;
+    setText('logStorage', formatLogBytes(page.bytesUsed) + ' / 5 GB · 오래된 파일부터 자동 정리');
+    logLoading = false;
+    renderLogDetails();
+  } catch (e) {
+    if (request !== logRequest) return;
+    detailLogs = []; nextLogCursor = null; logLoading = false;
+    renderLogDetails();
+    document.getElementById('logResults').textContent = '로그를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.';
+    window.notify(String(e));
+  }
+}
+function formatLogBytes(bytes) { return bytes >= 1_000_000_000 ? (bytes / 1_000_000_000).toFixed(2) + ' GB' : bytes >= 1_000_000 ? (bytes / 1_000_000).toFixed(1) + ' MB' : (bytes / 1000).toFixed(1) + ' KB'; }
+function resetLogQuery() { clearTimeout(logSearchTimer); logCursors = [null]; loadLogPage(null, 0); }
+document.getElementById('logSearch').addEventListener('input', () => { ++logRequest; logLoading = true; document.getElementById('prevLogPage').disabled = true; document.getElementById('nextLogPage').disabled = true; clearTimeout(logSearchTimer); logSearchTimer = setTimeout(resetLogQuery, 250); });
+document.getElementById('logFilter').addEventListener('change', resetLogQuery);
+document.getElementById('refreshLogs').addEventListener('click', resetLogQuery);
+document.getElementById('prevLogPage').addEventListener('click', () => { if (!logLoading && logPage > 0) loadLogPage(logCursors[logPage - 1], logPage - 1); });
+document.getElementById('nextLogPage').addEventListener('click', () => { if (!logLoading && nextLogCursor) { logCursors[logPage + 1] = nextLogCursor; loadLogPage(nextLogCursor, logPage + 1); } });
 
 // --- Status Bar ---
 function updateStatusBar() {
@@ -161,7 +240,7 @@ chkMute.addEventListener('change', async () => {
 // --- IPC Events ---
 // Remove old listeners to prevent accumulation on renderer reload
 ['ping-result', 'failure-log', 'play-sound', 'traffic-stats',
- 'internode-stats', 'discovered-nodes', 'asterix-flows', 'capture-error',
+ 'internode-stats', 'asterix-flows', 'capture-error',
  'window-maximized', 'window-unmaximized'].forEach(ch => window.api.removeAllListeners(ch));
 
 window.api.onPingResult((data) => {
@@ -179,9 +258,6 @@ window.api.onInterNodeStats((data) => {
   if (currentView === '2d' && window.view2d && window.view2d.isActive()) window.view2d.handleInterNodeStats(data);
 });
 
-window.api.onDiscoveredNodes((nodes) => {
-  if (currentView === '2d' && window.view2d && window.view2d.isActive()) window.view2d.handleDiscoveredNodes(nodes);
-});
 
 window.api.onAsterixFlows(() => {});
 
@@ -672,6 +748,7 @@ document.getElementById('btnCancelTopo').addEventListener('click', () => closeTo
 // --- 2D Topology View ---
 function switchView(view) {
   currentView = view;
+  document.getElementById('viewToggle').dataset.view = view;
   const tableContainer = document.querySelector('.panel-left .table-container');
   const view2dEl = document.getElementById('view2d');
 
@@ -694,6 +771,7 @@ function switchView(view) {
   if (view === '2d' && latestSnapshot) for (const r of latestSnapshot.results) window.view2d.updateNodeStatus(r.index, r.status, formatTime(r.at));
   document.querySelectorAll('.view-toggle-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === view);
+    btn.setAttribute('aria-pressed', String(btn.dataset.view === view));
   });
 }
 
@@ -751,7 +829,7 @@ window.api.windowIsMaximized().then(isMax => setMaximizeIcon(isMax)).catch(() =>
 
 // Double-click titlebar to maximize/restore
 document.getElementById('titlebar').addEventListener('dblclick', (e) => {
-  if (e.target.closest('.titlebar-btn')) return;
+  if (e.target.closest('button, nav')) return;
   window.api.windowMaximize().catch(() => {});
 });
 
@@ -769,16 +847,15 @@ export function syncSnapshot(snap) {
   btnStart.disabled = isRunning; btnStop.disabled = !isRunning;
   for (const result of snap.results) { updateTargetRow(result); if (window.view2d?.isActive()) window.view2d.updateNodeStatus(result.index, result.status, formatTime(result.at)); }
   const logKey = JSON.stringify(snap.logs);
-  if (logKey !== lastLogKey) { lastLogKey = logKey; failLogs = []; logTableBody.innerHTML = ''; snap.logs.forEach(addLogEntry); }
-  if (!snap.logs.length) logTableBody.innerHTML = '<tr><td colspan="4" class="empty-state"><strong>아직 장애 이력이 없습니다</strong><p>장애 발생과 정상 복구 시 이곳에 기록됩니다.</p></td></tr>';
+  if (logKey !== lastLogKey) { lastLogKey = logKey; renderLogs(snap.logs); }
+
   const active = settings.targets.filter(t => t.enabled).length;
   const healthy = snap.results.filter(r => r.status === '성공').length;
   const failed = snap.results.filter(r => r.status === '장애').length;
   const rtts = snap.results.filter(r => r.rttMs != null).map(r => r.rttMs);
   setText('metricTotal', active); setText('metricHealthy', healthy); setText('metricFailed', failed); setText('metricPending', '대기 ' + (active - healthy - failed) + '개');
   setText('metricRtt', rtts.length ? (rtts.reduce((a,b) => a+b, 0) / rtts.length).toFixed(1) : '—');
-  setText('overviewTitle', !isRunning ? '감시가 정지되어 있습니다' : failed ? failed + '개 장비의 연결을 확인하세요' : healthy === active && active ? '모든 장비가 정상입니다' : '네트워크 응답을 확인하고 있습니다');
-  setText('overviewDescription', !active ? '감시대상을 추가하거나 기존 PingTester 설정을 가져오세요.' : 'ICMP ping · ' + settings.ping_interval + '초 주기 · 연속 ' + settings.failure_threshold + '회 실패 시 장애 판정');
+  document.getElementById('logCount').title = formatLogBytes(snap.logBytes || 0) + ' / 5 GB 저장 중';
   setText('hostName', snap.host + ' · v' + snap.version);
   setText('connectionTarget', settings.udp_enabled ? settings.udp_ip + ':' + settings.udp_port : '서버 자동 연결 대기');
   setText('connectionStatus', snap.sendStatus);
@@ -790,19 +867,23 @@ export function syncSnapshot(snap) {
 function setText(id, value) { document.getElementById(id).textContent = value; }
 function formatTime(at, date = false) { return at ? new Date(at).toLocaleString('ko-KR', { ...(date ? { month: '2-digit', day: '2-digit' } : {}), hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—'; }
 
-document.getElementById('menuClient').addEventListener('click', () => {
+function fillClientSettings() {
   document.getElementById('clientName').value = settings.name;
   document.getElementById('clientAutostart').checked = settings.autostart;
   document.getElementById('clientAutoMonitor').checked = settings.auto_monitor;
-  showModal('clientModal');
-});
+}
+document.getElementById('menuClient').addEventListener('click', () => { fillClientSettings(); showModal('clientModal'); });
 document.getElementById('cancelClient').addEventListener('click', () => hideModal('clientModal'));
 document.getElementById('saveClient').addEventListener('click', async () => {
-  try { await window.api.saveSettings({ name: document.getElementById('clientName').value.trim(), autostart: document.getElementById('clientAutostart').checked, auto_monitor: document.getElementById('clientAutoMonitor').checked }); hideModal('clientModal'); window.notify('클라이언트 설정을 저장했습니다'); }
+  try { await window.api.saveSettings({ name: document.getElementById('clientName').value.trim(), autostart: document.getElementById('clientAutostart').checked, auto_monitor: document.getElementById('clientAutoMonitor').checked }); hideModal('clientModal'); window.notify('설정을 저장했습니다'); }
   catch (e) { window.notify(String(e)); }
 });
-document.getElementById('menuImport').addEventListener('click', async () => {
-  try { const result = await window.api.importSettings(); if (result) { syncSnapshot(await window.api.snapshot()); window.notify('기존 감시 대상과 토폴로지를 가져왔습니다'); } }
+document.getElementById('btnImportSettings').addEventListener('click', async () => {
+  try { const result = await window.api.importSettings(); if (result) { syncSnapshot(await window.api.snapshot()); fillClientSettings(); window.notify('설정을 가져와 적용했습니다'); } }
+  catch (e) { window.notify(String(e)); }
+});
+document.getElementById('btnExportSettings').addEventListener('click', async () => {
+  try { if (await window.api.exportSettings({ name: document.getElementById('clientName').value.trim(), autostart: document.getElementById('clientAutostart').checked, auto_monitor: document.getElementById('clientAutoMonitor').checked })) window.notify('설정을 내보냈습니다'); }
   catch (e) { window.notify(String(e)); }
 });
 export { init };

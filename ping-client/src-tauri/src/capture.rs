@@ -3,7 +3,7 @@
 use crate::state::AppState;
 use libloading::Library;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::ffi::{c_char, c_int, c_uchar, c_void, CStr, CString};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -200,27 +200,16 @@ fn decode(bytes: &[u8]) -> Option<Packet> {
     })
 }
 
-fn is_device(ip: &str) -> bool {
-    ip.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| {
-        !ip.is_loopback()
-            && !ip.is_multicast()
-            && !ip.is_unspecified()
-            && !ip.is_link_local()
-            && !ip.is_broadcast()
-    })
-}
-
 #[derive(Default)]
 struct Stats {
     flows: BTreeMap<String, Value>,
-    discovered: BTreeMap<String, Value>,
     asterix: BTreeMap<String, Value>,
     bytes: u64,
     packets: u64,
 }
 
 impl Stats {
-    fn add(&mut self, p: Packet, known: &HashSet<String>) {
+    fn add(&mut self, p: Packet) {
         self.bytes += p.len as u64;
         self.packets += 1;
         let key = format!("{}>{}", p.src, p.dst);
@@ -232,27 +221,6 @@ impl Stats {
             flow["packets"] = json!(flow["packets"].as_u64().unwrap_or(0) + 1);
             flow["protocols"][p.protocol] =
                 json!(flow["protocols"][p.protocol].as_u64().unwrap_or(0) + 1);
-        }
-        for (ip, peer) in [(&p.src, &p.dst), (&p.dst, &p.src)] {
-            if known.contains(ip)
-                || !is_device(ip)
-                || (self.discovered.len() >= 500 && !self.discovered.contains_key(ip))
-            {
-                continue;
-            }
-            let node = self
-                .discovered
-                .entry(ip.clone())
-                .or_insert_with(|| json!({"ip":ip,"totalBytes":0,"connections":{}}));
-            node["totalBytes"] = json!(node["totalBytes"].as_u64().unwrap_or(0) + p.len as u64);
-            if node["connections"].get(peer).is_none() {
-                node["connections"][peer] = json!({"bytes":0,"packets":0,"protocols":{}});
-            }
-            let conn = &mut node["connections"][peer];
-            conn["bytes"] = json!(conn["bytes"].as_u64().unwrap_or(0) + p.len as u64);
-            conn["packets"] = json!(conn["packets"].as_u64().unwrap_or(0) + 1);
-            conn["protocols"][p.protocol] =
-                json!(conn["protocols"][p.protocol].as_u64().unwrap_or(0) + 1);
         }
         if !p.cats.is_empty() && (self.asterix.len() < 500 || self.asterix.contains_key(&key)) {
             let flow = self
@@ -297,18 +265,6 @@ pub fn run(app: AppHandle, state: AppState) {
                 continue;
             }
         };
-        let known: HashSet<String> = settings
-            .targets
-            .iter()
-            .map(|t| t.address.clone())
-            .chain(devices.iter().flat_map(|d| {
-                d["addresses"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|v| v.as_str().map(str::to_owned))
-            }))
-            .collect();
         let mut handles = vec![];
         let mut errors = vec![];
         for device in devices {
@@ -377,7 +333,7 @@ pub fn run(app: AppHandle, state: AppState) {
                             if let Some(packet) =
                                 decode(std::slice::from_raw_parts(data, (*header).caplen as usize))
                             {
-                                stats.add(packet, &known);
+                                stats.add(packet);
                             }
                         }
                     }
@@ -388,10 +344,6 @@ pub fn run(app: AppHandle, state: AppState) {
             }
             if last.elapsed() >= Duration::from_secs(1) {
                 let _ = app.emit("internode-stats", stats.flows.values().collect::<Vec<_>>());
-                let _ = app.emit(
-                    "discovered-nodes",
-                    stats.discovered.values().take(30).collect::<Vec<_>>(),
-                );
                 let _ = app.emit("asterix-flows", stats.asterix.values().collect::<Vec<_>>());
                 let _ = app.emit("traffic-summary", json!({"bytes":stats.bytes,"packets":stats.packets,"asterixFlows":stats.asterix.len()}));
                 stats = Stats::default();
