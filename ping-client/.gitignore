@@ -8,3 +8,4 @@ src-tauri/windows/generated/
 *.log
 ping-settings.json*
 ping-history.json*
+ping-history/

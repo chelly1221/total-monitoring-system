@@ -48,23 +48,19 @@ pub struct AppState {
     pub inner: Arc<Mutex<Inner>>,
     pub dir: PathBuf,
     pub started: Instant,
+    pub history: Arc<Mutex<crate::history::HistoryStore>>,
 }
 
 impl AppState {
-    pub fn new(settings: Settings, dir: PathBuf) -> Self {
-        let logs: Vec<Value> = std::fs::read_to_string(dir.join("ping-history.json"))
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .rev()
-            .take(100)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
+    pub fn new(settings: Settings, dir: PathBuf) -> Result<Self, String> {
+        let history = crate::history::HistoryStore::open(&dir)?;
+        let mut logs = history
+            .query()
+            .page(None, "", "", crate::history::RECENT_LIMIT)?
+            .entries;
+        logs.reverse();
         let running = settings.auto_monitor && settings.targets.iter().any(|t| t.enabled);
-        Self {
+        Ok(Self {
             inner: Arc::new(Mutex::new(Inner {
                 settings,
                 running,
@@ -80,7 +76,8 @@ impl AppState {
             })),
             dir,
             started: Instant::now(),
-        }
+            history: Arc::new(Mutex::new(history)),
+        })
     }
     pub fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
@@ -88,7 +85,7 @@ impl AppState {
     pub fn snapshot(&self) -> Value {
         let g = self.lock();
         json!({"settings": g.settings, "running": g.running, "results": g.results.values().collect::<Vec<_>>(),
-            "logs": g.logs, "discoveryStatus": g.discovery_status, "sendStatus": g.send_status,
+            "logs": g.logs, "logBytes": self.history.lock().unwrap_or_else(|e| e.into_inner()).bytes_used(), "logMaxBytes": crate::history::MAX_BYTES, "discoveryStatus": g.discovery_status, "sendStatus": g.send_status,
             "captureStatus": g.capture_status, "lastSentAt": g.last_sent_at,
             "configRevision": g.config_revision, "uptimeSec": self.started.elapsed().as_secs(),
             "host": hostname::get().unwrap_or_default().to_string_lossy(), "version": env!("CARGO_PKG_VERSION")})

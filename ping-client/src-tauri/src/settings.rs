@@ -96,6 +96,45 @@ pub fn valid_address(address: &str) -> bool {
 }
 
 impl Settings {
+    pub fn backup(&self) -> Value {
+        let mut value = serde_json::to_value(self).expect("settings serialize");
+        value.as_object_mut().unwrap().remove("id");
+        json!({"format":"tms-ping-monitor", "version":1, "settings":value})
+    }
+
+    pub fn import_patch(value: Value) -> Result<Value, String> {
+        if value.get("format").is_some() {
+            if value["format"] != "tms-ping-monitor" || value["version"] != 1 {
+                return Err("지원하지 않는 설정 파일 형식입니다".into());
+            }
+            let patch = value["settings"].clone();
+            if !patch.is_object() || !patch["targets"].is_array() {
+                return Err("감시 대상이 포함된 설정 파일을 선택하세요".into());
+            }
+            return Ok(patch);
+        }
+        // Legacy imports preserve this PC's identity and server binding.
+        let mut patch = value;
+        if !patch["targets"].is_array() {
+            return Err("감시 대상이 포함된 설정 파일을 선택하세요".into());
+        }
+        patch
+            .as_object_mut()
+            .ok_or("설정 형식이 올바르지 않습니다")?
+            .retain(|k, _| {
+                [
+                    "targets",
+                    "ping_interval",
+                    "topology",
+                    "sound_enabled",
+                    "sound_file",
+                    "capture_devices",
+                ]
+                .contains(&k.as_str())
+            });
+        Ok(patch)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.name.chars().count() > 64 {
             return Err("장비명은 64자 이내로 입력하세요".into());
@@ -299,6 +338,28 @@ pub fn load(dir: &Path) -> Result<Settings, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn backup_round_trip_preserves_local_identity_and_preferences() {
+        let source = Settings::default()
+            .patch(json!({"name":"감시 PC", "autostart":false, "timeout_ms":2400}))
+            .unwrap();
+        let target = Settings::default();
+        assert!(target.autostart);
+        let restored = target
+            .patch(Settings::import_patch(source.backup()).unwrap())
+            .unwrap();
+        assert_eq!(restored.id, target.id);
+        assert_eq!(restored.name, source.name);
+        assert_eq!(restored.timeout_ms, 2400);
+        assert!(!restored.autostart);
+        assert!(Settings::import_patch(json!({"random":true})).is_err());
+        assert!(Settings::import_patch(json!({"format":"tms-ping-monitor","version":99})).is_err());
+        let legacy =
+            Settings::import_patch(json!({"targets":[],"udp_ip":"10.0.0.1","autostart":false}))
+                .unwrap();
+        assert!(legacy.get("udp_ip").is_none());
+        assert!(target.patch(legacy).unwrap().autostart);
+    }
     #[test]
     fn reject_unsafe_addresses_and_duplicate_targets() {
         for address in ["-t", "127.0.0.1 & whoami", "256.1.1.1", "", "foo..bar"] {

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -77,7 +77,7 @@ try {
   await waitUntil(() => packets.some(p => p.payload === 'PING_FAIL'), 'fault heartbeat');
   assert.equal(packets.some(p => p.payload === 'PING_OK'), false, 'No healthy heartbeat before all targets have been measured');
   assert.equal((await command('probe')).alarm, true);
-  const history = JSON.parse(readFileSync(`${dir}/ping-history.json`, 'utf8'));
+  const history = readdirSync(`${dir}/ping-history`).filter(name => /^\d{20}\.jsonl$/.test(name)).flatMap(name => readFileSync(`${dir}/ping-history/${name}`, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)));
   assert.ok(history.some(e => e.address === '192.0.2.1' && e.status === '장애 발생'));
   assert.equal((await command('config', { target: null })).ok, true);
   packets = []; await delay(1300); assert.equal(packets.length, 0, 'Disconnect stops heartbeat');

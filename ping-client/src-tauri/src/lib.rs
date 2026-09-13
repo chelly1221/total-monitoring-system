@@ -1,6 +1,7 @@
 mod capture;
 mod discovery;
 mod firewall;
+mod history;
 mod monitor;
 mod netinfo;
 mod settings;
@@ -78,7 +79,7 @@ async fn save_settings(app: AppHandle, patch: Value) -> Result<settings::Setting
         let state = app.state::<AppState>();
         let old = state.lock().settings.autostart;
         let next = state.apply(patch, false)?;
-        if old != next.autostart {
+        if old != next.autostart && std::env::var_os("TMS_PING_TEST_MODE").is_none() {
             let result = if next.autostart {
                 app.autolaunch().enable()
             } else {
@@ -121,11 +122,40 @@ fn set_running(state: tauri::State<AppState>, running: bool) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn clear_logs(state: tauri::State<AppState>) -> Result<(), String> {
-    let mut g = state.lock();
-    settings::write_json(&state.dir.join("ping-history.json"), &Vec::<Value>::new())?;
-    g.logs.clear();
-    Ok(())
+async fn clear_logs(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut g = state.lock();
+        state
+            .history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear()?;
+        g.logs.clear();
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn query_logs(
+    state: tauri::State<'_, AppState>,
+    cursor: Option<history::Cursor>,
+    search: String,
+    status: String,
+) -> Result<history::Page, String> {
+    if search.len() > 512 {
+        return Err("검색어가 너무 깁니다".into());
+    }
+    let query = state
+        .history
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .query();
+    tauri::async_runtime::spawn_blocking(move || query.page(cursor, &search, &status, 100))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -148,11 +178,12 @@ fn test_sound(path: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn import_settings(app: AppHandle) -> Result<Option<settings::Settings>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let Some(file) = app
+    let dialog_app = app.clone();
+    let patch = tauri::async_runtime::spawn_blocking(move || -> Result<Option<Value>, String> {
+        let Some(file) = dialog_app
             .dialog()
             .file()
-            .add_filter("PingTester 설정", &["json"])
+            .add_filter("감시 설정", &["json"])
             .blocking_pick_file()
         else {
             return Ok(None);
@@ -162,23 +193,39 @@ async fn import_settings(app: AppHandle) -> Result<Option<settings::Settings>, S
             return Err("설정 파일은 1MB 이하만 가져올 수 있습니다".into());
         }
         let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        let mut patch: Value =
+        let value: Value =
             serde_json::from_str(raw.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
-        // Import monitoring data without replacing this client's identity or server binding.
-        if let Some(object) = patch.as_object_mut() {
-            object.retain(|k, _| {
-                [
-                    "targets",
-                    "ping_interval",
-                    "topology",
-                    "sound_enabled",
-                    "sound_file",
-                    "capture_devices",
-                ]
-                .contains(&k.as_str())
-            });
-        }
-        app.state::<AppState>().apply(patch, false).map(Some)
+        settings::Settings::import_patch(value).map(Some)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    match patch {
+        Some(patch) => save_settings(app, patch).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn export_settings(app: AppHandle, patch: Value) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .add_filter("감시 설정", &["json"])
+            .set_file_name("ping-monitor-settings.json")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = file.into_path().map_err(|e| e.to_string())?;
+        let backup = app
+            .state::<AppState>()
+            .lock()
+            .settings
+            .patch(patch)?
+            .backup();
+        settings::write_json(&path, &backup)?;
+        Ok(true)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -209,42 +256,28 @@ pub fn run() {
             }
         }
     }
-    let dir = settings::data_dir();
-    let settings = match settings::load(&dir) {
-        Ok(s) => s,
-        Err(e) => {
-            let message: Vec<u16> = format!("{e}\n설정 파일을 확인하세요: {}", dir.display())
-                .encode_utf16()
-                .chain(Some(0))
-                .collect();
-            unsafe {
-                windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                    None,
-                    PCWSTR(message.as_ptr()),
-                    windows::core::w!("네트워크 ping 감시"),
-                    windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR,
-                );
-            }
-            return;
-        }
-    };
-    let state = AppState::new(settings, dir);
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
-        .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             snapshot,
             save_settings,
             set_running,
             clear_logs,
+            query_logs,
             browse_sound,
             test_sound,
             import_settings,
+            export_settings,
             capture_interfaces
         ])
         .setup(move |app| {
+            // Single-instance plugins initialize before storage, avoiding concurrent migration.
+            let dir = settings::data_dir();
+            let settings = settings::load(&dir).map_err(std::io::Error::other)?;
+            let state = AppState::new(settings, dir).map_err(std::io::Error::other)?;
+            app.manage(state.clone());
             let open =
                 MenuItem::with_id(app, "open", "네트워크 ping 감시 열기", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
@@ -297,6 +330,19 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("네트워크 ping 감시 실행 실패");
+        .run(tauri::generate_context!());
+    if let Err(e) = result {
+        let message: Vec<u16> = format!("네트워크 ping 감시 실행 실패: {e}")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                None,
+                PCWSTR(message.as_ptr()),
+                windows::core::w!("네트워크 ping 감시"),
+                windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR,
+            );
+        }
+    }
 }

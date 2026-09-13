@@ -137,13 +137,16 @@ pub async fn run(app: AppHandle, state: AppState) {
                 None
             };
             if let Some(status) = transition {
-                let event = json!({"at": result.at, "name": result.name, "address": result.address, "status": status});
+                let event = json!({"at": result.at, "name": result.name, "address": result.address, "status": status, "rttMs": result.rtt_ms, "sent": result.sent, "lost": result.lost, "consecutiveFailures": result.consecutive_failures, "timeoutMs": settings.timeout_ms, "failureThreshold": settings.failure_threshold});
                 g.logs.push(event.clone());
-                if g.logs.len() > 100 {
+                if g.logs.len() > crate::history::RECENT_LIMIT {
                     g.logs.remove(0);
                 }
-                if let Err(e) =
-                    crate::settings::write_json(&state.dir.join("ping-history.json"), &g.logs)
+                if let Err(e) = state
+                    .history
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .append(&event)
                 {
                     g.send_status = e;
                 }
@@ -249,7 +252,8 @@ mod tests {
     }
     #[test]
     fn stopped_or_unmeasured_never_reports_healthy() {
-        let state = AppState::new(crate::settings::Settings::default(), std::env::temp_dir());
+        let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let state = AppState::new(crate::settings::Settings::default(), dir.clone()).unwrap();
         assert_eq!(alarm_state(&state.lock()), None);
         let mut g = state.lock();
         g.running = true;
@@ -266,5 +270,9 @@ mod tests {
         assert_eq!(alarm_state(&g), Some(false));
         g.running = false;
         assert_eq!(alarm_state(&g), None);
+        drop(g);
+        drop(state);
+        std::fs::remove_dir(dir.join("ping-history")).unwrap();
+        std::fs::remove_dir(dir).unwrap();
     }
 }
