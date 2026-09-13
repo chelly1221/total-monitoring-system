@@ -112,6 +112,15 @@ of continuous silence.
 
 ## Server-side storage
 
+When SoundSense runs on the server PC, the server app's own alarm playback can
+be detected again and keep the sound alarm active. Turn off **서버 PC 알람 소리**
+under **설정 → 서버 알람 소리** to suppress automatic alarm playback in the
+installed server app. The persistent `serverAudioEnabled` setting defaults to
+enabled; it is independent of global mute (`audioEnabled` / `muteEndTime`).
+Detection, alarm status/history and external sirens are unchanged. Web browsers
+continue to play alarms under the existing mute rules, including browsers opened
+on the server PC. Manual audio previews are unaffected.
+
 The selected client is stored inside `System.config` JSON:
 
 ```json

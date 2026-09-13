@@ -5,6 +5,7 @@ import { gateSettingsError } from '@/lib/gate-settings'
 import {
   notifySirenSync,
   notifyAudioSettingsChanged,
+  notifyServerAudioSettingsChanged,
   notifyFeatureSettingsChanged,
   type FeatureSettingKey,
 } from '@/lib/ws-notify'
@@ -44,6 +45,10 @@ export async function PUT(request: Request) {
     const gateError = gateSettingsError(body)
     if (gateError) return NextResponse.json({ error: gateError }, { status: 400 })
 
+    if ('serverAudioEnabled' in body && !['true', 'false'].includes(String(body.serverAudioEnabled))) {
+      return NextResponse.json({ error: '서버 PC 알람 소리 설정이 올바르지 않습니다' }, { status: 400 })
+    }
+
     const updates = Object.entries(body).map(([key, value]) =>
       prisma.setting.upsert({
         where: { key },
@@ -67,6 +72,11 @@ export async function PUT(request: Request) {
         settingsObj.audioEnabled ?? 'true',
         settingsObj.muteEndTime ?? ''
       )
+    }
+
+    // Desktop output is independent of global mute and external siren control.
+    if ('serverAudioEnabled' in body) {
+      notifyServerAudioSettingsChanged(settingsObj.serverAudioEnabled)
     }
 
     // Feature toggles (tabs/buttons, wing15 ON/OFF): push to browsers + worker immediately

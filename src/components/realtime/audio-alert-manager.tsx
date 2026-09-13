@@ -6,13 +6,14 @@ import { evaluateDisplayItemStatus } from '@/lib/threshold-evaluator'
 import type { AudioConfig, MetricsConfig } from '@/types'
 
 export function AudioAlertManager() {
-  const { alarms, systems, metrics, audioMuted } = useRealtime()
+  const { alarms, systems, metrics, audioMuted, serverAudioEnabled } = useRealtime()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentFileRef = useRef<string | null>(null)
 
   useEffect(() => {
-    // If muted, stop any playing audio immediately
-    if (audioMuted) {
+    // Only the installed server app obeys the desktop output setting.
+    const serverOutputBlocked = '__TAURI_INTERNALS__' in window && serverAudioEnabled !== true
+    if (audioMuted || serverOutputBlocked) {
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current.src = ''
@@ -118,7 +119,7 @@ export function AudioAlertManager() {
         currentFileRef.current = null
       }
     }
-  }, [alarms, systems, metrics, audioMuted])
+  }, [alarms, systems, metrics, audioMuted, serverAudioEnabled])
 
   // Cleanup on unmount
   useEffect(() => {

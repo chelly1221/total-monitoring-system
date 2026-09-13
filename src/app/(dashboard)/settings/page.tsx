@@ -4,6 +4,7 @@ import { SirenSettingsCard } from '@/components/settings/siren-settings-card'
 import { FeatureSettingsCard } from '@/components/settings/feature-settings-card'
 import { DataManagementCard } from '@/components/settings/data-management-card'
 import { SettingsWorkspace } from '@/components/settings/settings-workspace'
+import { ServerAudioSettingsCard } from '@/components/settings/server-audio-settings-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
 
   return (
     <SettingsWorkspace
+      audio={<ServerAudioSettingsCard initialEnabled={settings.serverAudioEnabled !== 'false'} />}
       gate={
         <GateSettingsCard
             initialIp={settings.gateIp}

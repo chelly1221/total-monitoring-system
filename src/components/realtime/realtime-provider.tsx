@@ -43,6 +43,8 @@ interface RealtimeContextValue {
   reconnecting: boolean
   lastUpdate: Date | null
   audioMuted: boolean
+  serverAudioEnabled: boolean | null
+  setServerAudioEnabled: (enabled: boolean) => void
   muteEndTime: number | null
   featureFlags: FeatureFlags
   wing15: Wing15State | null
@@ -70,6 +72,8 @@ export function RealtimeProvider({
   const [alarms, setAlarms] = useState<PrismaAlarm[]>(initialAlarms)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [audioMuted, setAudioMuted] = useState(false)
+  // Keep desktop playback stopped until the persisted output setting is known.
+  const [serverAudioEnabled, setServerAudioEnabled] = useState<boolean | null>(null)
   const [muteEndTime, setMuteEndTime] = useState<number | null>(null)
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(DEFAULT_FEATURE_FLAGS)
   const [wing15, setWing15] = useState<Wing15State | null>(null)
@@ -169,7 +173,10 @@ export function RealtimeProvider({
   // Fetch initial audio mute state and feature flags from settings
   useEffect(() => {
     fetch('/api/settings')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch settings')
+        return res.json()
+      })
       .then((settings) => {
         const enabled = settings.audioEnabled !== 'false'
         if (!enabled) {
@@ -180,6 +187,7 @@ export function RealtimeProvider({
           }
         }
         setFeatureFlags(parseFeatureFlags(settings))
+        setServerAudioEnabled(settings.serverAudioEnabled !== 'false')
       })
       .catch(() => {})
   }, [])
@@ -218,6 +226,7 @@ export function RealtimeProvider({
           }
         }
         setFeatureFlags(parseFeatureFlags(settings))
+        setServerAudioEnabled(settings.serverAudioEnabled !== 'false')
       }
       await syncWing15()
       setLastUpdate(new Date())
@@ -336,6 +345,9 @@ export function RealtimeProvider({
           break
 
         case 'settings':
+          if (data.serverAudioEnabled !== undefined) {
+            setServerAudioEnabled(data.serverAudioEnabled !== 'false')
+          }
           if (data.audioEnabled !== undefined) {
             const enabled = data.audioEnabled !== 'false'
             const end = data.muteEndTime ? parseInt(data.muteEndTime) : 0
@@ -405,6 +417,8 @@ export function RealtimeProvider({
       reconnecting,
       lastUpdate,
       audioMuted,
+      serverAudioEnabled,
+      setServerAudioEnabled,
       muteEndTime,
       featureFlags,
       wing15,
@@ -414,7 +428,7 @@ export function RealtimeProvider({
       updateMetric,
       addAlarm,
     }),
-    [systems, metrics, alarms, connected, reconnecting, lastUpdate, audioMuted, muteEndTime, featureFlags, wing15, syncWing15, setAudioMute, updateSystem, updateMetric, addAlarm]
+    [systems, metrics, alarms, connected, reconnecting, lastUpdate, audioMuted, serverAudioEnabled, muteEndTime, featureFlags, wing15, syncWing15, setAudioMute, updateSystem, updateMetric, addAlarm]
   )
 
   return (

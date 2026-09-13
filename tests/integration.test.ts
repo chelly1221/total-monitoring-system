@@ -91,6 +91,34 @@ async function ingest(port: number, value: string) {
   }, port, 'udp')
 }
 
+test('server speaker setting persists and broadcasts independently of alarms and global mute', async () => {
+  const api = await import('../src/app/api/settings/route')
+  await db.setting.createMany({ data: [{ key: 'audioEnabled', value: 'true' }, { key: 'muteEndTime', value: '' }] })
+  const system = await createSystem({ delimiter: ',', displayItems: [item()] })
+  for (let i = 0; i < 3; i++) await ingest(23001, '40')
+  const alarms = await db.alarm.findMany()
+  assert.ok(alarms.length > 0)
+  const receiver = new WebSocket(`ws://127.0.0.1:${process.env.WS_PORT}`)
+  await once(receiver, 'open')
+  try {
+    const notification = new Promise<unknown>(resolve => receiver.on('message', raw => {
+      const message = JSON.parse(raw.toString())
+      if (message.type === 'settings') resolve(message.data)
+    }))
+    const response = await api.PUT(request({ serverAudioEnabled: 'false' }, 'PUT'))
+    assert.equal(response.status, 200)
+    assert.deepEqual(await Promise.race([notification, delay(3000).then(() => { throw new Error('Missing settings broadcast') })]), { serverAudioEnabled: 'false' })
+    const settings = await (await api.GET()).json()
+    assert.equal(settings.serverAudioEnabled, 'false')
+    assert.equal(settings.audioEnabled, 'true')
+    assert.equal(settings.muteEndTime, '')
+    assert.deepEqual(await db.alarm.findMany(), alarms)
+    assert.equal((await db.system.findUniqueOrThrow({ where: { id: system.id } })).status, 'critical')
+    assert.equal((await api.PUT(request({ serverAudioEnabled: 'invalid' }, 'PUT'))).status, 400)
+    assert.equal((await (await api.GET()).json()).serverAudioEnabled, 'false')
+  } finally { receiver.terminate() }
+})
+
 test('both SQLite clients retain their startup pragmas under contention', async () => {
   assert.equal((await readHistoryStorage(db)).incremental, true)
   for (const client of [db, worker.prisma]) {

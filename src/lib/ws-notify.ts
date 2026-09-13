@@ -128,6 +128,14 @@ export function notifyAudioSettingsChanged(audioEnabled: string, muteEndTime: st
   })
 }
 
+export function notifyServerAudioSettingsChanged(serverAudioEnabled: string): void {
+  sendNotification({
+    type: 'settings',
+    data: { serverAudioEnabled },
+    timestamp: new Date().toISOString(),
+  })
+}
+
 export type FeatureSettingKey = 'temperatureEnabled' | 'upsEnabled' | 'gateEnabled' | 'wing15Enabled'
 
 /**

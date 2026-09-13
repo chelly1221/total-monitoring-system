@@ -285,6 +285,7 @@ export interface WebSocketMessage {
     rawData?: string
     // For settings sync
     audioEnabled?: string
+    serverAudioEnabled?: string
     muteEndTime?: string
     temperatureEnabled?: string
     upsEnabled?: string
