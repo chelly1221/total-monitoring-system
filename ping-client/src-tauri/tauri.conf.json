@@ -23,6 +23,7 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": ["Korean"],
+        "compression": "zlib",
         "displayLanguageSelector": false,
         "installerHooks": "windows/hooks.nsh"
       }

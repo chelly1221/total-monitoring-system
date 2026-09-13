@@ -119,14 +119,24 @@ const manifest = {};
 for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 'tms-ping-monitor']]) {
   const clientDir = path.join(ROOT, id);
   const release = path.join(clientDir, 'src-tauri', 'target', 'release');
-  if (fs.existsSync(path.join(release, `${binary}.exe`))) {
-    execSync('node scripts/package.mjs', { cwd: clientDir, stdio: 'inherit' });
-    fs.cpSync(path.join(release, `${binary}.zip`), path.join(downloadsDir, `${binary}.zip`));
+  const filename = id === 'ping-client' ? `${binary}-setup.exe` : `${binary}.zip`;
+  const required = id === 'ping-client' ? filename : `${binary}.exe`;
+  if (fs.existsSync(path.join(release, required))) {
     const conf = JSON.parse(fs.readFileSync(path.join(clientDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+    if (id === 'ping-client') {
+      const setup = JSON.parse(fs.readFileSync(path.join(release, 'setup-manifest.json'), 'utf8'));
+      const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(release, filename))).digest('hex');
+      if (setup.offline !== true || setup.version !== conf.version || setup.sha256 !== hash) {
+        throw new Error('Ping Setup이 현재 버전과 일치하지 않습니다. ping-client에서 npm run tauri:build를 실행하세요.');
+      }
+    } else {
+      execSync('node scripts/package.mjs', { cwd: clientDir, stdio: 'inherit' });
+    }
+    fs.cpSync(path.join(release, filename), path.join(downloadsDir, filename));
     manifest[id] = { version: conf.version, builtAt: new Date().toISOString() };
-    console.log(`  downloads: ${binary}.zip v${conf.version}`);
+    console.log(`  downloads: ${filename} v${conf.version}`);
   } else {
-    console.warn(`  ${id} exe not found; the 다운로드 menu will show it as unavailable`);
+    console.warn(`  ${id} distribution not found; the 다운로드 menu will show it as unavailable`);
   }
 }
 fs.writeFileSync(path.join(downloadsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));

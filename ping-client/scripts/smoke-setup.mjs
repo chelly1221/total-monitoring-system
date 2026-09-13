@@ -30,7 +30,8 @@ const exe = path.join(dir, 'tms-ping-monitor.exe');
 const uninstaller = path.join(dir, 'uninstall.exe');
 try {
   const manifest = JSON.parse(readFileSync(path.join(root, 'src-tauri/target/release/setup-manifest.json'), 'utf8'));
-  if (manifest.npcap === 'official-download') {
+  assert.equal(manifest.offline, true, 'Only self-contained offline Setup is distributed');
+  if (manifest.npcap === 'bundled-free') {
     await run(setup, ['/S', `/D=${dir}`], 20);
     assert.equal(existsSync(exe), false, 'Free Npcap cannot be installed unattended');
   }

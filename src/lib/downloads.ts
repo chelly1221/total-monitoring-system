@@ -23,8 +23,8 @@ export const DOWNLOAD_ITEMS: DownloadItem[] = [
   {
     id: 'ping-client',
     name: '네트워크 ping 감시',
-    description: '시설 PC용 ICMP ping·토폴로지·장애 감시 클라이언트 (Windows x64, 압축을 풀고 실행)',
-    file: 'tms-ping-monitor.zip',
+    description: '폐쇄망 시설 PC용 Ping 감시 설치 마법사 (Windows x64, WebView2·Npcap 내장)',
+    file: 'tms-ping-monitor-setup.exe',
   },
 ]
 
