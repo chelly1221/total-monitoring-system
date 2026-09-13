@@ -1,6 +1,6 @@
 {
   "name": "tms-ping-monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,9 +8,11 @@
     "build": "node scripts/prepare-runtime.mjs && vite build",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "smoke": "node scripts/smoke.mjs",
+    "smoke:setup": "node scripts/smoke-setup.mjs",
     "lint": "node --check src/main.js && node --check src/renderer.js && node --check src/view2d.js && node --check src/topoEditor.js",
     "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build --no-bundle",
+    "tauri:build": "node scripts/build-setup.mjs",
+    "tauri:portable": "cargo tauri build --no-bundle",
     "package": "node scripts/package.mjs",
     "preview": "vite preview"
   },

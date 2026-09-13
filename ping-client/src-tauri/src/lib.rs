@@ -201,7 +201,7 @@ pub fn run() {
                 if tauri::webview_version().is_err() {
                     unsafe {
                         windows::Win32::UI::WindowsAndMessaging::MessageBoxW(None,
-                        windows::core::w!("실행 파일 옆의 webview2 폴더가 없거나 손상되었습니다.\n\ntms-ping-monitor.zip을 통째로 풀어 실행 파일과 webview2 폴더를 같은 위치에 두세요."),
+                        windows::core::w!("실행 파일 옆의 webview2 폴더가 없거나 손상되었습니다.\n\n설치 마법사를 다시 실행해 복구하세요. 포터블 버전은 ZIP을 통째로 풀어 실행 파일과 webview2 폴더를 같은 위치에 두세요."),
                         windows::core::w!("네트워크 ping 감시"), windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR);
                     }
                     return;

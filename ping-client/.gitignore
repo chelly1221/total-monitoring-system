@@ -4,6 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/webview2/
 .cache/
+src-tauri/windows/generated/
 *.log
 ping-settings.json*
 ping-history.json*
