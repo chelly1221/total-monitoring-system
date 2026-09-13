@@ -72,7 +72,7 @@ export function FeatureSettingsCard({
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="wing15-toggle" className="cursor-pointer">
-            뇌전감시 (김포공항 5km)
+            뇌전감시 <small>김포공항 5km</small>
           </Label>
           <div className="flex items-center gap-3"><span className="settings-toggle-state" data-enabled={wing15Enabled}>{wing15Enabled ? '켜짐' : '꺼짐'}</span><Switch
             id="wing15-toggle"

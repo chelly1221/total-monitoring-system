@@ -6,13 +6,6 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 interface GateSettingsCardProps {
   initialIp?: string
@@ -80,8 +73,8 @@ export function GateSettingsCard({
   return (
     <section className="settings-panel">
       <header className="settings-panel-header">
-        <h2>게이트 연결</h2>
-        <p>게이트 열림 명령을 보낼 장비 주소입니다.</p>
+        <div><h2>게이트 연결</h2>
+          <p>게이트 열림 명령을 보낼 장비 주소입니다.</p></div>
       </header>
       <div className="settings-gate-content space-y-6">
         <div className="settings-gate-fields grid gap-4 sm:grid-cols-3">
@@ -108,26 +101,21 @@ export function GateSettingsCard({
           </div>
           <div className="space-y-2">
             <Label htmlFor="gate-protocol">프로토콜</Label>
-            <Select value={protocol} onValueChange={setProtocol}>
-              <SelectTrigger id="gate-protocol">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="tcp">TCP</SelectItem>
-                <SelectItem value="udp">UDP</SelectItem>
-              </SelectContent>
-            </Select>
+            <select id="gate-protocol" value={protocol} onChange={(event) => setProtocol(event.target.value)}>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
           </div>
         </div>
 
-        <div className="flex justify-end gap-3">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            연결 설정 저장
-          </Button>
+        <div className="settings-gate-actions">
           <Button variant="outline" onClick={handleTest} disabled={testing}>
             {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             게이트 열림 테스트
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            연결 설정 저장
           </Button>
         </div>
       </div>

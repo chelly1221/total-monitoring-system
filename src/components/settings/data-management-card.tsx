@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Download, Upload, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHistoryMaxMb?: string }) {
@@ -84,8 +83,8 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
   return (
     <section className="settings-panel">
       <header className="settings-panel-header">
-        <h2>데이터 관리</h2>
-        <p>이력 보관 용량과 설정 백업을 관리합니다.</p>
+        <div><h2>데이터 관리</h2>
+          <p>이력 보관 용량과 설정 백업을 관리합니다.</p></div>
       </header>
       <div>
         <div className="settings-history-limit mb-3 flex items-center gap-2 text-sm">
@@ -96,7 +95,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
             <option value="5120">5GB</option>
             <option value="10240">10GB</option>
           </select>
-          <Button size="sm" variant="outline" disabled={savingLimit} onClick={async () => {
+          <Button size="sm" disabled={savingLimit} onClick={async () => {
             setSavingLimit(true)
             try {
               const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ historyMaxSizeMb: historyLimit }) })
@@ -108,7 +107,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
         </div>
         <p className="settings-data-description mb-6 text-[20px] text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
         <h3 className="settings-backup-heading mb-4 border-t border-border pt-6 text-[24px] font-semibold">설정 백업 및 복원</h3>
-        <div className="flex gap-2">
+        <div className="settings-backup-actions">
           <Button
             variant="outline"
             size="sm"
@@ -116,7 +115,6 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
             onClick={handleExport}
             disabled={isExporting}
           >
-            <Download className="h-4 w-4 mr-1" />
             {isExporting ? '내보내는 중...' : '백업 내보내기'}
           </Button>
           <div className="flex-1">
@@ -137,7 +135,6 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
               onClick={() => fileInputRef.current?.click()}
               disabled={isImporting}
             >
-              <Upload className="h-4 w-4 mr-1" />
               {isImporting ? '복원 중...' : '백업 가져오기'}
             </Button>
           </div>
@@ -147,11 +144,10 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
           <Button
             variant={confirmReset ? 'destructive' : 'outline'}
             size="sm"
-            className={confirmReset ? 'shrink-0' : 'shrink-0 text-destructive'}
+            className={confirmReset ? 'shrink-0' : 'shrink-0 settings-danger'}
             onClick={handleReset}
             disabled={isResetting}
           >
-            <Trash2 className="h-4 w-4 mr-1" />
             {isResetting
               ? '초기화 중...'
               : confirmReset
