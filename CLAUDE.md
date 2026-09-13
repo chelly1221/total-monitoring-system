@@ -244,3 +244,9 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 | Dashboard (Next.js) | 7777 |
 | WebSocket (Worker) | 7778 |
 | UDP/TCP 데이터 수집 | 1884-1898, 1990-1991, 5555 (`src/worker/config.ts`) |
+
+## 감시 화면 카드 순서
+
+- 메인 장비 목록, 온습도 장비/그래프, UPS 장비/그래프는 `SortableGroup`과 `SortableCard`로 기존 영역 안에서 재정렬한다. `배치 변경`에서 드래그하고 가까운 카드 칸에 놓으면 순서가 바뀐다. Enter → 방향키 → Enter와 Escape 취소도 지원한다.
+- `useCardOrder`는 이 PC의 브라우저/WebView 저장소에 화면·영역별 순서를 자동 저장한다. 키는 `tms:card-order:<group>:v1`. 삭제된 ID는 무시하고 새 장비는 뒤에 추가한다. 온습도 표시 개수를 바꿔도 숨겨진 장비의 순서를 보존한다. 센서/UPS 그래프 색상은 원래 장비 ID의 색상 매핑을 유지한다.
+- `기본 순서`는 현재 화면의 순서만 초기화한다. 실시간 알람의 심각도 우선순위와 장비 설정은 카드 순서와 별개다. 테스트는 `tests/card-order.test.ts`.

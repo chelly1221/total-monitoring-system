@@ -9,16 +9,20 @@ import { Card, CardContent } from '@/components/ui/card'
 import { SensorAlarmEffects, getSensorAlarms } from './sensor-alarm-effects'
 import { LightningAlertPanel } from '@/components/wing15/lightning-alert-panel'
 import { useCompactScreen } from '@/hooks/useCompactScreen'
+import { useCardOrder } from '@/hooks/use-card-order'
+import { CardLayoutControls, SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
 
-export function RealtimeDashboard() {
+export function RealtimeDashboard({ initialTime }: { initialTime: string }) {
   const router = useRouter()
   const { systems, alarms, featureFlags } = useRealtime()
-  const [currentTime, setCurrentTime] = useState<Date>(new Date())
+  const [currentTime, setCurrentTime] = useState<Date>(() => new Date(initialTime))
   const compact = useCompactScreen()
+  const [editingLayout, setEditingLayout] = useState(false)
   // Filter to only show 장비상태 (equipment) type systems
   const equipmentSystems = systems.filter(
     (s) => s.type === '장비상태' || s.type === 'equipment'
   )
+  const equipmentOrder = useCardOrder('dashboard-equipment', equipmentSystems)
 
   // Update clock every 10 seconds (sufficient for monitoring dashboard)
   useEffect(() => {
@@ -72,16 +76,20 @@ export function RealtimeDashboard() {
     <div className="flex h-full gap-4">
       {/* LEFT: System status cards */}
       <div className="hidden lg:flex w-48 flex-shrink-0 flex-col">
+        <CardLayoutControls compact editing={editingLayout} onEditingChange={setEditingLayout} onReset={equipmentOrder.reset} />
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {equipmentSystems.map((system) => (
+          <SortableGroup label="메인 장비 카드" ids={equipmentOrder.items.map(item => item.id)} editing={editingLayout} onReorder={equipmentOrder.save} className="flex flex-col gap-1">
+          {equipmentOrder.items.map((system) => (
+            <SortableCard key={system.id} id={system.id} label={system.name}>
             <HealthCheckCard
-              key={system.id}
               id={system.id}
               name={system.name}
               status={system.status}
               isEnabled={system.isEnabled !== false}
             />
+            </SortableCard>
           ))}
+          </SortableGroup>
           {/* Add system button */}
           <Card
             onClick={() => router.push('/systems/new?type=equipment')}

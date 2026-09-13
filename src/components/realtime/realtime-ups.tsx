@@ -9,6 +9,8 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import type { MetricsConfig, DisplayItem, SystemStatus } from '@/types'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
+import { useCardOrder } from '@/hooks/use-card-order'
+import { CardLayoutControls, SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
 
 const UPS_COLORS = ['#f87171', '#4ade80', '#fbbf24', '#a78bfa', '#22d3ee', '#fb923c', '#f472b6', '#84cc16']
 const DEFAULT_CHART_METRIC_NAMES = ['입력전압', '입력전류', '출력전압', '출력전류', '주파수', '배터리잔량']
@@ -134,6 +136,9 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
 
   // Get UPS systems from realtime data
   const upsSystems = systems.filter((s) => upsSystemIds.includes(s.id))
+  const [editingLayout, setEditingLayout] = useState(false)
+  const defaultSystems = [...upsSystems.filter(s => s.name !== '경항공기 통신실').sort((a, b) => a.name.localeCompare(b.name)), ...upsSystems.filter(s => s.name === '경항공기 통신실')]
+  const systemOrder = useCardOrder('ups-systems', defaultSystems)
 
   // Parse configs to get display items per system
   const systemConfigs = useMemo(() => {
@@ -331,6 +336,8 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
     return DEFAULT_CHART_METRIC_NAMES.filter(n => groups.has(n))
   }, [systemConfigs])
 
+  const chartOrder = useCardOrder('ups-charts', chartGroupNames.map(id => ({ id })))
+
   // Prepare display data for charts (downsample + forward-fill + gap markers)
   const displayCharts = useMemo(() => {
     const result = new Map<string, { data: ChartDataPoint[]; lines: { dataKey: string; name: string; color: string }[] }>()
@@ -448,6 +455,8 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between pb-3">
         <h1 className="text-2xl font-bold">UPS</h1>
+        <div className="flex items-center gap-2">
+        <CardLayoutControls editing={editingLayout} onEditingChange={setEditingLayout} onReset={() => { systemOrder.reset(); chartOrder.reset() }} />
         <Button
           asChild
           size="icon"
@@ -458,6 +467,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
             <PlusCircle className="h-5 w-5" />
           </Link>
         </Button>
+        </div>
       </div>
 
       {upsSystems.length === 0 ? (
@@ -469,13 +479,10 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
       ) : (
         <div className="grid flex-1 gap-2 overflow-hidden grid-cols-2">
           {/* Left: Two columns — col1: UPS#1, col2: UPS#2 + 경항공기 */}
-          <div className="grid gap-2 overflow-y-auto grid-cols-2">
+          <SortableGroup label="UPS 장비 카드" ids={systemOrder.items.map(item => item.id)} editing={editingLayout} onReorder={systemOrder.save} className="grid gap-2 overflow-y-auto grid-cols-2">
             {(() => {
-              const mainSystems = upsSystems.filter(s => s.name !== '경항공기 통신실')
-              const subSystem = upsSystems.find(s => s.name === '경항공기 통신실')
-              mainSystems.sort((a, b) => a.name.localeCompare(b.name))
-              const col1Systems = mainSystems.slice(0, 1)
-              const col2Systems = [...mainSystems.slice(1), ...(subSystem ? [subSystem] : [])]
+              const col1Systems = systemOrder.items.slice(0, 1)
+              const col2Systems = systemOrder.items.slice(1)
               return (
                 <>
                   <div className="flex flex-col gap-2">
@@ -484,9 +491,11 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const status = sys.status as SystemStatus
                       const displayItems = config?.displayItems ?? []
                       return (
-                        <Link key={sys.id} href={`/ups/${sys.id}`} className="block">
+                        <SortableCard key={sys.id} id={sys.id} label={sys.name}>
+                        <Link href={`/ups/${sys.id}`} className="block">
                           {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
+                        </SortableCard>
                       )
                     })}
                   </div>
@@ -496,25 +505,28 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const status = sys.status as SystemStatus
                       const displayItems = config?.displayItems ?? []
                       return (
-                        <Link key={sys.id} href={`/ups/${sys.id}`} className="block">
+                        <SortableCard key={sys.id} id={sys.id} label={sys.name}>
+                        <Link href={`/ups/${sys.id}`} className="block">
                           {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
+                        </SortableCard>
                       )
                     })}
                   </div>
                 </>
               )
             })()}
-          </div>
+          </SortableGroup>
 
           {/* Right: Charts 2x3 grid */}
-          <div className="grid grid-cols-2 grid-rows-3 gap-2 min-h-0">
-            {chartGroupNames.map((metricName) => {
+          <SortableGroup label="UPS 그래프" ids={chartOrder.items.map(item => item.id)} editing={editingLayout} onReorder={chartOrder.save} className="grid grid-cols-2 grid-rows-3 gap-2 min-h-0">
+            {chartOrder.items.map(({ id: metricName }) => {
               const chart = displayCharts.get(metricName)
               const yDomain: [number | 'auto' | 'dataMin', number | 'auto' | 'dataMax'] | undefined =
                 metricName === '주파수' ? [59.5, 60.5] : undefined
               return (
-                <Card key={metricName} className="flex flex-col overflow-hidden py-0 gap-0 min-h-0">
+                <SortableCard key={metricName} id={metricName} label={`${metricName} 그래프`}>
+                <Card className="flex flex-col overflow-hidden py-0 gap-0 min-h-0">
                   <CardHeader className="flex-none px-2 py-1.5">
                     <CardTitle className="text-sm">{metricName}</CardTitle>
                   </CardHeader>
@@ -541,9 +553,10 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                     )}
                   </CardContent>
                 </Card>
+                </SortableCard>
               )
             })}
-          </div>
+          </SortableGroup>
         </div>
       )}
     </div>
