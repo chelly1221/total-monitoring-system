@@ -88,7 +88,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
         <p>이력 보관 용량과 설정 백업을 관리합니다.</p>
       </header>
       <div>
-        <div className="mb-3 flex items-center gap-2 text-sm">
+        <div className="settings-history-limit mb-3 flex items-center gap-2 text-sm">
           <label htmlFor="history-size-limit">이력 DB 용량 상한</label>
           <select id="history-size-limit" className="rounded border border-input bg-background px-2 py-1" value={historyLimit} onChange={event => setHistoryLimit(event.target.value)} disabled={savingLimit}>
             <option value="1024">1GB</option>
@@ -106,8 +106,8 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
             finally { setSavingLimit(false) }
           }}>{savingLimit ? '저장 중...' : '용량 저장'}</Button>
         </div>
-        <p className="mb-6 text-[20px] text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
-        <h3 className="mb-4 border-t border-border pt-6 text-[24px] font-semibold">설정 백업 및 복원</h3>
+        <p className="settings-data-description mb-6 text-[20px] text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
+        <h3 className="settings-backup-heading mb-4 border-t border-border pt-6 text-[24px] font-semibold">설정 백업 및 복원</h3>
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -142,7 +142,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
             </Button>
           </div>
         </div>
-        <div className="mt-6 flex items-center justify-between gap-4 border-t border-border pt-5">
+        <div className="settings-reset-row mt-6 flex items-center justify-between gap-4 border-t border-border pt-5">
           <p className="text-[20px] text-muted-foreground">초기화하면 등록 장비·설정·알람·이력이 삭제됩니다.</p>
           <Button
             variant={confirmReset ? 'destructive' : 'outline'}

@@ -86,39 +86,39 @@ export function SirenSettingsCard({ initialSirens }: SirenSettingsCardProps) {
         </div>
         <p>알람 발생 시 신호를 전송할 외부 장비입니다.</p>
       </header>
-      <div>
+      <div className="settings-siren-body">
         {sirens.length === 0 ? (
           <div className="border-y border-border py-10 text-center">
             <p className="text-[26px] font-semibold">등록된 사이렌이 없습니다</p>
             <p className="mt-3 text-[22px] text-muted-foreground">외부 사이렌을 사용하려면 장비를 추가하세요.</p>
           </div>
         ) : (
-          <div>
+          <div className="settings-siren-list">
             {sirens.map((siren) => (
               <div
                 key={siren.id}
                 className="settings-siren-row"
               >
-                <div className="flex items-center gap-4 min-w-0">
+                <div className="settings-siren-details flex items-center gap-4 min-w-0">
                   <Switch
                     aria-label={`${siren.location} 사용`}
                     checked={siren.isEnabled}
                     onCheckedChange={(checked) => handleToggle(siren.id, checked)}
                   />
                   <span className="settings-toggle-state" data-enabled={siren.isEnabled}>{siren.isEnabled ? '켜짐' : '꺼짐'}</span>
-                  <div className="min-w-0">
+                  <div className="settings-siren-device min-w-0">
                     <div className="flex flex-col gap-1">
-                      <span className="break-words text-[26px] font-semibold">{siren.location}</span>
-                      <span className="text-[20px] text-muted-foreground">
+                      <span className="settings-siren-name break-words text-[26px] font-semibold">{siren.location}</span>
+                      <span className="settings-siren-address text-[20px] text-muted-foreground">
                         {siren.ip}:{siren.port} ({siren.protocol.toUpperCase()})
                       </span>
                     </div>
-                    <p className="mt-2 break-all text-[18px] text-muted-foreground">
+                    <p className="settings-siren-payload mt-2 break-all text-[18px] text-muted-foreground">
                       작동: {siren.messageOn}{siren.messageOff ? ` / 중지: ${siren.messageOff}` : ''}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
+                <div className="settings-siren-actions flex items-center gap-1 shrink-0 ml-2">
                   <Button
                     variant="outline"
                     size="sm"

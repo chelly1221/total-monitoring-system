@@ -83,8 +83,8 @@ export function GateSettingsCard({
         <h2>게이트 연결</h2>
         <p>게이트 열림 명령을 보낼 장비 주소입니다.</p>
       </header>
-      <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-3">
+      <div className="settings-gate-content space-y-6">
+        <div className="settings-gate-fields grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="gate-ip">IP 주소</Label>
             <Input
