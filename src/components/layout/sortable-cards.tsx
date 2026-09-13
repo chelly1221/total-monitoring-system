@@ -1,7 +1,6 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type PointerEvent, type KeyboardEvent } from 'react'
-import { Grip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { moveCard, nearestCardSlot } from '@/lib/card-order'
 import './sortable-cards.css'
@@ -23,7 +22,7 @@ interface SortContext {
   drag: DragState | null
   start: (id: string, event: PointerEvent<HTMLDivElement>) => void
   finish: (cancel?: boolean) => void
-  key: (id: string, event: KeyboardEvent<HTMLButtonElement>) => void
+  key: (id: string, event: KeyboardEvent<HTMLDivElement>) => void
 }
 const SortContext = createContext<SortContext | null>(null)
 
@@ -72,7 +71,7 @@ export function SortableGroup({ ids, onReorder, label, className, children }: {
       // UPS cards can change column parents, so restore keyboard focus after reconciliation.
       if (current.keyboard) requestAnimationFrame(() => {
         const item = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-sort-id]') ?? []).find(element => element.dataset.sortId === current.id)
-        item?.querySelector<HTMLButtonElement>('.sortable-handle')?.focus()
+        item?.focus()
       })
     } else if (current.moved || current.keyboard) { setMessage('이동을 취소했습니다.') }
     update(null)
@@ -112,7 +111,7 @@ export function SortableGroup({ ids, onReorder, label, className, children }: {
     start(id, event) {
       if (event.button !== 0 || !event.isPrimary || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
       const target = event.target as HTMLElement
-      if (target.closest('input, select, textarea, [contenteditable="true"], [data-no-card-drag], button:not(.sortable-handle)')) return
+      if (target.closest('input, select, textarea, [contenteditable="true"], [data-no-card-drag], button')) return
       if (dragRef.current) finish(true)
       suppressClick.current = false
       const element = event.currentTarget
@@ -196,16 +195,14 @@ export function SortableCard({ id, label, className, children }: { id: string; l
   const active = drag?.id === id && (drag.moved || drag.keyboard)
   const target = drag?.target === id && drag.id !== id
   return (
-    <div data-sort-id={id} className={cn('sortable-slot', target && 'sortable-target', className)} onPointerDownCapture={event => context.start(id, event)}>
+    <div data-sort-id={id} role="group" aria-label={`${label} 카드`} aria-roledescription="드래그로 순서를 바꾸는 카드" tabIndex={0}
+      className={cn('sortable-slot', target && 'sortable-target', className)}
+      onPointerDownCapture={event => context.start(id, event)}
+      onKeyDown={event => { if (event.target === event.currentTarget) context.key(id, event) }}
+      onBlur={() => { if (active && drag.keyboard) context.finish(true) }}>
       <div className={cn('sortable-content', active && 'sortable-active')} style={active && !drag.keyboard ? { transform: `translate(${drag.x}px, ${drag.y}px)` } : undefined}>
         {children}
       </div>
-      <button type="button" className="sortable-handle" aria-label={`${label} 순서 이동`} aria-pressed={active}
-        title="드래그해서 순서 변경 · 키보드: Enter → 방향키 → Enter · 취소: Escape"
-        onBlur={() => { if (active && drag.keyboard) context.finish(true) }}
-        onKeyDown={event => context.key(id, event)} onClick={event => event.stopPropagation()}>
-        <Grip size={16} />
-      </button>
       {target && <span className="sortable-drop-label">여기에 놓기</span>}
     </div>
   )

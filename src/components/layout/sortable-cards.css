@@ -4,8 +4,5 @@
 .sortable-content > [data-slot="card"] { height: 100%; }
 .sortable-active { position: relative; z-index: 30; opacity: .8; filter: drop-shadow(0 8px 12px #0009); pointer-events: none; }
 .sortable-target { outline: 3px solid #60a5fa; outline-offset: -3px; background: #60a5fa25; }
-.sortable-handle { position: absolute; top: 4px; right: 4px; z-index: 31; padding: 4px; color: white; background: #171717; border: 1px solid #a3a3a3; border-radius: 5px; cursor: grab; opacity: 0; transition: opacity 120ms; }
-.sortable-slot:hover > .sortable-handle, .sortable-handle:focus-visible { opacity: .9; }
-.sortable-handle:active { cursor: grabbing; }
-.sortable-handle:focus-visible { outline: 3px solid #60a5fa; outline-offset: -3px; }
+.sortable-slot:focus-visible { outline: 3px solid #60a5fa; outline-offset: -3px; border-radius: 8px; }
 .sortable-drop-label { position: absolute; top: 4px; right: 4px; z-index: 32; pointer-events: none; border: 1px solid #93c5fd; border-radius: 5px; padding: 2px 5px; color: white; background: #1d4ed8; font-size: 13px; line-height: 20px; white-space: nowrap; }
