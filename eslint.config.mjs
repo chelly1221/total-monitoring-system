@@ -19,6 +19,7 @@ const eslintConfig = defineConfig([
     ".review/**",
     // Separate Vite + Tauri project with its own tsconfig; linted on its own.
     "sound-client/**",
+    "ping-client/**",
   ]),
   {
     files: ["scripts/**/*.{js,cjs}"],

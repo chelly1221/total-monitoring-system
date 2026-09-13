@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "src-tauri/target", "src-tauri/resources", "src-tauri/gen", "sound-client"]
+  "exclude": ["node_modules", "src-tauri/target", "src-tauri/resources", "src-tauri/gen", "sound-client", "ping-client"]
 }
