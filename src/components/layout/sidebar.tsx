@@ -72,6 +72,7 @@ export function Sidebar() {
 
             const className = cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors relative',
+              !collapsed && 'overflow-hidden',
               isActive
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -92,7 +93,7 @@ export function Sidebar() {
                 </div>
                 {!collapsed && (
                   <>
-                    <span>{item.label}</span>
+                    <span className="shrink-0 whitespace-nowrap">{item.label}</span>
                     {showBadge && (
                       <Badge variant="destructive" className="ml-auto text-xs">
                         {alarmCount > 99 ? '99+' : alarmCount}
