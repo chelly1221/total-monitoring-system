@@ -19,12 +19,12 @@ interface ClientDiscoveryPanelProps {
 }
 
 /** Send the identify command; shared by the panel rows and the edit page. */
-export async function identifyClient(ip: string): Promise<boolean> {
+export async function identifyClient(ip: string, discoveryPort = 7790): Promise<boolean> {
   try {
     const response = await fetch("/api/discovery/identify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip }),
+      body: JSON.stringify({ ip, discoveryPort }),
     })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
@@ -80,9 +80,9 @@ export function ClientDiscoveryPanel({
     void scan()
   }, [scan])
 
-  const handleIdentify = async (ip: string) => {
-    setIdentifying(ip)
-    await identifyClient(ip)
+  const handleIdentify = async (client: DiscoveredClient) => {
+    setIdentifying(client.id)
+    await identifyClient(client.ip, client.discoveryPort)
     setIdentifying(null)
   }
 
@@ -110,7 +110,7 @@ export function ClientDiscoveryPanel({
 
       {clients && clients.length === 0 && !scanning && !error && (
         <div className="py-2 text-xs text-muted-foreground">
-          같은 네트워크에서 실행 중인 TMS SoundSense 클라이언트를 찾지 못했습니다.
+          같은 네트워크에서 실행 중인 음성탐지기 또는 네트워크 ping 감시 클라이언트를 찾지 못했습니다.
           클라이언트가 실행 중인지, 같은 서브넷인지 확인한 뒤 다시 검색하세요.
         </div>
       )}
@@ -120,7 +120,7 @@ export function ClientDiscoveryPanel({
           <table className="w-full text-xs">
             <thead className="text-[10px] text-muted-foreground">
               <tr className="text-left">
-                <th className="py-0.5 pr-2 font-normal">장비명</th>
+                <th className="py-0.5 pr-2 font-normal">장비명 / 프로그램</th>
                 <th className="py-0.5 pr-2 font-normal">PC 이름</th>
                 <th className="py-0.5 pr-2 font-normal">IP</th>
                 <th className="py-0.5 pr-2 font-normal">MAC</th>
@@ -141,13 +141,18 @@ export function ClientDiscoveryPanel({
                   >
                     <td className="py-1 pr-2 font-medium">
                       {client.name || <span className="text-muted-foreground">(미등록)</span>}
+                      <div className="text-[10px] font-normal text-muted-foreground">{client.kind === 'ping' ? '네트워크 ping 감시' : '음성탐지기'}</div>
                     </td>
                     <td className="py-1 pr-2">{client.host}</td>
                     <td className="py-1 pr-2 font-mono">{client.ip}</td>
                     <td className="py-1 pr-2 font-mono text-muted-foreground">{client.mac || "-"}</td>
                     <td className="py-1 pr-2">
                       <span className="inline-flex items-center gap-1">
-                        {client.muted ? (
+                        {client.kind === 'ping' ? (
+                          <Badge variant={client.alarm ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[10px]">
+                            {!client.running ? '정지' : client.alarm === null ? '대기' : client.alarm ? '장애' : '정상'}
+                          </Badge>
+                        ) : <>{client.muted ? (
                           <VolumeX className="h-3 w-3 text-amber-500" />
                         ) : (
                           <Volume2 className="h-3 w-3 text-muted-foreground" />
@@ -156,7 +161,7 @@ export function ClientDiscoveryPanel({
                           <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">소리</Badge>
                         ) : (
                           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">무음</Badge>
-                        )}
+                        )}</>}
                       </span>
                     </td>
                     <td className="py-1 pr-2">
@@ -183,11 +188,11 @@ export function ClientDiscoveryPanel({
                           variant="outline"
                           size="sm"
                           className="h-6 gap-1 px-2 text-xs"
-                          onClick={() => void handleIdentify(client.ip)}
+                          onClick={() => void handleIdentify(client)}
                           disabled={identifying !== null}
                           title="해당 PC 화면에 확인 알림을 띄웁니다"
                         >
-                          {identifying === client.ip ? (
+                          {identifying === client.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
                             <MonitorCheck className="h-3 w-3" />

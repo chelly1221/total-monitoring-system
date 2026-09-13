@@ -115,18 +115,19 @@ fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-d
 // its package script zips the exe together with the WebView2 fixed runtime folder it carries.
 const downloadsDir = path.join(RESOURCES, 'downloads');
 fs.mkdirSync(downloadsDir, { recursive: true });
-const soundClientDir = path.join(ROOT, 'sound-client');
-const soundClientExe = path.join(soundClientDir, 'src-tauri', 'target', 'release', 'tms-soundsense.exe');
-const soundClientZip = path.join(soundClientDir, 'src-tauri', 'target', 'release', 'tms-soundsense.zip');
 const manifest = {};
-if (fs.existsSync(soundClientExe)) {
-  execSync('node scripts/package.mjs', { cwd: soundClientDir, stdio: 'inherit' });
-  fs.cpSync(soundClientZip, path.join(downloadsDir, 'tms-soundsense.zip'));
-  const conf = JSON.parse(fs.readFileSync(path.join(soundClientDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-  manifest['sound-client'] = { version: conf.version, builtAt: new Date().toISOString() };
-  console.log(`  downloads: tms-soundsense.zip v${conf.version}`);
-} else {
-  console.warn('  ⚠ sound-client exe not found; the 다운로드 menu will show it as unavailable');
+for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 'tms-ping-monitor']]) {
+  const clientDir = path.join(ROOT, id);
+  const release = path.join(clientDir, 'src-tauri', 'target', 'release');
+  if (fs.existsSync(path.join(release, `${binary}.exe`))) {
+    execSync('node scripts/package.mjs', { cwd: clientDir, stdio: 'inherit' });
+    fs.cpSync(path.join(release, `${binary}.zip`), path.join(downloadsDir, `${binary}.zip`));
+    const conf = JSON.parse(fs.readFileSync(path.join(clientDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+    manifest[id] = { version: conf.version, builtAt: new Date().toISOString() };
+    console.log(`  downloads: ${binary}.zip v${conf.version}`);
+  } else {
+    console.warn(`  ${id} exe not found; the 다운로드 menu will show it as unavailable`);
+  }
 }
 fs.writeFileSync(path.join(downloadsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 

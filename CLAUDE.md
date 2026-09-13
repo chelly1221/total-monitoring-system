@@ -184,6 +184,16 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **방화벽**: 서버는 새 인바운드 규칙이 필요 없다(응답은 상태 추적 UDP로 허용). 클라이언트는 UDP 7790 인바운드를 스스로 등록한다.
 - **테스트**: `tests/discovery.test.ts`가 루프백 가짜 클라이언트로 탐지·토큰 없는 확인/설정 전송·거부·타임아웃을 검증한다. Rust 테스트는 기존 설정의 토큰 제거와 무서명 설정 전송의 입력값 검증을 확인한다.
 
+## 두 번째 클라이언트: 네트워크 ping 감시
+
+2026-09-13 추가. `ping-client/`는 `chelly1221/network-surveillance`의 ICMP·토폴로지·경보·Npcap 기능을 Rust/Tauri 2로 이관한 별도 앱이다. 이름은 **네트워크 ping 감시**, 실행 파일 `tms-ping-monitor.exe`, 배포 파일 `tms-ping-monitor.zip`. 원본 커밋과 이관 범위는 `ping-client/NOTICE.md`에 기록한다.
+
+- 자동 연결은 `docs/sound-client-protocol.md`의 v1 메시지를 사용한다. 음성탐지기 UDP 7790, ping 감시 UDP 7791로 분리하여 같은 PC에서 동시 실행한다. 서버가 두 포트를 온디맨드 검색하고 `kind`, `discoveryPort`, `serverIp`를 시설 `config.client`에 보존한다. ping 기본 패턴은 `PING_OK`/`PING_FAIL`, 데이터 포트 범위는 기존 6100~6199를 공유한다.
+- 감시 대상 최대 20개, Windows ICMP API, RTT·손실률·최근 60회 그래프, 1~10회 연속 실패 판정, 최근 100건 장애/복구 영속 이력. 정지/미측정 시 정상 하트비트를 보내지 않는다. 설정 변경 시 세대 번호로 이전 감시 결과를 무효화한다.
+- `ping-client/src-tauri/src/capture.rs`는 시스템 Npcap DLL만 선택적으로 로드하며 Ethernet IPv4·VLAN·ASTERIX를 해석한다. Npcap 미설치 PC에서도 ping·자동 연결은 동작한다. 로컬 캡처 실제 검증은 Npcap 설치 환경이 필요하다.
+- `ping-settings.json`·`ping-history.json`은 EXE 옆 또는 APPDATA에 저장한다. `MoveFileExW`로 원자적 교체. 기존 PingTester 설정 가져오기는 감시 대상·토폴로지 등을 가져오고 새 앱 식별자와 서버 연결은 유지한다.
+- 빌드: `cd ping-client && npm ci && npm run build && npm test && npm run tauri:build && npm run smoke && npm run package`. `smoke`는 실제 EXE와 격리 설정으로 UDP 연결·재시작·장애를 검증하며 방화벽/자동 시작 등록을 건너뛴다. 두 클라이언트를 먼저 빌드한 뒤 서버의 `npm run tauri:build`를 실행하면 다운로드 메뉴에 두 ZIP과 버전이 포함된다.
+
 ## 클라이언트 프로그램 다운로드 메뉴
 
 2026-09-12 추가. 헤더의 다운로드 아이콘(`src/components/layout/download-menu.tsx`)을 누르면 서버가 배포하는 클라이언트 프로그램 목록이 뜬다. 메뉴는 프로그램명과 버전만 한 줄에 표시하며 설명·파일명·용량·사용 안내는 표시하지 않는다. 브라우저에서는 항목이 `GET /api/downloads/<id>` 첨부 링크이고, 데스크톱 앱 안에서는 WebView2가 링크 다운로드를 조용히 처리해 아무 반응이 없어 보이므로 대신 Rust 명령 `save_download`를 호출한다. 이 명령은 `tauri-plugin-dialog`로 Windows "다른 이름으로 저장" 창을 띄우고(기본 위치는 다운로드 폴더) 고른 경로에 `resources/downloads/<file>`을 복사한다. 취소하면 `null`을 돌려주고 토스트를 띄우지 않는다.

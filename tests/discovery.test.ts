@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import dgram from 'node:dgram'
 import {
   ClientCommandError,
+  CLIENT_DISCOVERY_PORTS,
   computeBroadcast,
   discoverClients,
   listBroadcastTargets,
@@ -53,6 +54,7 @@ test('here and ack parsing enforce version, type and nonce', () => {
   const here = { v: 1, t: 'here', nonce: 'abc', id: 'c1', name: ' 1레이더 PC ', host: 'PC1', target: { ip: '10.0.0.1', port: 6100 }, muted: true }
   const parsed = parseHereReply(JSON.stringify(here), 'abc', '10.0.0.7', '10.0.0.1')
   assert.deepEqual(parsed, {
+    kind: 'sound', discoveryPort: 7790, alarm: null, running: false,
     id: 'c1', name: '1레이더 PC', host: 'PC1', ip: '10.0.0.7', serverIp: '10.0.0.1', mac: '', ver: '',
     target: { ip: '10.0.0.1', port: 6100 }, muted: true, sound: false, uptimeSec: 0,
   })
@@ -72,7 +74,7 @@ test('facility config accepts a linked client and rejects malformed ones', () =>
   assert.ok(validateSystemBody({ config: { ...base, client: 'c1' } }, true))
 })
 
-interface FakeClientOptions { reject?: boolean; silent?: boolean }
+interface FakeClientOptions { reject?: boolean; silent?: boolean; kind?: 'sound' | 'ping'; id?: string }
 
 /** Minimal in-process SoundSense client speaking the discovery protocol on loopback. */
 function startFakeClient(options: FakeClientOptions = {}) {
@@ -85,7 +87,7 @@ function startFakeClient(options: FakeClientOptions = {}) {
     const reply = (body: Record<string, unknown>) =>
       socket.send(Buffer.from(JSON.stringify({ v: 1, ...body })), rinfo.port, rinfo.address)
     if (message.t === 'probe') {
-      reply({ t: 'here', nonce: message.nonce, id: 'fake-1', name: '테스트 PC', host: 'FAKE', ver: '3.0.0', mac: 'AA:BB', target: null, muted: false, sound: true, uptimeSec: 5 })
+      reply({ t: 'here', nonce: message.nonce, id: options.id ?? 'fake-1', kind: options.kind, name: '테스트 PC', host: 'FAKE', ver: '3.0.0', mac: 'AA:BB', target: null, muted: false, sound: true, alarm: options.kind === 'ping' ? true : undefined, running: true, uptimeSec: 5 })
       return
     }
     if (message.t === 'identify' || message.t === 'config') {
@@ -179,8 +181,48 @@ test('equipment alarms on the first critical message unless the facility sets it
 test('download catalog resolves known ids and reports missing files', async () => {
   const { findDownload, listDownloads, locateDownload } = await import('../src/lib/downloads')
   assert.equal(findDownload('sound-client')?.file, 'tms-soundsense.zip')
+  assert.equal(findDownload('ping-client')?.file, 'tms-ping-monitor.zip')
   assert.equal(findDownload('../etc/passwd'), undefined)
   assert.equal(await locateDownload({ id: 'x', name: 'x', description: '', file: 'definitely-missing.exe' }), null)
   const items = await listDownloads()
   assert.ok(items.some(i => i.id === 'sound-client'))
+})
+
+test('sound and ping clients on the same PC are discovered independently', async () => {
+  assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791])
+  const sound = await startFakeClient({ id: 'sound' })
+  const ping = await startFakeClient({ id: 'ping', kind: 'ping' })
+  try {
+    const clients = await discoverClients({
+      ports: [sound.port, ping.port], timeoutMs: 200,
+      targets: [{ address: '127.0.0.1', broadcast: '127.0.0.1', netmask: '255.0.0.0' }],
+    })
+    assert.equal(clients.length, 2)
+    assert.equal(clients.find(c => c.id === 'sound')?.discoveryPort, 7790)
+    const network = clients.find(c => c.id === 'ping')!
+    assert.equal(network.kind, 'ping')
+    assert.equal(network.discoveryPort, 7791)
+    assert.equal(network.alarm, true)
+    assert.equal(network.running, true)
+  } finally { sound.close(); ping.close() }
+})
+
+test('client config rejects a mismatched kind and discovery port', () => {
+  const base = { normalPatterns: ['PING_OK'], criticalPatterns: ['PING_FAIL'], matchMode: 'exact' }
+  assert.equal(validateSystemBody({ config: { ...base, client: { id: 'ping', ip: '127.0.0.1', kind: 'ping', discoveryPort: 7791 } } }, true), null)
+  assert.ok(validateSystemBody({ config: { ...base, client: { id: 'ping', ip: '127.0.0.1', kind: 'ping', discoveryPort: 7790 } } }, true))
+})
+
+test('command ignores acknowledgements sent from the wrong source port', async () => {
+  const receiver = dgram.createSocket('udp4')
+  const impostor = dgram.createSocket('udp4')
+  await new Promise<void>(resolve => receiver.bind(0, '127.0.0.1', resolve))
+  receiver.on('message', (raw, source) => {
+    const msg = JSON.parse(raw.toString())
+    impostor.send(JSON.stringify({ v: 1, t: 'ack', nonce: msg.nonce, ok: true, id: 'wrong' }), source.port, source.address)
+  })
+  try {
+    await assert.rejects(sendClientCommand('127.0.0.1', 'identify', {}, { port: receiver.address().port, retries: 0, timeoutMs: 100 }),
+      (e: unknown) => e instanceof ClientCommandError && e.kind === 'timeout')
+  } finally { receiver.close(); impostor.close() }
 })

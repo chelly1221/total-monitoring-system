@@ -29,15 +29,21 @@ export function buildClientSelection(client: DiscoveredClient, suggestedPort: nu
     ip: client.ip,
     mac: client.mac || undefined,
     ver: client.ver || undefined,
+    kind: client.kind ?? 'sound',
+    discoveryPort: client.discoveryPort ?? 7790,
+    serverIp: client.serverIp,
   }
-  // Keep a port the client is already provisioned with (re-registration after a
-  // server reinstall); otherwise take the server's suggestion.
-  const port = client.target?.port ?? suggestedPort
+  // The client's old destination may belong to another server or facility.
+  // Use this server's free port suggestion instead of silently sharing a port.
+  const port = suggestedPort
   const hasPatterns = previous.normalPatterns.length > 0 && (previous.criticalPatterns?.length ?? 0) > 0
+  const sameKind = (previous.client?.kind ?? 'sound') === (client.kind ?? 'sound')
+  const on = client.kind === 'ping' ? 'PING_FAIL' : SOUND_CLIENT_ON
+  const off = client.kind === 'ping' ? 'PING_OK' : SOUND_CLIENT_OFF
   const config: EquipmentConfig = {
     ...previous,
-    normalPatterns: previous.client && hasPatterns ? previous.normalPatterns : [SOUND_CLIENT_OFF],
-    criticalPatterns: previous.client && hasPatterns ? previous.criticalPatterns : [SOUND_CLIENT_ON],
+    normalPatterns: previous.client && sameKind && hasPatterns ? previous.normalPatterns : [off],
+    criticalPatterns: previous.client && sameKind && hasPatterns ? previous.criticalPatterns : [on],
     matchMode: "exact",
     client: info,
   }
@@ -73,7 +79,7 @@ export async function provisionSoundClient({ client, port, config, facilityName 
     const response = await fetch("/api/discovery/provision", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip: client.ip, port, on, off, name: client.name || facilityName }),
+      body: JSON.stringify({ ip: client.ip, port, on, off, name: client.name || facilityName, discoveryPort: client.discoveryPort ?? 7790, serverIp: client.serverIp }),
     })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
@@ -127,7 +133,7 @@ export function SoundClientSection({
   const handleIdentify = async () => {
     if (!client) return
     setIdentifying(true)
-    await identifyClient(client.ip)
+    await identifyClient(client.ip, client.discoveryPort)
     setIdentifying(false)
   }
 

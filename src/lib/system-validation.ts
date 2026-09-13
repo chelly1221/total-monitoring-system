@@ -57,6 +57,8 @@ export function validateSystemBody(body: unknown, partial = false): string | nul
     if (!isRecord(client) || typeof client.id !== 'string' || !client.id.trim() || typeof client.ip !== 'string') {
       return '연결된 PC 정보가 올바르지 않습니다'
     }
+    if (client.kind !== undefined && client.kind !== 'sound' && client.kind !== 'ping') return '클라이언트 종류가 올바르지 않습니다'
+    if (client.discoveryPort !== undefined && client.discoveryPort !== (client.kind === 'ping' ? 7791 : 7790)) return '클라이언트 탐지 포트가 올바르지 않습니다'
   }
   if (config.criticalConfirmations != null && !isValidCriticalConfirmations(config.criticalConfirmations)) {
     return `심각 판정 연속 횟수는 ${MIN_CRITICAL_CONFIRMATIONS}~${MAX_CRITICAL_CONFIRMATIONS} 사이의 정수여야 합니다`

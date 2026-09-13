@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isIP } from 'net'
-import { ClientCommandError, sendClientCommand } from '@/lib/client-discovery'
+import { CLIENT_DISCOVERY_PORTS, ClientCommandError, sendClientCommand } from '@/lib/client-discovery'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,8 +13,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효한 IP 주소가 아닙니다' }, { status: 400 })
     }
     const sec = Number.isInteger(body.sec) && body.sec >= 1 && body.sec <= 60 ? body.sec : 5
+    const discoveryPort = body.discoveryPort ?? 7790
+    if (!CLIENT_DISCOVERY_PORTS.includes(discoveryPort)) {
+      return NextResponse.json({ error: '지원하지 않는 클라이언트 탐지 포트입니다' }, { status: 400 })
+    }
 
-    const ack = await sendClientCommand(ip, 'identify', { sec })
+    const ack = await sendClientCommand(ip, 'identify', { sec }, { port: discoveryPort })
     return NextResponse.json({ ok: true, id: ack.id })
   } catch (error) {
     if (error instanceof ClientCommandError) {

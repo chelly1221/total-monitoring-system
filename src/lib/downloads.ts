@@ -20,6 +20,12 @@ export const DOWNLOAD_ITEMS: DownloadItem[] = [
     description: '시설 PC용 소리 감지·음소거 자동 해제 클라이언트 (Windows x64, 압축을 풀고 실행, 설치 불필요)',
     file: 'tms-soundsense.zip',
   },
+  {
+    id: 'ping-client',
+    name: '네트워크 ping 감시',
+    description: '시설 PC용 ICMP ping·토폴로지·장애 감시 클라이언트 (Windows x64, 압축을 풀고 실행)',
+    file: 'tms-ping-monitor.zip',
+  },
 ]
 
 export interface DownloadInfo extends DownloadItem {
@@ -44,6 +50,7 @@ export function downloadDirectories(): string[] {
     process.env.DOWNLOADS_DIR,
     path.join(cwd, 'downloads'),
     path.join(cwd, 'sound-client', 'src-tauri', 'target', 'release'),
+    path.join(cwd, 'ping-client', 'src-tauri', 'target', 'release'),
   ]
   return dirs.filter((d): d is string => Boolean(d))
 }
@@ -76,9 +83,9 @@ async function readVersion(item: DownloadItem): Promise<string | null> {
       // no manifest here
     }
   }
-  if (item.id === 'sound-client') {
+  if (item.id === 'sound-client' || item.id === 'ping-client') {
     try {
-      const conf = JSON.parse(await readFile(path.join(process.cwd(), 'sound-client', 'src-tauri', 'tauri.conf.json'), 'utf8')) as { version?: string }
+      const conf = JSON.parse(await readFile(path.join(process.cwd(), item.id, 'src-tauri', 'tauri.conf.json'), 'utf8')) as { version?: string }
       return conf.version ?? null
     } catch {
       return null

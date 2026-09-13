@@ -1,12 +1,13 @@
 # Sound Client Discovery Protocol (v1)
 
 Shared contract between 통합알람감시체계 (server, `tms-portable`) and the Tauri
-sound client (`sound-client`). Both sides must follow this file exactly.
+clients (`sound-client`, `ping-client`). All implementations follow this file.
 
 ## Transport
 
 - UDP, IPv4 only. One JSON object per datagram, UTF-8, no framing, max 1200 bytes.
-- The client binds **UDP port 7790** on all interfaces (`0.0.0.0:7790`).
+- SoundSense binds **UDP 7790**; 네트워크 ping 감시 binds **UDP 7791** on all IPv4 interfaces.
+- The server probes both ports during the same on-demand scan. The two clients may coexist on one PC with independent UUIDs, settings and server data ports.
 - The server never binds a fixed port. It opens an ephemeral socket per
   operation and receives replies on it.
 - Discovery is **server-initiated and on-demand only**. Clients never broadcast
@@ -128,3 +129,15 @@ The selected client is stored inside `System.config` JSON:
   `netsh advfirewall` on first run, elevating once if needed).
 - Server: no new inbound rule. Replies to the server's ephemeral socket are
   allowed by Windows stateful UDP filtering.
+
+## Network ping client extension (1.0.0)
+
+The ping client uses the same v1 `probe`, `identify`, `config`, and `ack` messages at UDP 7791. Token-free behavior is identical. Its `here` adds `kind: "ping"`, `discoveryPort: 7791`, `running: boolean`, and `alarm: boolean|null`. `sound` remains false; `muted` describes the local alarm mute setting. Missing `kind` continues to mean SoundSense at UDP 7790.
+
+The server stores optional `kind`, `discoveryPort`, and the receiving interface's `serverIp` in `System.config.client`. Identify and provision APIs accept `discoveryPort` (only 7790/7791; omitted means 7790). The chosen server interface is forwarded when provisioning. Data ports come from the existing shared free range 6100–6199; the client's old destination port is not reused blindly.
+
+Ping provisioning stores `target.ip`, `target.port`, `on`, `off`, `intervalMs`, and optional `name` while preserving local targets/topology. Defaults are `on: "PING_FAIL"`, `off: "PING_OK"`, heartbeat 5000ms. `target: null` disconnects. Invalid settings return a negative acknowledgement and leave the current settings unchanged.
+
+An active target becomes failed after its configured consecutive failure count (default 1). Any confirmed failure yields `on`; `off` requires successful measurements for all active targets. No active targets, stopped monitoring or pending first measurements produce no normal heartbeat. The server's ordinary offline detection therefore remains effective. State changes send immediately (within the 250ms sender tick); otherwise a heartbeat repeats at the provisioned interval. Persisted targets and server settings resume when the application starts with automatic monitoring enabled.
+
+The ping client registers its own inbound UDP 7791 firewall rule. It does not open the SoundSense port. PC identification shows the window, requests taskbar attention, displays the Korean banner and beeps, then acknowledges.

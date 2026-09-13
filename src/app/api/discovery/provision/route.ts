@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { isIP } from 'net'
 import {
   ClientCommandError,
+  CLIENT_DISCOVERY_PORTS,
   DEFAULT_HEARTBEAT_MS,
   pickServerAddressFor,
   sendClientCommand,
@@ -25,6 +26,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '유효한 IP 주소가 아닙니다' }, { status: 400 })
     }
     const port = parsePort(body.port)
+    const discoveryPort = body.discoveryPort ?? 7790
+    if (!CLIENT_DISCOVERY_PORTS.includes(discoveryPort)) {
+      return NextResponse.json({ error: '지원하지 않는 클라이언트 탐지 포트입니다' }, { status: 400 })
+    }
     if (port === null) {
       return NextResponse.json({ error: '포트는 1~65535 사이의 정수여야 합니다' }, { status: 400 })
     }
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
       ip,
       'config',
       { target: { ip: serverIp, port }, on, off, intervalMs, ...(name ? { name } : {}) },
+      { port: discoveryPort },
     )
     return NextResponse.json({ ok: true, id: ack.id, target: { ip: serverIp, port } })
   } catch (error) {

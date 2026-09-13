@@ -8,6 +8,8 @@ import { randomBytes } from 'crypto'
 import { isIP } from 'net'
 
 export const CLIENT_DISCOVERY_PORT = 7790
+export const PING_CLIENT_DISCOVERY_PORT = 7791
+export const CLIENT_DISCOVERY_PORTS = [CLIENT_DISCOVERY_PORT, PING_CLIENT_DISCOVERY_PORT] as const
 export const PROTOCOL_VERSION = 1
 /** Server listening ports handed to auto-registered sound clients. */
 export const SOUND_CLIENT_PORT_RANGE = { from: 6100, to: 6199 } as const
@@ -18,6 +20,10 @@ export const DEFAULT_HEARTBEAT_MS = 5000
 const MAX_DATAGRAM = 1200
 
 export interface HereReply {
+  kind: 'sound' | 'ping'
+  discoveryPort: number
+  alarm: boolean | null
+  running: boolean
   id: string
   name: string
   host: string
@@ -113,6 +119,10 @@ export function parseHereReply(raw: Buffer | string, nonce: string, from: string
     ? { ip: message.target.ip, port: Number(message.target.port) }
     : null
   return {
+    kind: message.kind === 'ping' ? 'ping' : 'sound',
+    discoveryPort: message.kind === 'ping' ? PING_CLIENT_DISCOVERY_PORT : CLIENT_DISCOVERY_PORT,
+    alarm: typeof message.alarm === 'boolean' ? message.alarm : null,
+    running: message.running === true,
     id: message.id.trim(),
     name: typeof message.name === 'string' ? message.name.trim() : '',
     host: typeof message.host === 'string' ? message.host : '',
@@ -152,6 +162,7 @@ export function parseAck(raw: Buffer | string, nonce: string): AckReply | null {
 interface DiscoverOptions {
   timeoutMs?: number
   port?: number
+  ports?: number[]
   targets?: BroadcastTarget[]
 }
 
@@ -162,7 +173,7 @@ interface DiscoverOptions {
  */
 export function discoverClients(options: DiscoverOptions = {}): Promise<HereReply[]> {
   const timeoutMs = options.timeoutMs ?? 2000
-  const port = options.port ?? CLIENT_DISCOVERY_PORT
+  const ports: readonly number[] = options.ports ?? (options.port === undefined ? CLIENT_DISCOVERY_PORTS : [options.port])
   const targets = options.targets ?? listBroadcastTargets()
   const nonce = newNonce()
   const probe = Buffer.from(JSON.stringify({ v: PROTOCOL_VERSION, t: 'probe', nonce }))
@@ -194,7 +205,7 @@ export function discoverClients(options: DiscoverOptions = {}): Promise<HereRepl
         if (--pending === 0) setTimeout(finish, timeoutMs)
       })
       socket.on('message', (raw, rinfo) => {
-        if (raw.length > MAX_DATAGRAM) return
+        if (raw.length > MAX_DATAGRAM || !ports.includes(rinfo.port)) return
         const reply = parseHereReply(raw, nonce, rinfo.address, target.address)
         if (reply) found.set(reply.id, reply)
       })
@@ -207,9 +218,11 @@ export function discoverClients(options: DiscoverOptions = {}): Promise<HereRepl
         const send = () => {
           if (finished) return
           for (const destination of new Set([target.broadcast, '255.255.255.255'])) {
-            socket.send(probe, port, destination, err => {
-              if (err) console.error(`[discovery] probe to ${destination} failed:`, err.message)
-            })
+            for (const port of ports) {
+              socket.send(probe, port, destination, err => {
+                if (err) console.error(`[discovery] probe to ${destination}:${port} failed:`, err.message)
+              })
+            }
           }
         }
         send()
@@ -277,7 +290,8 @@ function sendOnce(ip: string, port: number, payload: Buffer, nonce: string, time
       console.error(`[discovery] command to ${ip} failed:`, err.message)
       finish(null)
     })
-    socket.on('message', raw => {
+    socket.on('message', (raw, source) => {
+      if (source.address !== ip || source.port !== port || raw.length > MAX_DATAGRAM) return
       const ack = parseAck(raw, nonce)
       if (ack) finish(ack)
     })
