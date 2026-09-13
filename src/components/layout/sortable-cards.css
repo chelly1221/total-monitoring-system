@@ -1,0 +1,13 @@
+.sortable-slot { position: relative; min-width: 0; min-height: 0; }
+.sortable-content { height: 100%; min-height: 0; }
+.sortable-content > a { display: block; height: 100%; }
+.sortable-content > [data-slot="card"] { height: 100%; }
+.sortable-editing { outline: 1px dashed #9ca3af; outline-offset: -2px; border-radius: 8px; }
+.sortable-editing .sortable-content { pointer-events: none; }
+.sortable-active { position: relative; z-index: 30; opacity: .8; filter: drop-shadow(0 8px 12px #0009); pointer-events: none; }
+.sortable-target { outline: 3px solid #60a5fa; outline-offset: -3px; background: #60a5fa25; }
+.sortable-handle { position: absolute; inset: 0; z-index: 31; width: 100%; height: 100%; cursor: grab; touch-action: none; border-radius: 8px; }
+.sortable-handle:active { cursor: grabbing; }
+.sortable-handle:focus-visible { outline: 3px solid #60a5fa; outline-offset: -3px; }
+.sortable-grip { position: absolute; top: 4px; right: 4px; display: flex; align-items: center; gap: 4px; border: 1px solid #a3a3a3; border-radius: 5px; padding: 2px 5px; color: white; background: #171717; font-size: 13px; line-height: 20px; box-shadow: 0 1px 5px #0008; white-space: nowrap; }
+.sortable-target .sortable-grip { background: #1d4ed8; border-color: #93c5fd; }
