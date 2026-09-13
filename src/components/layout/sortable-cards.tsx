@@ -1,8 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type PointerEvent, type KeyboardEvent } from 'react'
-import { Grip, Check, RotateCcw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Grip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { moveCard, nearestCardSlot } from '@/lib/card-order'
 import './sortable-cards.css'
@@ -21,30 +20,15 @@ interface DragState {
 }
 
 interface SortContext {
-  editing: boolean
   drag: DragState | null
-  start: (id: string, event: PointerEvent<HTMLButtonElement>) => void
-  move: (event: PointerEvent<HTMLButtonElement>) => void
+  start: (id: string, event: PointerEvent<HTMLDivElement>) => void
   finish: (cancel?: boolean) => void
   key: (id: string, event: KeyboardEvent<HTMLButtonElement>) => void
 }
 const SortContext = createContext<SortContext | null>(null)
 
-export function CardLayoutControls({ editing, onEditingChange, onReset, compact = false }: {
-  editing: boolean; onEditingChange: (editing: boolean) => void; onReset: () => void; compact?: boolean
-}) {
-  return (
-    <div className={cn('flex items-center gap-2', compact && 'flex-wrap pb-2')}>
-      {editing && <Button variant="ghost" size="sm" onClick={onReset} title="이 화면의 카드 순서를 처음 배치로 되돌립니다"><RotateCcw />기본 순서</Button>}
-      <Button variant={editing ? 'default' : 'outline'} size="sm" aria-pressed={editing} onClick={() => onEditingChange(!editing)}>
-        {editing ? <Check /> : <Grip />}{editing ? '배치 완료' : '배치 변경'}
-      </Button>
-    </div>
-  )
-}
-
-export function SortableGroup({ ids, editing, onReorder, label, className, children }: {
-  ids: string[]; editing: boolean; onReorder: (ids: string[]) => void; label: string; className?: string; children: ReactNode
+export function SortableGroup({ ids, onReorder, label, className, children }: {
+  ids: string[]; onReorder: (ids: string[]) => void; label: string; className?: string; children: ReactNode
 }) {
   const root = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -52,9 +36,12 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
   const [message, setMessage] = useState('')
   const frame = useRef<number | null>(null)
   const pointer = useRef({ x: 0, y: 0 })
+  const releaseGesture = useRef<(() => void) | null>(null)
+  const suppressClick = useRef(false)
 
   useEffect(() => {
     const cancel = () => {
+      releaseGesture.current?.()
       if (frame.current !== null) cancelAnimationFrame(frame.current)
       frame.current = null
       dragRef.current = null
@@ -63,6 +50,7 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
     window.addEventListener('blur', cancel)
     return () => {
       window.removeEventListener('blur', cancel)
+      releaseGesture.current?.()
       if (frame.current !== null) cancelAnimationFrame(frame.current)
     }
   }, [])
@@ -74,8 +62,11 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
   }
   function finish(cancel = false) {
     stopScroll()
+    releaseGesture.current?.()
     const current = dragRef.current
-    if (current && !cancel && current.moved && ids.includes(current.id) && ids.includes(current.target)) {
+    if (!current) return
+    const present = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-sort-id]') ?? []).map(element => element.dataset.sortId)
+    if (!cancel && current.moved && current.target !== current.id && present.includes(current.id) && present.includes(current.target)) {
       onReorder(moveCard(ids, current.id, current.target))
       setMessage(`${ids.indexOf(current.target) + 1}번째 위치로 이동했습니다. 순서가 자동 저장됩니다.`)
       // UPS cards can change column parents, so restore keyboard focus after reconciliation.
@@ -83,7 +74,7 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
         const item = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-sort-id]') ?? []).find(element => element.dataset.sortId === current.id)
         item?.querySelector<HTMLButtonElement>('.sortable-handle')?.focus()
       })
-    } else if (current) { setMessage('이동을 취소했습니다.') }
+    } else if (current.moved || current.keyboard) { setMessage('이동을 취소했습니다.') }
     update(null)
   }
   function trackPointer(x: number, y: number) {
@@ -117,22 +108,51 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
     frame.current = requestAnimationFrame(autoScroll)
   }
   const context: SortContext = {
-    editing, drag,
+    drag,
     start(id, event) {
-      if (event.button !== 0) return
-      event.preventDefault()
-      event.currentTarget.focus({ preventScroll: true })
-      event.currentTarget.setPointerCapture(event.pointerId)
+      if (event.button !== 0 || !event.isPrimary || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+      const target = event.target as HTMLElement
+      if (target.closest('input, select, textarea, [contenteditable="true"], [data-no-card-drag], button:not(.sortable-handle)')) return
+      if (dragRef.current) finish(true)
+      suppressClick.current = false
+      const element = event.currentTarget
+      const pointerId = event.pointerId
       pointer.current = { x: event.clientX, y: event.clientY }
-      const rect = event.currentTarget.getBoundingClientRect()
+      const rect = element.getBoundingClientRect()
       update({ id, target: id, startX: event.clientX, startY: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, x: 0, y: 0, moved: false, keyboard: false })
-      stopScroll()
-      frame.current = requestAnimationFrame(autoScroll)
-    },
-    move(event) {
-      if (!dragRef.current || dragRef.current.keyboard) return
-      pointer.current = { x: event.clientX, y: event.clientY }
-      trackPointer(event.clientX, event.clientY)
+      // Keep the original click target until movement passes the drag threshold.
+      // Window listeners also catch a fast first move outside a small card.
+      const move = (next: globalThis.PointerEvent) => {
+        if (next.pointerId !== pointerId || !dragRef.current) return
+        const current = dragRef.current
+        if (!current.moved && Math.hypot(next.clientX - current.startX, next.clientY - current.startY) <= 6) return
+        if (!current.moved) {
+          suppressClick.current = true
+          element.setPointerCapture(pointerId)
+          frame.current = requestAnimationFrame(autoScroll)
+        }
+        next.preventDefault()
+        pointer.current = { x: next.clientX, y: next.clientY }
+        trackPointer(next.clientX, next.clientY)
+      }
+      const end = (next: globalThis.PointerEvent) => {
+        if (next.pointerId === pointerId) finish(next.type === 'pointercancel')
+      }
+      const escape = (next: globalThis.KeyboardEvent) => {
+        if (next.key === 'Escape') { next.preventDefault(); finish(true) }
+      }
+      window.addEventListener('pointermove', move, { passive: false })
+      window.addEventListener('pointerup', end, true)
+      window.addEventListener('pointercancel', end, true)
+      window.addEventListener('keydown', escape)
+      releaseGesture.current = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', end, true)
+        window.removeEventListener('pointercancel', end, true)
+        window.removeEventListener('keydown', escape)
+        if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId)
+        releaseGesture.current = null
+      }
     },
     finish,
     key(id, event) {
@@ -153,7 +173,15 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
   }
   return (
     <SortContext.Provider value={context}>
-      <div ref={root} className={cn('sortable-group', className)} aria-label={label}>
+      <div ref={root} className={cn('sortable-group', className)} aria-label={label}
+        onDragStartCapture={event => event.preventDefault()}
+        onPointerDownCapture={() => { suppressClick.current = false }}
+        onClickCapture={event => {
+          if (suppressClick.current && event.detail !== 0) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+        }}>
         {children}
       </div>
       <span className="sr-only" role="status">{message}</span>
@@ -164,22 +192,21 @@ export function SortableGroup({ ids, editing, onReorder, label, className, child
 export function SortableCard({ id, label, className, children }: { id: string; label: string; className?: string; children: ReactNode }) {
   const context = useContext(SortContext)
   if (!context) throw new Error('SortableCard requires SortableGroup')
-  const { editing, drag } = context
-  const active = drag?.id === id
+  const { drag } = context
+  const active = drag?.id === id && (drag.moved || drag.keyboard)
   const target = drag?.target === id && drag.id !== id
   return (
-    <div data-sort-id={id} className={cn('sortable-slot', editing && 'sortable-editing', target && 'sortable-target', className)}>
-      <div inert={editing} className={cn('sortable-content', active && 'sortable-active')} style={active && !drag.keyboard ? { transform: `translate(${drag.x}px, ${drag.y}px)` } : undefined}>
+    <div data-sort-id={id} className={cn('sortable-slot', target && 'sortable-target', className)} onPointerDownCapture={event => context.start(id, event)}>
+      <div className={cn('sortable-content', active && 'sortable-active')} style={active && !drag.keyboard ? { transform: `translate(${drag.x}px, ${drag.y}px)` } : undefined}>
         {children}
       </div>
-      {editing && <button type="button" className="sortable-handle" aria-label={`${label} 순서 이동`} aria-pressed={active}
+      <button type="button" className="sortable-handle" aria-label={`${label} 순서 이동`} aria-pressed={active}
         title="드래그해서 순서 변경 · 키보드: Enter → 방향키 → Enter · 취소: Escape"
-        onPointerDown={event => context.start(id, event)} onPointerMove={context.move}
-        onPointerUp={() => context.finish()} onPointerCancel={() => context.finish(true)} onLostPointerCapture={() => { if (active && !drag.keyboard) context.finish(true) }}
         onBlur={() => { if (active && drag.keyboard) context.finish(true) }}
         onKeyDown={event => context.key(id, event)} onClick={event => event.stopPropagation()}>
-        <span className="sortable-grip"><Grip size={16} />{target ? '여기에 놓기' : '이동'}</span>
-      </button>}
+        <Grip size={16} />
+      </button>
+      {target && <span className="sortable-drop-label">여기에 놓기</span>}
     </div>
   )
 }

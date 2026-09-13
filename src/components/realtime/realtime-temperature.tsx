@@ -14,7 +14,7 @@ import { PlusCircle } from 'lucide-react'
 import type { TrendDirection, MetricsConfig, StatusConditions } from '@/types'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
 import { useCardOrder } from '@/hooks/use-card-order'
-import { CardLayoutControls, SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
+import { SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
 
 // Unified sensor colors — each sensor gets one color shared across card dot, temp line, and humidity line
 const SENSOR_COLORS = ['#f87171', '#4ade80', '#fbbf24', '#a78bfa', '#22d3ee', '#fb923c', '#f472b6', '#84cc16']
@@ -91,7 +91,6 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
 
   // Layout override for grid configurations
   const [layoutOverride, setLayoutOverride] = useState<LayoutOverride>('4')
-  const [editingLayout, setEditingLayout] = useState(false)
   const sensorOrder = useCardOrder('temperature-sensors', sensorSystems)
   const chartOrder = useCardOrder('temperature-charts', [{ id: 'temperature' }, { id: 'humidity' }])
 
@@ -308,7 +307,6 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
       <div className="flex items-center justify-between pb-4">
         <h1 className="text-2xl font-bold">온습도</h1>
         <div className="flex items-center gap-2">
-          <CardLayoutControls editing={editingLayout} onEditingChange={setEditingLayout} onReset={() => { sensorOrder.reset(); chartOrder.reset() }} />
           <Select value={layoutOverride} onValueChange={(v) => setLayoutOverride(v as LayoutOverride)}>
             <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
@@ -333,7 +331,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
       </div>
       <div className={`grid flex-1 gap-2 overflow-hidden ${effectiveCount <= 4 ? 'grid-cols-[1.5fr_3fr]' : 'grid-cols-2'}`}>
         {/* Left column: sensor gauge cards */}
-        <SortableGroup label="온습도 장비 카드" ids={displaySystems.map(item => item.id)} editing={editingLayout} onReorder={ids => sensorOrder.save([...ids, ...sensorOrder.items.filter(item => !ids.includes(item.id)).map(item => item.id)])} className={`grid ${gridClasses} gap-2 overflow-hidden`}>
+        <SortableGroup label="온습도 장비 카드" ids={displaySystems.map(item => item.id)} onReorder={ids => sensorOrder.save([...ids, ...sensorOrder.items.filter(item => !ids.includes(item.id)).map(item => item.id)])} className={`grid ${gridClasses} gap-2 overflow-hidden`}>
         {displaySystems.length === 0 ? (
           <Card>
             <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
@@ -568,7 +566,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
         </SortableGroup>
 
         {/* Right column: charts */}
-      <SortableGroup label="온습도 그래프" ids={chartOrder.items.map(item => item.id)} editing={editingLayout} onReorder={chartOrder.save} className="flex flex-col gap-2 overflow-hidden">
+      <SortableGroup label="온습도 그래프" ids={chartOrder.items.map(item => item.id)} onReorder={chartOrder.save} className="flex flex-col gap-2 overflow-hidden">
         {chartOrder.items.map(item => item.id === 'temperature' ? (
         <SortableCard key={item.id} id={item.id} label="온도 그래프" className="flex-1">
         {/* Temperature chart */}

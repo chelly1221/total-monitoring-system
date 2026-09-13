@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import type { MetricsConfig, DisplayItem, SystemStatus } from '@/types'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
 import { useCardOrder } from '@/hooks/use-card-order'
-import { CardLayoutControls, SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
+import { SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
 
 const UPS_COLORS = ['#f87171', '#4ade80', '#fbbf24', '#a78bfa', '#22d3ee', '#fb923c', '#f472b6', '#84cc16']
 const DEFAULT_CHART_METRIC_NAMES = ['입력전압', '입력전류', '출력전압', '출력전류', '주파수', '배터리잔량']
@@ -136,7 +136,6 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
 
   // Get UPS systems from realtime data
   const upsSystems = systems.filter((s) => upsSystemIds.includes(s.id))
-  const [editingLayout, setEditingLayout] = useState(false)
   const defaultSystems = [...upsSystems.filter(s => s.name !== '경항공기 통신실').sort((a, b) => a.name.localeCompare(b.name)), ...upsSystems.filter(s => s.name === '경항공기 통신실')]
   const systemOrder = useCardOrder('ups-systems', defaultSystems)
 
@@ -456,7 +455,6 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
       <div className="flex items-center justify-between pb-3">
         <h1 className="text-2xl font-bold">UPS</h1>
         <div className="flex items-center gap-2">
-        <CardLayoutControls editing={editingLayout} onEditingChange={setEditingLayout} onReset={() => { systemOrder.reset(); chartOrder.reset() }} />
         <Button
           asChild
           size="icon"
@@ -479,7 +477,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
       ) : (
         <div className="grid flex-1 gap-2 overflow-hidden grid-cols-2">
           {/* Left: Two columns — col1: UPS#1, col2: UPS#2 + 경항공기 */}
-          <SortableGroup label="UPS 장비 카드" ids={systemOrder.items.map(item => item.id)} editing={editingLayout} onReorder={systemOrder.save} className="grid gap-2 overflow-y-auto grid-cols-2">
+          <SortableGroup label="UPS 장비 카드" ids={systemOrder.items.map(item => item.id)} onReorder={systemOrder.save} className="grid gap-2 overflow-y-auto grid-cols-2">
             {(() => {
               const col1Systems = systemOrder.items.slice(0, 1)
               const col2Systems = systemOrder.items.slice(1)
@@ -519,7 +517,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
           </SortableGroup>
 
           {/* Right: Charts 2x3 grid */}
-          <SortableGroup label="UPS 그래프" ids={chartOrder.items.map(item => item.id)} editing={editingLayout} onReorder={chartOrder.save} className="grid grid-cols-2 grid-rows-3 gap-2 min-h-0">
+          <SortableGroup label="UPS 그래프" ids={chartOrder.items.map(item => item.id)} onReorder={chartOrder.save} className="grid grid-cols-2 grid-rows-3 gap-2 min-h-0">
             {chartOrder.items.map(({ id: metricName }) => {
               const chart = displayCharts.get(metricName)
               const yDomain: [number | 'auto' | 'dataMin', number | 'auto' | 'dataMax'] | undefined =
