@@ -12,7 +12,7 @@ const FEATURE_KEYS: FeatureSettingKey[] = ['temperatureEnabled', 'upsEnabled', '
 
 export async function GET() {
   try {
-    const settings = await prisma.setting.findMany()
+    const settings = await prisma.setting.findMany({ where: { key: { not: 'clientToken' } } })
     const settingsObj = settings.reduce((acc, setting) => {
       acc[setting.key] = setting.value
       return acc
@@ -36,6 +36,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: '이력 DB 용량은 512~10240MB 범위의 정수로 설정하세요' }, { status: 400 })
     }
 
+    if ('clientToken' in body) {
+      return NextResponse.json({ error: 'PC 클라이언트 인증 토큰 설정은 더 이상 사용하지 않습니다' }, { status: 400 })
+    }
+
     const updates = Object.entries(body).map(([key, value]) =>
       prisma.setting.upsert({
         where: { key },
@@ -46,7 +50,7 @@ export async function PUT(request: Request) {
 
     await prisma.$transaction(updates)
 
-    const settings = await prisma.setting.findMany()
+    const settings = await prisma.setting.findMany({ where: { key: { not: 'clientToken' } } })
     const settingsObj = settings.reduce((acc, setting) => {
       acc[setting.key] = setting.value
       return acc

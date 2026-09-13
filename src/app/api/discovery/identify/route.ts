@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { isIP } from 'net'
-import { prisma } from '@/lib/db'
 import { ClientCommandError, sendClientCommand } from '@/lib/client-discovery'
 
 export const dynamic = 'force-dynamic'
@@ -15,8 +14,7 @@ export async function POST(request: Request) {
     }
     const sec = Number.isInteger(body.sec) && body.sec >= 1 && body.sec <= 60 ? body.sec : 5
 
-    const tokenSetting = await prisma.setting.findUnique({ where: { key: 'clientToken' } })
-    const ack = await sendClientCommand(ip, 'identify', { sec }, { token: tokenSetting?.value ?? '' })
+    const ack = await sendClientCommand(ip, 'identify', { sec })
     return NextResponse.json({ ok: true, id: ack.id })
   } catch (error) {
     if (error instanceof ClientCommandError) {

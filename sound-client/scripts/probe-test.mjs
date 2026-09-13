@@ -4,30 +4,19 @@
 //   node scripts/probe-test.mjs identify <ip> [sec]  send identify to a client, print the ack
 //   node scripts/probe-test.mjs config <ip> <serverIp> <port> [name]   push a target (on=SOUND/off=SILENCE)
 //
-// Set TOKEN=<shared token> to sign identify/config exactly like the server does.
-
 import dgram from "node:dgram";
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 const PORT = Number(process.env.PORT || 7790);
-const TOKEN = process.env.TOKEN || "";
 const [mode = "probe", ...rest] = process.argv.slice(2);
 
 function nonce() {
   return randomBytes(8).toString("hex");
 }
 
-function sign(t, n, ts) {
-  return createHmac("sha256", TOKEN).update(`${t}|${n}|${ts}`).digest("hex");
-}
-
 function command(t, extra = {}) {
   const n = nonce();
   const msg = { v: 1, t, nonce: n, ...extra };
-  if (TOKEN) {
-    msg.ts = Math.floor(Date.now() / 1000);
-    msg.sig = sign(t, n, msg.ts);
-  }
   return msg;
 }
 

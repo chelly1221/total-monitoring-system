@@ -217,6 +217,21 @@ test('history capacity settings reject invalid values without storing them', asy
   assert.equal((await readHistoryStorage(db)).limitMb, 5120)
 })
 
+test('retired client tokens are neither exposed, accepted, nor restored from old backups', async () => {
+  const api = await import('../src/app/api/settings/route')
+  const legacy = await db.setting.create({ data: { key: 'clientToken', value: 'old-value' } })
+  assert.equal('clientToken' in await (await api.GET()).json(), false)
+  assert.equal((await api.PUT(request({ clientToken: 'new-value' }, 'PUT'))).status, 400)
+  const updated = await api.PUT(request({ historyMaxSizeMb: '5120' }, 'PUT'))
+  assert.equal('clientToken' in await updated.json(), false)
+  const backup = await (await backupApi.GET()).json()
+  assert.equal(backup.settings.some((setting: { key: string }) => setting.key === 'clientToken'), false)
+  backup.settings.push(legacy)
+  assert.equal((await backupApi.POST(request(backup))).status, 200)
+  assert.equal(await db.setting.count({ where: { key: 'clientToken' } }), 0)
+  assert.equal((await db.setting.findUniqueOrThrow({ where: { key: 'historyMaxSizeMb' } })).value, '5120')
+})
+
 test('metric deletion and cleared thresholds persist with system edits', async () => {
   const system = await createSystem({ delimiter: ',', displayItems: [item(), { ...item('습도'), index: 1 }] })
   const old = await db.metric.findFirstOrThrow({ where: { systemId: system.id, name: '습도' } })

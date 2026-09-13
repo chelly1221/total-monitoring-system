@@ -18,7 +18,6 @@ interface Settings {
   threshold: number;
   silenceMs: number;
   discoveryPort: number;
-  token: string;
   unmuteMinutes: number;
   autostart: boolean;
 }
@@ -216,7 +215,6 @@ function fillSettingsForm(s: Settings): void {
   f.intervalMs.value = String(s.intervalMs);
   fillPresetSelect(f.unmuteMinutes as HTMLSelectElement, s.unmuteMinutes);
   f.discoveryPort.value = String(s.discoveryPort);
-  f.token.value = s.token;
   (f.autostart as HTMLInputElement).checked = s.autostart;
   f.targetIp.value = s.target?.ip ?? "";
   f.targetPort.value = s.target ? String(s.target.port) : "";
@@ -248,7 +246,6 @@ function readSettingsForm(base: Settings): Settings {
     intervalMs: Number(f.intervalMs.value),
     unmuteMinutes: Number(f.unmuteMinutes.value),
     discoveryPort: Number(f.discoveryPort.value),
-    token: f.token.value.trim(),
     autostart: (f.autostart as HTMLInputElement).checked,
     target,
     on: f.on.value.trim() || base.on,

@@ -33,7 +33,7 @@ broadcast address of each non-loopback IPv4 interface (and to
   "id": "6d0c0a1e-...",          // stable UUID generated on first run, stored in settings
   "name": "1레이더 LCMS PC",      // operator-entered 장비명 ("" if not set yet)
   "host": "RADAR1-PC",           // Windows computer name
-  "ver": "3.0.0",                // client version
+  "ver": "3.1.0",                // client version
   "mac": "AA:BB:CC:DD:EE:FF",    // MAC of the interface used to reply ("" if unknown)
   "target": { "ip": "192.168.0.10", "port": 6100 },   // current send target or null
   "muted": false,                // current system mute state
@@ -49,7 +49,7 @@ records the local address of the socket that received it as `serverIp`.
 ### `identify` (server -> client ip:7790)
 
 ```json
-{ "v": 1, "t": "identify", "nonce": "...", "ts": 1757600000, "sec": 5, "sig": "<hex>" }
+{ "v": 1, "t": "identify", "nonce": "...", "ts": 1757600000, "sec": 5 }
 ```
 
 The client must react so an operator standing at the PC can tell it is this
@@ -61,7 +61,7 @@ It replies with `ack`.
 
 ```json
 {
-  "v": 1, "t": "config", "nonce": "...", "ts": 1757600000, "sig": "<hex>",
+  "v": 1, "t": "config", "nonce": "...", "ts": 1757600000,
   "target": { "ip": "192.168.0.10", "port": 6100 },
   "on": "SOUND", "off": "SILENCE", "intervalMs": 5000,
   "name": "1레이더 LCMS PC"      // optional; when present the client overwrites its 장비명
@@ -78,20 +78,20 @@ applies them immediately, and replies with `ack`.
 ```
 
 `nonce` echoes the command. `ok: false` with `error` when the command was
-rejected (bad signature, invalid payload).
+rejected (invalid payload).
 
-## Authentication
+## Token-free commands (SoundSense 3.1.0 and later)
 
-Optional shared token (`clientToken` setting on the server, `token` in the
-client settings). Rules:
+All messages operate without authentication tokens or signatures. The server
+does not send `sig`; `ts` is optional informational metadata. The client validates
+the protocol version and configuration payload and echoes the request nonce.
+Legacy `sig` fields are ignored, keeping the v1 message format compatible.
 
-- `probe` and `here` are never signed.
-- `identify` and `config` carry `ts` (unix seconds) and
-  `sig = hex(HMAC-SHA256(key = token, msg = "<t>|<nonce>|<ts>"))`.
-- If the client's token is **empty**, it accepts unsigned commands and ignores `sig`.
-- If the client's token is **set**, it rejects commands whose `sig` is missing
-  or wrong, or whose `|now - ts| > 60` seconds, with `ack.ok = false`.
-- If the server's token is empty it sends commands without `sig`.
+The client removes the retired `token` field from existing settings on startup,
+preserving its identity, target and audio settings. The server removes the retired
+`clientToken` setting and excludes it from settings responses and backup restores.
+Clients older than 3.1.0 that still require a token must be replaced with the new
+client before provisioning from a token-free server.
 
 ## Data path (unchanged from soundsense)
 
@@ -117,7 +117,7 @@ The selected client is stored inside `System.config` JSON:
 {
   "normalPatterns": ["SILENCE"], "criticalPatterns": ["SOUND"], "matchMode": "exact",
   "client": { "id": "6d0c0a1e-...", "name": "1레이더 LCMS PC", "host": "RADAR1-PC",
-              "mac": "AA:BB:...", "ip": "192.168.0.21", "ver": "3.0.0",
+              "mac": "AA:BB:...", "ip": "192.168.0.21", "ver": "3.1.0",
               "provisionedAt": "2026-09-12T03:00:00.000Z" }
 }
 ```

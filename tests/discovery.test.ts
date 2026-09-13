@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import dgram from 'node:dgram'
-import { createHmac } from 'node:crypto'
 import {
   ClientCommandError,
   computeBroadcast,
@@ -12,7 +11,6 @@ import {
   pickServerAddressFor,
   sameSubnet,
   sendClientCommand,
-  signCommand,
   suggestSoundClientPort,
 } from '../src/lib/client-discovery'
 import { validateSystemBody } from '../src/lib/system-validation'
@@ -62,14 +60,9 @@ test('here and ack parsing enforce version, type and nonce', () => {
   assert.equal(parseHereReply(JSON.stringify({ ...here, v: 2 }), 'abc', '10.0.0.7', '10.0.0.1'), null)
   assert.equal(parseHereReply(JSON.stringify({ ...here, id: '' }), 'abc', '10.0.0.7', '10.0.0.1'), null)
   assert.equal(parseHereReply('not json', 'abc', '10.0.0.7', '10.0.0.1'), null)
-  assert.deepEqual(parseAck(JSON.stringify({ v: 1, t: 'ack', nonce: 'n', ok: false, error: 'bad sig' }), 'n'),
-    { ok: false, id: '', error: 'bad sig' })
+  assert.deepEqual(parseAck(JSON.stringify({ v: 1, t: 'ack', nonce: 'n', ok: false, error: 'invalid target' }), 'n'),
+    { ok: false, id: '', error: 'invalid target' })
   assert.equal(parseAck(JSON.stringify({ v: 1, t: 'ack', nonce: 'other', ok: true }), 'n'), null)
-})
-
-test('command signature matches HMAC-SHA256 over "t|nonce|ts"', () => {
-  const expected = createHmac('sha256', 'secret').update('config|n1|1700000000').digest('hex')
-  assert.equal(signCommand('secret', 'config', 'n1', 1700000000), expected)
 })
 
 test('facility config accepts a linked client and rejects malformed ones', () => {
@@ -79,7 +72,7 @@ test('facility config accepts a linked client and rejects malformed ones', () =>
   assert.ok(validateSystemBody({ config: { ...base, client: 'c1' } }, true))
 })
 
-interface FakeClientOptions { token?: string; silent?: boolean }
+interface FakeClientOptions { reject?: boolean; silent?: boolean }
 
 /** Minimal in-process SoundSense client speaking the discovery protocol on loopback. */
 function startFakeClient(options: FakeClientOptions = {}) {
@@ -96,9 +89,8 @@ function startFakeClient(options: FakeClientOptions = {}) {
       return
     }
     if (message.t === 'identify' || message.t === 'config') {
-      const token = options.token ?? ''
-      const ok = !token || message.sig === signCommand(token, message.t, message.nonce, message.ts)
-      reply({ t: 'ack', nonce: message.nonce, ok, id: 'fake-1', error: ok ? '' : 'invalid signature' })
+      const ok = !options.reject
+      reply({ t: 'ack', nonce: message.nonce, ok, id: 'fake-1', error: ok ? '' : 'invalid target' })
     }
   })
   return new Promise<{ port: number; received: unknown[]; close: () => void }>(resolve => {
@@ -126,18 +118,31 @@ test('discovery collects loopback replies and dedupes by client id', async () =>
   }
 })
 
-test('commands are signed when a token is set, and rejections/timeouts surface as errors', async () => {
-  const signed = await startFakeClient({ token: 'shared' })
+test('identify and config need no token, and rejections/timeouts surface as errors', async () => {
+  const client = await startFakeClient()
   try {
-    const ack = await sendClientCommand('127.0.0.1', 'identify', { sec: 5 }, { port: signed.port, token: 'shared', timeoutMs: 300 })
+    const ack = await sendClientCommand('127.0.0.1', 'identify', { sec: 5 }, { port: client.port, timeoutMs: 300 })
     assert.equal(ack.ok, true)
     assert.equal(ack.id, 'fake-1')
+    const config = await sendClientCommand('127.0.0.1', 'config', { target: { ip: '127.0.0.1', port: 6100 }, on: 'SOUND', off: 'SILENCE' }, { port: client.port, timeoutMs: 300 })
+    assert.equal(config.ok, true)
+    assert.equal(client.received.length, 2)
+    for (const message of client.received as Record<string, unknown>[]) {
+      assert.equal('sig' in message, false)
+      assert.equal('token' in message, false)
+      assert.ok(typeof message.nonce === 'string' && message.nonce.length > 0)
+    }
+  } finally {
+    client.close()
+  }
+  const rejected = await startFakeClient({ reject: true })
+  try {
     await assert.rejects(
-      sendClientCommand('127.0.0.1', 'config', { target: { ip: '127.0.0.1', port: 6100 } }, { port: signed.port, token: 'wrong', timeoutMs: 300 }),
+      sendClientCommand('127.0.0.1', 'config', { target: { ip: '127.0.0.1', port: 0 } }, { port: rejected.port, timeoutMs: 300 }),
       (err: unknown) => err instanceof ClientCommandError && err.kind === 'rejected',
     )
   } finally {
-    signed.close()
+    rejected.close()
   }
 
   const silent = await startFakeClient({ silent: true })

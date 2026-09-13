@@ -4,7 +4,7 @@
 
 import dgram from 'dgram'
 import os from 'os'
-import { createHmac, randomBytes } from 'crypto'
+import { randomBytes } from 'crypto'
 import { isIP } from 'net'
 
 export const CLIENT_DISCOVERY_PORT = 7790
@@ -96,11 +96,6 @@ export function suggestSoundClientPort(usedPorts: Iterable<number>): number | nu
 
 export function newNonce(): string {
   return randomBytes(8).toString('hex')
-}
-
-/** HMAC signature for identify/config commands: HMAC-SHA256(token, "t|nonce|ts"). */
-export function signCommand(token: string, type: string, nonce: string, ts: number): string {
-  return createHmac('sha256', token).update(`${type}|${nonce}|${ts}`).digest('hex')
 }
 
 /** Parse a `here` datagram; returns null when it is not a valid reply to `nonce`. */
@@ -228,7 +223,6 @@ export function discoverClients(options: DiscoverOptions = {}): Promise<HereRepl
 }
 
 interface CommandOptions {
-  token?: string
   timeoutMs?: number
   retries?: number
   port?: number
@@ -241,7 +235,7 @@ export class ClientCommandError extends Error {
 }
 
 /**
- * Send a signed command (`identify` or `config`) to one client and wait for its ack.
+ * Send a command (`identify` or `config`) to one client and wait for its ack.
  * Retries once by default (UDP may drop the first datagram).
  */
 export async function sendClientCommand(
@@ -253,13 +247,11 @@ export async function sendClientCommand(
   const timeoutMs = options.timeoutMs ?? 1500
   const retries = options.retries ?? 1
   const port = options.port ?? CLIENT_DISCOVERY_PORT
-  const token = options.token?.trim() ?? ''
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const nonce = newNonce()
     const ts = Math.floor(Date.now() / 1000)
     const message: Record<string, unknown> = { v: PROTOCOL_VERSION, t: type, nonce, ts, ...fields }
-    if (token) message.sig = signCommand(token, type, nonce, ts)
     const ack = await sendOnce(ip, port, Buffer.from(JSON.stringify(message)), nonce, timeoutMs)
     if (ack) {
       if (!ack.ok) throw new ClientCommandError(ack.error || '클라이언트가 명령을 거부했습니다', 'rejected')

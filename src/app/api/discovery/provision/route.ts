@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { isIP } from 'net'
-import { prisma } from '@/lib/db'
 import {
   ClientCommandError,
   DEFAULT_HEARTBEAT_MS,
@@ -45,12 +44,10 @@ export async function POST(request: Request) {
     }
     const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 64) : undefined
 
-    const tokenSetting = await prisma.setting.findUnique({ where: { key: 'clientToken' } })
     const ack = await sendClientCommand(
       ip,
       'config',
       { target: { ip: serverIp, port }, on, off, intervalMs, ...(name ? { name } : {}) },
-      { token: tokenSetting?.value ?? '' },
     )
     return NextResponse.json({ ok: true, id: ack.id, target: { ip: serverIp, port } })
   } catch (error) {

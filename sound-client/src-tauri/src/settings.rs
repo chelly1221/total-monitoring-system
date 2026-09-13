@@ -24,7 +24,6 @@ pub struct Settings {
     pub threshold: f32,
     pub silence_ms: u64,
     pub discovery_port: u16,
-    pub token: String,
     pub unmute_minutes: u32,
     pub autostart: bool,
 }
@@ -41,7 +40,6 @@ impl Default for Settings {
             threshold: 0.01,
             silence_ms: 3000,
             discovery_port: 7790,
-            token: String::new(),
             unmute_minutes: 10,
             autostart: true,
         }
@@ -123,12 +121,10 @@ pub fn settings_path() -> PathBuf {
 /// Load settings, generating the stable client id on first run and persisting it.
 pub fn load() -> Settings {
     let path = settings_path();
-    let mut settings = std::fs::read_to_string(&path)
+    let (mut settings, mut dirty) = std::fs::read_to_string(&path)
         .ok()
-        // Notepad saves UTF-8 with a BOM; serde_json rejects it, so strip it first.
-        .and_then(|s| serde_json::from_str::<Settings>(s.trim_start_matches('﻿')).ok())
+        .and_then(|s| decode_settings(&s))
         .unwrap_or_default();
-    let mut dirty = false;
     if uuid::Uuid::parse_str(&settings.id).is_err() {
         settings.id = uuid::Uuid::new_v4().to_string();
         dirty = true;
@@ -178,4 +174,33 @@ pub fn save(settings: &Settings) -> anyhow::Result<()> {
     }
     std::fs::rename(&tmp, &path)?;
     Ok(())
+}
+
+fn decode_settings(contents: &str) -> Option<(Settings, bool)> {
+    // Preserve existing settings while dropping the retired token on the next write.
+    let value: serde_json::Value =
+        serde_json::from_str(contents.trim_start_matches('\u{feff}')).ok()?;
+    let retired_token = value.get("token").is_some();
+    serde_json::from_value(value)
+        .ok()
+        .map(|settings| (settings, retired_token))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_token_is_removed_without_resetting_client_identity_or_target() {
+        let (settings, dirty) = decode_settings(r#"{"id":"client-id","name":"test PC","token":"old-value","target":{"ip":"127.0.0.1","port":6100},"threshold":0.025}"#).unwrap();
+        assert!(dirty);
+        assert_eq!(settings.id, "client-id");
+        assert_eq!(settings.name, "test PC");
+        assert_eq!(settings.target.as_ref().unwrap().port, 6100);
+        assert_eq!(settings.threshold, 0.025);
+        let encoded = serde_json::to_value(&settings).unwrap();
+        assert!(encoded.get("token").is_none());
+        let (_, dirty_again) = decode_settings(&encoded.to_string()).unwrap();
+        assert!(!dirty_again);
+    }
 }

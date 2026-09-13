@@ -21,7 +21,10 @@ export const prisma =
 // Match the worker's SQLite pragmas so the two processes share the file without
 // blocking each other: WAL enables concurrent reader/writer, busy_timeout makes a
 // contended query wait instead of throwing SQLITE_BUSY. Run once per process.
-export const prismaReady = globalForPrisma.prismaReady ?? applySqlitePragmas(prisma)
+export const prismaReady = globalForPrisma.prismaReady ?? applySqlitePragmas(prisma).then(async () => {
+  // Retire the shared client token from existing installations.
+  await prisma.setting.deleteMany({ where: { key: 'clientToken' } })
+})
 void prismaReady.catch(error => console.error('[db] SQLite initialization failed:', error))
 
 if (process.env.NODE_ENV !== 'production') {

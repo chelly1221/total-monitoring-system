@@ -3,17 +3,14 @@
 //! `identify` / `config` commands replying with `ack`.
 
 use crate::settings::Target;
-use crate::state::{local_ip_toward, mac_for_local_ip, now_sec, AppState, VERSION};
-use hmac::{Hmac, Mac};
+use crate::state::{local_ip_toward, mac_for_local_ip, AppState, VERSION};
 use serde_json::{json, Value};
-use sha2::Sha256;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tauri::AppHandle;
 use tokio::net::UdpSocket;
 
 const MAX_DATAGRAM: usize = 4096;
-const TS_TOLERANCE_SEC: i64 = 60;
 
 fn set_status(state: &AppState, text: String) {
     let mut g = state.lock();
@@ -79,15 +76,10 @@ async fn handle(app: &AppHandle, state: &AppState, sock: &UdpSocket, data: &[u8]
             send_json(sock, &reply, src).await;
         }
         "identify" | "config" => {
-            let result = match verify(state, t, &nonce, &msg) {
-                Err(e) => Err(e),
-                Ok(()) => {
-                    if t == "identify" {
-                        handle_identify(app, &msg)
-                    } else {
-                        handle_config(app, state, &msg)
-                    }
-                }
+            let result = if t == "identify" {
+                handle_identify(app, &msg)
+            } else {
+                handle_config(app, state, &msg)
             };
             let (ok, error) = match result {
                 Ok(()) => (true, String::new()),
@@ -137,31 +129,6 @@ fn build_here(state: &AppState, nonce: &str, src: SocketAddr) -> Value {
     })
 }
 
-/// Token rules: empty token accepts everything; otherwise require fresh `ts` and a valid `sig`.
-fn verify(state: &AppState, t: &str, nonce: &str, msg: &Value) -> Result<(), String> {
-    let token = state.lock().settings.token.clone();
-    if token.is_empty() {
-        return Ok(());
-    }
-    let ts = msg
-        .get("ts")
-        .and_then(Value::as_i64)
-        .ok_or_else(|| "missing ts".to_string())?;
-    if (now_sec() - ts).abs() > TS_TOLERANCE_SEC {
-        return Err("stale timestamp".into());
-    }
-    let sig = msg
-        .get("sig")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "missing sig".to_string())?;
-    let sig_bytes = hex::decode(sig).map_err(|_| "bad signature".to_string())?;
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(token.as_bytes()).map_err(|_| "bad token".to_string())?;
-    mac.update(format!("{t}|{nonce}|{ts}").as_bytes());
-    mac.verify_slice(&sig_bytes)
-        .map_err(|_| "bad signature".to_string())
-}
-
 fn handle_identify(app: &AppHandle, msg: &Value) -> Result<(), String> {
     let sec = msg
         .get("sec")
@@ -173,8 +140,14 @@ fn handle_identify(app: &AppHandle, msg: &Value) -> Result<(), String> {
 }
 
 fn handle_config(app: &AppHandle, state: &AppState, msg: &Value) -> Result<(), String> {
-    let mut s = state.settings();
+    let settings = parse_config(state.settings(), msg)?;
+    crate::apply_settings(app, settings).map(|_| ())
+}
 
+fn parse_config(
+    mut s: crate::settings::Settings,
+    msg: &Value,
+) -> Result<crate::settings::Settings, String> {
     match msg.get("target") {
         None => return Err("missing target".into()),
         Some(Value::Null) => s.target = None,
@@ -222,5 +195,44 @@ fn handle_config(app: &AppHandle, state: &AppState, msg: &Value) -> Result<(), S
         }
     }
     s.validate()?;
-    crate::apply_settings(app, s).map(|_| ())
+    Ok(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+
+    #[test]
+    fn unsigned_config_updates_target_and_keeps_local_audio_settings() {
+        let original = Settings {
+            name: "old PC".into(),
+            threshold: 0.025,
+            ..Settings::default()
+        };
+        let msg = json!({"target":{"ip":"127.0.0.1","port":6100},"name":"new PC","on":"ON","off":"OFF","intervalMs":1000});
+        let updated = parse_config(original, &msg).unwrap();
+        assert_eq!(updated.target.unwrap().port, 6100);
+        assert_eq!(updated.name, "new PC");
+        assert_eq!(updated.on, "ON");
+        assert_eq!(updated.off, "OFF");
+        assert_eq!(updated.interval_ms, 1000);
+        assert_eq!(updated.threshold, 0.025);
+    }
+
+    #[test]
+    fn invalid_unsigned_payloads_are_still_rejected() {
+        for msg in [
+            json!({}),
+            json!({"target":{"ip":"bad","port":6100}}),
+            json!({"target":{"ip":"127.0.0.1","port":0}}),
+            json!({"target":null,"on":""}),
+        ] {
+            assert!(parse_config(Settings::default(), &msg).is_err());
+        }
+        assert!(parse_config(Settings::default(), &json!({"target":null}))
+            .unwrap()
+            .target
+            .is_none());
+    }
 }

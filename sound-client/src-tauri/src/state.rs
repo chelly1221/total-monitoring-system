@@ -127,13 +127,6 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn now_sec() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
 /// Local IPv4 the OS would use to reach `remote` (UDP connect trick, no packets sent).
 pub fn local_ip_toward(remote: IpAddr) -> Option<IpAddr> {
     let sock = UdpSocket::bind("0.0.0.0:0").ok()?;

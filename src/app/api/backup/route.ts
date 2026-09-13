@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const [systems, settings, sirens, alarmLogs] = await prisma.$transaction([
       prisma.system.findMany({ include: { metrics: true } }),
-      prisma.setting.findMany(),
+      prisma.setting.findMany({ where: { key: { not: 'clientToken' } } }),
       prisma.siren.findMany(),
       prisma.alarmLog.findMany({ orderBy: { createdAt: 'desc' } }),
     ])
@@ -76,6 +76,8 @@ export async function POST(request: Request) {
 
       if (data.settings?.length) {
         for (const setting of data.settings) {
+          // Old backups must not restore the retired client token.
+          if (setting.key === 'clientToken') continue
           await tx.setting.create({
             data: {
               id: setting.id,

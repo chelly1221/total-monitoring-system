@@ -323,7 +323,6 @@ fn save_settings(
     }
     s.on = s.on.trim().to_string();
     s.off = s.off.trim().to_string();
-    s.token = s.token.trim().to_string();
     if let Some(t) = s.target.as_mut() {
         t.ip = t.ip.trim().to_string();
     }
