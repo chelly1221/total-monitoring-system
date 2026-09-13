@@ -8,18 +8,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { DownloadInfo } from '@/lib/downloads'
-
-function formatSize(bytes: number | null): string {
-  if (bytes === null) return ''
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${bytes} B`
-}
 
 /**
  * Header 다운로드 menu: lists the client programs the server can hand out.
@@ -78,51 +69,41 @@ export function DownloadMenu() {
           <Download className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel className="flex items-center gap-2">
-          클라이언트 프로그램
-          {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {error && <div className="px-2 py-1.5 text-xs text-destructive">{error}</div>}
+      <DropdownMenuContent align="end" className="w-max min-w-[320px] max-w-[calc(100vw-24px)] rounded-[6px] p-[4px]" style={{ fontFamily: 'var(--font-pretendard), sans-serif' }}>
+        {loading && !items && <div role="status" className="px-[12px] py-[10px] text-[15px] text-muted-foreground">목록을 불러오는 중...</div>}
+        {error && <div role="alert" className="px-[12px] py-[10px] text-[15px] text-destructive">{error}</div>}
         {items?.map((item) => {
+          const rowClassName = 'flex min-w-0 items-center gap-[12px] whitespace-nowrap rounded-[4px] px-[12px] py-[10px] text-[17px] leading-[1.4]'
+          const body = (
+            <>
+              <span className="truncate font-medium">{item.name}</span>
+              {item.version && <span className="ml-auto shrink-0 text-[15px] tabular-nums text-muted-foreground">v{item.version}</span>}
+              {saving === item.id && <Loader2 className="size-[15px] shrink-0 animate-spin text-muted-foreground" />}
+            </>
+          )
           if (!item.available) {
             return (
-              <DropdownMenuItem key={item.id} disabled className="flex flex-col items-start gap-0.5">
-                <span className="font-medium">{item.name}</span>
-                <span className="text-xs">파일이 서버에 없습니다 ({item.file})</span>
+              <DropdownMenuItem key={item.id} disabled className={rowClassName} aria-label={`${item.name} ${item.version ? `v${item.version} ` : ''}(파일 없음)`}>
+                {body}
               </DropdownMenuItem>
             )
           }
-          const body = (
-            <>
-              <span className="font-medium flex items-center gap-1">
-                {item.name}
-                {item.version && <span className="text-xs text-muted-foreground">v{item.version}</span>}
-                {saving === item.id && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-              </span>
-              <span className="text-xs text-muted-foreground">{item.description}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {item.file}
-                {item.size !== null && <> · {formatSize(item.size)}</>}
-              </span>
-            </>
-          )
           return isTauri ? (
             <DropdownMenuItem
               key={item.id}
-              className="flex flex-col items-start gap-0.5"
+              className={rowClassName}
+              title={item.name}
               disabled={saving !== null}
               onSelect={() => void saveInApp(item)}
             >
               {body}
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem key={item.id} asChild>
+            <DropdownMenuItem key={item.id} asChild className={rowClassName}>
               <a
                 href={`/api/downloads/${item.id}`}
                 download={item.file}
-                className="flex flex-col items-start gap-0.5"
+                title={item.name}
                 onClick={() => toast.success(`${item.name} 다운로드를 시작했습니다`)}
               >
                 {body}
@@ -131,14 +112,8 @@ export function DownloadMenu() {
           )
         })}
         {items && items.length === 0 && (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">등록된 프로그램이 없습니다</div>
+          <div className="px-[12px] py-[10px] text-[15px] text-muted-foreground">등록된 프로그램이 없습니다</div>
         )}
-        <DropdownMenuSeparator />
-        <div className="px-2 py-1 text-[10px] text-muted-foreground">
-          {isTauri
-            ? '저장 위치를 고르는 창이 열립니다. 저장한 파일을 시설 PC로 옮겨 압축을 풀고 실행하면 됩니다.'
-            : '시설 PC의 브라우저에서 이 화면을 열어 내려받으면 됩니다.'}
-        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )
