@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { DoorClosed, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -79,15 +78,12 @@ export function GateSettingsCard({
   }
 
   return (
-    <Card className="py-4">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <DoorClosed className="h-5 w-5" />
-          <CardTitle>게이트 제어 설정</CardTitle>
-        </div>
-        <CardDescription>게이트 열림 명령 전송 설정</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="settings-panel">
+      <header className="settings-panel-header">
+        <h2>게이트 연결</h2>
+        <p>게이트 열림 명령을 보낼 장비 주소입니다.</p>
+      </header>
+      <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="gate-ip">IP 주소</Label>
@@ -124,17 +120,17 @@ export function GateSettingsCard({
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex justify-end gap-3">
           <Button onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            저장
+            연결 설정 저장
           </Button>
           <Button variant="outline" onClick={handleTest} disabled={testing}>
             {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            테스트
+            게이트 열림 테스트
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

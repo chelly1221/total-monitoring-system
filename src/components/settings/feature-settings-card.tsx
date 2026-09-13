@@ -1,9 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ToggleLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 
@@ -42,50 +40,47 @@ export function FeatureSettingsCard({
   }
 
   return (
-    <Card className="flex flex-1 flex-col py-4">
-      <CardHeader className="shrink-0">
-        <div className="flex items-center gap-2">
-          <ToggleLeft className="h-5 w-5" />
-          <CardTitle>기능 표시 설정</CardTitle>
-        </div>
-        <CardDescription>탭·버튼 표시 여부와 뇌전감시 ON/OFF를 설정합니다</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col justify-center space-y-4">
+    <section className="settings-panel">
+      <header className="settings-panel-header flex items-start justify-between gap-4">
+        <div><h2>기능 표시</h2><p>사용할 감시 화면과 제어 버튼을 선택합니다.</p></div>
+        <span className="whitespace-nowrap text-[18px] text-muted-foreground">변경 즉시 저장</span>
+      </header>
+      <div className="settings-feature-rows">
         <div className="flex items-center justify-between">
           <Label htmlFor="temperature-toggle" className="cursor-pointer">온습도 탭</Label>
-          <Switch
+          <div className="flex items-center gap-3"><span className="settings-toggle-state" data-enabled={temperatureEnabled}>{temperatureEnabled ? '켜짐' : '꺼짐'}</span><Switch
             id="temperature-toggle"
             checked={temperatureEnabled}
             onCheckedChange={(v) => handleToggle('temperatureEnabled', v, setTemperatureEnabled)}
-          />
+          /></div>
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="ups-toggle" className="cursor-pointer">UPS 탭</Label>
-          <Switch
+          <div className="flex items-center gap-3"><span className="settings-toggle-state" data-enabled={upsEnabled}>{upsEnabled ? '켜짐' : '꺼짐'}</span><Switch
             id="ups-toggle"
             checked={upsEnabled}
             onCheckedChange={(v) => handleToggle('upsEnabled', v, setUpsEnabled)}
-          />
+          /></div>
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="gate-toggle" className="cursor-pointer">게이트 열기 버튼</Label>
-          <Switch
+          <div className="flex items-center gap-3"><span className="settings-toggle-state" data-enabled={gateEnabled}>{gateEnabled ? '켜짐' : '꺼짐'}</span><Switch
             id="gate-toggle"
             checked={gateEnabled}
             onCheckedChange={(v) => handleToggle('gateEnabled', v, setGateEnabled)}
-          />
+          /></div>
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="wing15-toggle" className="cursor-pointer">
             뇌전감시 (김포공항 5km)
           </Label>
-          <Switch
+          <div className="flex items-center gap-3"><span className="settings-toggle-state" data-enabled={wing15Enabled}>{wing15Enabled ? '켜짐' : '꺼짐'}</span><Switch
             id="wing15-toggle"
             checked={wing15Enabled}
             onCheckedChange={(v) => handleToggle('wing15Enabled', v, setWing15Enabled)}
-          />
+          /></div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

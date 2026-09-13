@@ -2,9 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, Loader2, Pencil, Plus, Trash2, Volume2 } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2, Volume2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 
@@ -76,93 +75,92 @@ export function SirenSettingsCard({ initialSirens }: SirenSettingsCardProps) {
   }
 
   return (
-    <Card className="flex flex-col py-4">
-      <CardHeader className="shrink-0">
+    <section className="settings-panel">
+      <header className="settings-panel-header">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            <CardTitle>알람 사이렌 장비 관리</CardTitle>
-          </div>
-          <Link href="/settings/sirens/new">
-            <Button size="sm">
+          <h2>알람 사이렌 <span className="text-[20px] font-normal text-muted-foreground">{sirens.length}대</span></h2>
+            <Button size="sm" asChild><Link href="/settings/sirens/new">
               <Plus className="mr-1 h-4 w-4" />
               장비 추가
-            </Button>
-          </Link>
+            </Link></Button>
         </div>
-        <CardDescription>알람 발생 시 외부 사이렌 장비에 신호를 전송합니다</CardDescription>
-      </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col">
+        <p>알람 발생 시 신호를 전송할 외부 장비입니다.</p>
+      </header>
+      <div>
         {sirens.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            등록된 사이렌 장비가 없습니다
-          </p>
+          <div className="border-y border-border py-10 text-center">
+            <p className="text-[26px] font-semibold">등록된 사이렌이 없습니다</p>
+            <p className="mt-3 text-[22px] text-muted-foreground">외부 사이렌을 사용하려면 장비를 추가하세요.</p>
+          </div>
         ) : (
-          <div className="space-y-1.5 overflow-y-auto">
+          <div>
             {sirens.map((siren) => (
               <div
                 key={siren.id}
-                className="flex items-center justify-between rounded-lg border border-border px-4 py-2"
+                className="settings-siren-row"
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <Switch
+                    aria-label={`${siren.location} 사용`}
                     checked={siren.isEnabled}
                     onCheckedChange={(checked) => handleToggle(siren.id, checked)}
                   />
+                  <span className="settings-toggle-state" data-enabled={siren.isEnabled}>{siren.isEnabled ? '켜짐' : '꺼짐'}</span>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{siren.location}</span>
-                      <span className="text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-1">
+                      <span className="break-words text-[26px] font-semibold">{siren.location}</span>
+                      <span className="text-[20px] text-muted-foreground">
                         {siren.ip}:{siren.port} ({siren.protocol.toUpperCase()})
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="mt-2 break-all text-[18px] text-muted-foreground">
                       작동: {siren.messageOn}{siren.messageOff ? ` / 중지: ${siren.messageOff}` : ''}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-2">
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleTest(siren.id)}
                     disabled={testingId === siren.id}
-                    title="테스트"
+                    aria-label={`${siren.location} 테스트`}
                   >
                     {testingId === siren.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Volume2 className="h-4 w-4" />
                     )}
+                    테스트
                   </Button>
-                  <Link href={`/settings/sirens/${siren.id}/edit`}>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      title="편집"
-                    >
+                      asChild
+                    ><Link href={`/settings/sirens/${siren.id}/edit`} aria-label={`${siren.location} 편집`}>
                       <Pencil className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                      편집
+                    </Link></Button>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleDelete(siren.id)}
                     disabled={deletingId === siren.id}
-                    title="삭제"
+                    aria-label={`${siren.location} 삭제`}
                   >
                     {deletingId === siren.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Trash2 className="h-4 w-4 text-destructive" />
                     )}
+                    삭제
                   </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

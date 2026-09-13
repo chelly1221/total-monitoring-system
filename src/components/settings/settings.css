@@ -1,0 +1,39 @@
+.settings-focus .settings-panel {
+  padding: 8px 20px 24px;
+  color: var(--foreground);
+}
+
+.settings-focus .settings-panel-header { margin-bottom: 32px; }
+.settings-focus .settings-panel-header h2 { font-size: 34px; font-weight: 700; line-height: 1.3; }
+.settings-focus .settings-panel-header p { margin-top: 10px; font-size: 22px; line-height: 1.5; color: var(--muted-foreground); }
+.settings-focus .settings-panel label { font-size: 24px; line-height: 1.4; }
+.settings-focus .settings-panel input,
+.settings-focus .settings-panel select,
+.settings-focus .settings-panel [data-slot="select-trigger"] {
+  min-height: 56px;
+  border-color: #747474;
+  background: #111;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-focus .settings-panel [data-slot="button"] { min-height: 50px; font-size: 22px; }
+.settings-focus .settings-feature-rows > div { min-height: 88px; border-bottom: 1px solid var(--border); gap: 20px; }
+.settings-focus .settings-feature-rows label { font-size: 26px; }
+.settings-focus .settings-toggle-state { color: var(--muted-foreground); font-size: 21px; white-space: nowrap; }
+.settings-focus .settings-toggle-state[data-enabled="true"] { color: #a0e7b5; }
+.settings-focus .settings-siren-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; padding: 24px 0; border-bottom: 1px solid var(--border); }
+.settings-focus .settings-siren-row [data-slot="button"] { font-size: 19px; min-height: 46px; }
+.settings-focus .settings-siren-row [data-slot="button"] svg { width: 20px; height: 20px; }
+
+@media (max-width: 1400px) {
+  .settings-focus [role="tablist"] { width: 240px; }
+  .settings-focus .settings-panel { padding-inline: 0; }
+  .settings-focus .settings-siren-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
+
+@media (max-width: 900px) {
+  .settings-focus [role="tablist"] { width: 180px; }
+  .settings-focus [role="tab"] { padding: 12px; }
+  .settings-focus [role="tab"] span:first-child { font-size: 21px; }
+  .settings-focus [role="tab"] span:last-child { font-size: 16px; }
+}

@@ -3,12 +3,12 @@ import { GateSettingsCard } from '@/components/settings/gate-settings-card'
 import { SirenSettingsCard } from '@/components/settings/siren-settings-card'
 import { FeatureSettingsCard } from '@/components/settings/feature-settings-card'
 import { DataManagementCard } from '@/components/settings/data-management-card'
-import { SoundClientSettingsCard } from '@/components/settings/sound-client-settings-card'
+import { SettingsWorkspace } from '@/components/settings/settings-workspace'
 
 export const dynamic = 'force-dynamic'
 
 async function getSettings() {
-  const settings = await prisma.setting.findMany()
+  const settings = await prisma.setting.findMany({ where: { key: { not: 'clientToken' } } })
   return settings.reduce((acc, setting) => {
     acc[setting.key] = setting.value
     return acc
@@ -23,31 +23,24 @@ export default async function SettingsPage() {
   const [settings, sirens] = await Promise.all([getSettings(), getSirens()])
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="shrink-0">
-        <h1 className="text-2xl font-bold">설정</h1>
-        <p className="text-muted-foreground">시스템 설정 관리</p>
-      </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
-        <div className="flex flex-col gap-4">
-          <GateSettingsCard
+    <SettingsWorkspace
+      gate={
+        <GateSettingsCard
             initialIp={settings.gateIp}
             initialPort={settings.gatePort}
             initialProtocol={settings.gateProtocol}
-          />
-          <FeatureSettingsCard
+        />
+      }
+      features={
+        <FeatureSettingsCard
             initialTemperatureEnabled={settings.temperatureEnabled !== 'false'}
             initialUpsEnabled={settings.upsEnabled !== 'false'}
             initialGateEnabled={settings.gateEnabled !== 'false'}
             initialWing15Enabled={settings.wing15Enabled !== 'false'}
-          />
-          <DataManagementCard initialHistoryMaxMb={settings.historyMaxSizeMb} />
-          <SoundClientSettingsCard initialToken={settings.clientToken} />
-        </div>
-
-        <SirenSettingsCard initialSirens={sirens} />
-      </div>
-    </div>
+        />
+      }
+      data={<DataManagementCard initialHistoryMaxMb={settings.historyMaxSizeMb} />}
+      sirens={<SirenSettingsCard initialSirens={sirens} />}
+    />
   )
 }

@@ -175,14 +175,14 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 2026-09-12 추가. 별도 Tauri 앱 `sound-client/`(같은 저장소, 독립 빌드: `cd sound-client && npm run build && cargo tauri build --no-bundle && npm run package`)(TMS SoundSense: 시스템 오디오 감지 + 자동 뮤트 해제)를 시설로 등록할 때 서버가 같은 서브넷의 PC를 자동 탐지한다. 와이어 계약은 **`docs/sound-client-protocol.md`** 하나로 관리하며 서버·클라이언트 양쪽이 이 파일을 따른다.
 
 - **프로토콜**: 서버 주도 온디맨드 UDP. 서버가 인터페이스별 directed broadcast로 `probe`를 보내고(검색당 최대 2회, 약 2초 수집), 클라이언트(UDP 7790)가 유니캐스트 `here`로 응답. 같은 소켓 채널로 `identify`(PC 확인)와 `config`(서버 주소·페이로드 푸시)를 보내고 `ack`를 받는다. 클라이언트는 절대 브로드캐스트하거나 주기 광고하지 않는다. mDNS는 Windows 내장 응답기와의 5353 충돌 때문에 쓰지 않는다.
-- **`src/lib/client-discovery.ts`** — `discoverClients`, `sendClientCommand`, 순수 헬퍼(`computeBroadcast`, `parseHereReply`, `signCommand`, `suggestSoundClientPort`). 서명은 `HMAC-SHA256(clientToken, "t|nonce|ts")`, Setting `clientToken`이 비어 있으면 무서명. 자동 배정 포트 범위 6100~6199(기본 포트 테이블·등록 시설 제외).
+- **`src/lib/client-discovery.ts`** — `discoverClients`, `sendClientCommand`, 순수 헬퍼(`computeBroadcast`, `parseHereReply`, `suggestSoundClientPort`). 2026-09-13부터 서버·클라이언트 모두 토큰과 서명 없이 탐지·확인·설정 전송을 수행한다. SoundSense 3.1.0은 기존 설정 파일의 토큰을 자동 제거한다. 자동 배정 포트 범위 6100~6199(기본 포트 테이블·등록 시설 제외).
 - **API**: `GET /api/discovery/clients`(스캔 + 등록 여부 + 추천 포트), `POST /api/discovery/identify {ip}`, `POST /api/discovery/provision {ip, port, on, off, name?}`. 응답 없음은 504, 클라이언트 거부는 409.
 - **UI**: 장비상태(equipment) 시설 추가/수정의 기본정보 바 아래 `SoundClientSection`(등록 방식 수동/자동, 연결된 PC, PC 확인, 다른 PC 선택, 연결 해제) + `ClientDiscoveryPanel`(탐지 목록, 행별 PC 확인·선택). PC 선택 시 시설명=클라이언트 장비명(없으면 PC 이름), UDP, UTF-8, 포트 자동, 패턴 `SILENCE`/`SOUND`. 저장 성공 후 `provision`을 보내고 성공하면 `config.client.provisionedAt`을 PATCH한다. 전송 실패는 토스트 경고만 하고 시설 저장은 유지한다.
 - **저장 위치**: 스키마 변경 없음. `System.config` JSON의 `client: { id, name, host, ip, mac, ver, provisionedAt }`. `validateSystemBody`가 `client.id`/`client.ip`를 검증한다.
 - **데이터 경로**: 클라이언트가 상태 변화 시 + 5초 하트비트로 `SOUND`/`SILENCE`를 보내므로 기존 오프라인 감지가 그대로 동작한다. 장비(equipment) 시설의 심각 판정은 **기본 1회**(첫 심각 메시지에 바로 알람)다. 2026-09-12까지 워커가 일괄로 "3회 연속"을 요구해 5초 하트비트 클라이언트는 약 10초 늦었는데, 사용자 확인 결과 1레이더 LCMS만 아날로그 탐지장비이고 나머지는 전부 프로그램식 송신이라 일괄 필터는 부적절했다. 횟수는 시설별 `config.criticalConfirmations`(1~10, 장비 추가/수정 폼의 "심각 판정 연속 횟수")로만 올리고, 비어 있으면 `src/lib/equipment-alarm.ts`의 `DEFAULT_CRITICAL_CONFIRMATIONS`(1)를 쓴다. 1레이더 LCMS는 폼에서 3으로 지정한다. UPS/센서 metric 경로의 `CRITICAL_THRESHOLD`(3, `db-updater.ts`)는 스파이크 방지용으로 별개다. 짧은 소음까지 알람이 되는 것이 문제면 클라이언트 쪽에 최소 지속 시간(attack) 설정을 넣는다.
-- **설정**: 설정 > "PC 클라이언트 (SoundSense)" 카드에서 `clientToken` 편집.
+- **설정 화면**: `SettingsWorkspace`에서 기능 표시·게이트 연결·알람 사이렌·데이터 관리 네 항목을 선택해 한 항목씩 표시한다. 패널을 숨기는 방식으로 전환 중 입력값을 유지한다. PC 클라이언트 토큰 설정 항목은 제거했으며, 서버는 시작 시 기존 키를 삭제하고 API·백업 복원으로 다시 노출·저장하지 않는다.
 - **방화벽**: 서버는 새 인바운드 규칙이 필요 없다(응답은 상태 추적 UDP로 허용). 클라이언트는 UDP 7790 인바운드를 스스로 등록한다.
-- **테스트**: `tests/discovery.test.ts`가 루프백 가짜 클라이언트로 탐지·서명·거부·타임아웃을 검증한다.
+- **테스트**: `tests/discovery.test.ts`가 루프백 가짜 클라이언트로 탐지·토큰 없는 확인/설정 전송·거부·타임아웃을 검증한다. Rust 테스트는 기존 설정의 토큰 제거와 무서명 설정 전송의 입력값 검증을 확인한다.
 
 ## 클라이언트 프로그램 다운로드 메뉴
 

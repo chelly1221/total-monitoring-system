@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -83,11 +82,12 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>DB 관리</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <section className="settings-panel">
+      <header className="settings-panel-header">
+        <h2>데이터 관리</h2>
+        <p>이력 보관 용량과 설정 백업을 관리합니다.</p>
+      </header>
+      <div>
         <div className="mb-3 flex items-center gap-2 text-sm">
           <label htmlFor="history-size-limit">이력 DB 용량 상한</label>
           <select id="history-size-limit" className="rounded border border-input bg-background px-2 py-1" value={historyLimit} onChange={event => setHistoryLimit(event.target.value)} disabled={savingLimit}>
@@ -104,9 +104,10 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
               toast.success('이력 DB 용량 상한을 저장했습니다')
             } catch { toast.error('용량 상한 저장에 실패했습니다') }
             finally { setSavingLimit(false) }
-          }}>{savingLimit ? '저장 중...' : '저장'}</Button>
+          }}>{savingLimit ? '저장 중...' : '용량 저장'}</Button>
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
+        <p className="mb-6 text-[20px] text-muted-foreground">90%부터 오래된 이력을 정리합니다. 장비 설정과 알람은 유지됩니다.</p>
+        <h3 className="mb-4 border-t border-border pt-6 text-[24px] font-semibold">설정 백업 및 복원</h3>
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -116,7 +117,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
             disabled={isExporting}
           >
             <Download className="h-4 w-4 mr-1" />
-            {isExporting ? '내보내는 중...' : '내보내기'}
+            {isExporting ? '내보내는 중...' : '백업 내보내기'}
           </Button>
           <div className="flex-1">
             <input
@@ -137,13 +138,16 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
               disabled={isImporting}
             >
               <Upload className="h-4 w-4 mr-1" />
-              {isImporting ? '복원 중...' : '가져오기'}
+              {isImporting ? '복원 중...' : '백업 가져오기'}
             </Button>
           </div>
+        </div>
+        <div className="mt-6 flex items-center justify-between gap-4 border-t border-border pt-5">
+          <p className="text-[20px] text-muted-foreground">초기화하면 등록 장비·설정·알람·이력이 삭제됩니다.</p>
           <Button
             variant={confirmReset ? 'destructive' : 'outline'}
             size="sm"
-            className="flex-1"
+            className={confirmReset ? 'shrink-0' : 'shrink-0 text-destructive'}
             onClick={handleReset}
             disabled={isResetting}
           >
@@ -155,7 +159,7 @@ export function DataManagementCard({ initialHistoryMaxMb = '5120' }: { initialHi
                 : '초기화'}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
