@@ -1,6 +1,6 @@
 [package]
 name = "tms-ping-monitor"
-version = "1.0.1"
+version = "1.0.2"
 description = "네트워크 ping 감시 - TMS network monitoring client"
 authors = ["chelly1221"]
 edition = "2021"
