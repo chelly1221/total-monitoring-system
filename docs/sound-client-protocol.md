@@ -81,6 +81,53 @@ applies them immediately, and replies with `ack`.
 `nonce` echoes the command. `ok: false` with `error` when the command was
 rejected (invalid payload).
 
+### `transfer` (server -> client ip:7790, SoundSense 3.2.0 and later)
+
+```json
+{
+  "v": 1, "t": "transfer", "nonce": "...", "ts": 1757600000,
+  "job": "5f1c0d2e9a7b4c31",                                       // server job id
+  "url": "http://192.168.0.10:7777/api/transfers/files/0123456789abcdef",
+  "report": "http://192.168.0.10:7777/api/transfers/5f1c0d2e9a7b4c31/report",
+  "name": "ahnlabengine_setup260819.exe",  // file name to save under (base name only)
+  "size": 303182776,                       // exact byte count
+  "sha256": "9f2c...",                     // lowercase hex digest of the file
+  "run": true,                             // run the file after download (exe/msi only)
+  "args": "/S",                            // command line for `run` ("" = none)
+  "elevate": true                          // run with the `runas` verb (UAC prompt)
+}
+```
+
+The server never pushes bytes over UDP. It stages the file and the client
+**pulls** it over plain HTTP from `url` (this server's web port, reachable from
+every PC that can open the dashboard). The client validates the payload (http
+URL, safe base name, size 1 byte – 2 GB, 64 hex sha256, single-line `args` up
+to 200 chars, `run` only for `.exe`/`.msi`) and replies with `ack` at once:
+`ok: true` means the download started in the background, `ok: false` with
+`error` when the payload is invalid or another transfer is still running.
+
+The client saves the file as `received/<name>` next to its settings file
+(`received/<name>.part` while downloading; the two newest received files are
+kept), verifies `size` and `sha256`, and when `run` is set launches the file
+through `ShellExecuteEx` (`msiexec /i <file> <args>` for msi; verb `runas`
+when `elevate`, so a `requireAdministrator` installer such as the AhnLab V3
+engine setup shows its UAC prompt on that PC) and waits for it to exit.
+Nothing is executed when verification fails.
+
+Progress goes back over HTTP as JSON `POST`s to `report`, at most once per
+second while downloading and on every phase change:
+
+```json
+{ "id": "6d0c0a1e-...", "phase": "downloading", "received": 1048576, "total": 303182776,
+  "message": "", "exitCode": null }
+```
+
+`phase` is one of `downloading`, `verifying`, `running`, `done`, `error`.
+`exitCode` carries the installer's exit code with the final `done` report of a
+run (null for a plain file transfer). Report failures are logged only; the
+server marks a target that stops reporting as stalled (60 s before the first
+report, 3 min while downloading, 30 min while running).
+
 ## Token-free commands (SoundSense 3.1.0 and later)
 
 All messages operate without authentication tokens or signatures. The server
@@ -109,6 +156,18 @@ periodic heartbeat is what drives the server's existing offline detection.
 Sound detection semantics (from soundsense): peak amplitude above the
 threshold (default 0.01) => `on`; `off` only after `silenceMs` (default 3000)
 of continuous silence.
+
+## File transfer / V3 auto-install (server side)
+
+The header's 파일 전송 icon opens a dialog that uploads a file from the
+operator's PC (`POST /api/transfers/files?name=` with the raw body, streamed to
+`TRANSFERS_DIR`, one staged file at a time), scans for SoundSense clients and
+sends `transfer` to the selected ones (`POST /api/transfers`). Only sound
+clients of version 3.2.0 or later are selectable; ping clients ignore the
+command. Jobs are kept in memory (`GET /api/transfers`, `GET /api/transfers/<id>`)
+and reports arrive at `POST /api/transfers/<id>/report`. Selecting an
+`.exe`/`.msi` turns on 자동 실행 with `/S` (NSIS silent) or `/qn` (msi) by
+default, which is what the AhnLab V3 engine setup needs.
 
 ## Server-side storage
 

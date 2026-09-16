@@ -195,6 +195,15 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - 빌드: `cd ping-client && npm ci && npm run build && npm test && npm run tauri:build && npm run smoke && npm run package`. `smoke`는 실제 EXE와 격리 설정으로 UDP 연결·재시작·장애를 검증하며 방화벽/자동 시작 등록을 건너뛴다. `npm run smoke:setup`은 별도 경로에 Setup 설치·재설치·EXE 실행·제거와 설정 보존을 검증한다. 두 클라이언트를 먼저 빌드한 뒤 서버의 `npm run tauri:build`를 실행하면 음성 ZIP과 Ping Setup·버전이 포함된다.
 - Setup은 사용자 요청에 따라 폐쇄망용 한 종류만 생성한다. Npcap 공식 설치 파일과 WebView2를 내장하며 설치 PC에서 다운로드하지 않는다. `windows/hooks.nsh`와 `install-network.ps1`로 방화벽·Npcap을 준비한다. 빌드 시 해시·전자서명을 확인하고 설치 시 고정 해시로 오프라인 검증한다. 무료판은 조직 내 최대 5대의 내부 사용용이며 Npcap 자체 약관 마법사를 연다. OEM 빌드는 `TMS_NPCAP_OEM_INSTALLER`에 적절한 내부 사용 라이선스의 설치 파일 경로를 지정한다. 드라이버 바이너리는 Git에 넣지 않는다. `/SKIPNETWORK`는 네트워크 구성 요소가 별도로 준비된 PC와 격리 설치 검증용이다.
 
+## 파일 전송 · V3 자동설치 (헤더 아이콘)
+
+2026-09-16 추가. 헤더의 모니터 업로드 아이콘(`src/components/layout/transfer-dialog.tsx`)을 누르면 이 PC의 파일을 골라 음성탐지기(SoundSense 3.2.0+)가 실행 중인 시설 PC들로 보내고, exe/msi면 받은 뒤 자동 실행(V3 엔진 설치 파일은 NSIS `/S`로 조용히 설치)한다. 와이어 계약은 `docs/sound-client-protocol.md`의 `transfer` 절이다.
+
+- **흐름**: 대화상자에서 파일을 고르면 `POST /api/transfers/files?name=`으로 원본 바디를 스트리밍 업로드(`TRANSFERS_DIR`, 데스크톱 앱은 데이터 폴더 `transfers/`, 개발은 OS 임시 폴더; 진행 중인 작업이 쓰지 않는 이전 파일은 삭제). 이어 `POST /api/transfers {fileId, run, args, elevate, targets}`가 각 대상에 UDP `transfer` 명령을 보내고, 클라이언트가 서버의 7777 HTTP에서 파일을 **끌어간 뒤** SHA-256 검증·실행하고 `POST /api/transfers/<id>/report`로 진행률을 올린다. 대화상자는 1초마다 `GET /api/transfers/<id>`를 폴링하며, 닫았다 열면 진행 중인 최신 작업을 이어서 보여준다.
+- **코드**: 순수 규칙(`src/lib/transfer-rules.ts`: 파일명 정리, 기본 인수, 버전 판정, 보고 적용, 정체 판정)은 브라우저 번들에서도 쓰므로 Node 모듈을 import하지 않는다. 저장소·스테이징은 `src/lib/transfers.ts`(메모리 작업 목록 최대 20개, `globalThis`에 보관). 대상 phase는 `pending → sent → downloading → verifying → running → done`, 실패는 `error`/`unreachable`(ack 없음)/`rejected`(클라이언트 거부: 잘못된 페이로드·다른 전송 진행 중). 보고가 끊기면 `expireStalledTargets`가 단계별 시간(sent 60초, 다운로드 3분, 실행 30분)으로 `error` 처리한다.
+- **클라이언트**: `sound-client/src-tauri/src/transfer.rs`. `received/` 폴더(설정 파일 옆)에 `.part`로 받고 검증 후 이름 변경, 최신 3개만 보관. 실행은 `ShellExecuteExW`(`runas` 승격, msi는 `msiexec /i`)로 종료까지 대기해 종료 코드를 보고한다. 시설 PC의 UAC 확인이 켜져 있으면 그 PC에서 승인해야 하며 취소 시 "관리자 권한 요청이 취소" 오류로 보고한다. 상태 탭 칩(`chip-transfer`)에 진행률·결과를 2분간 표시. reqwest(HTTP 전용, TLS 없음)·sha2는 이미 tauri 의존 트리에 있던 크레이트다.
+- **테스트**: `tests/transfers.test.ts`(규칙, 스테이징·정리, 루프백 가짜 클라이언트로 `transfer` ack). Rust는 `transfer::tests`가 페이로드 검증을 확인한다. 실제 설치 검증은 Windows 시설 PC에서 V3 파일로 수행해야 한다.
+
 ## 클라이언트 프로그램 다운로드 메뉴
 
 2026-09-12 추가. 헤더의 다운로드 아이콘(`src/components/layout/download-menu.tsx`)을 누르면 서버가 배포하는 클라이언트 프로그램 목록이 뜬다. 메뉴는 프로그램명과 버전만 한 줄에 표시하며 설명·파일명·용량·사용 안내는 표시하지 않는다. 브라우저에서는 항목이 `GET /api/downloads/<id>` 첨부 링크이고, 데스크톱 앱 안에서는 WebView2가 링크 다운로드를 조용히 처리해 아무 반응이 없어 보이므로 대신 Rust 명령 `save_download`를 호출한다. 이 명령은 `tauri-plugin-dialog`로 Windows "다른 이름으로 저장" 창을 띄우고(기본 위치는 다운로드 폴더) 고른 경로에 `resources/downloads/<file>`을 복사한다. 취소하면 `null`을 돌려주고 토스트를 띄우지 않는다.
