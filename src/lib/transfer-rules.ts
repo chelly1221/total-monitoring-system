@@ -4,10 +4,6 @@
 /** Clients older than this ignore the `transfer` command. */
 export const MIN_TRANSFER_CLIENT_VERSION = '3.2.0'
 export const MAX_TRANSFER_FILE_BYTES = 2 * 1024 * 1024 * 1024
-/** NSIS installers (AhnLab V3 engine setup among them) install silently with /S. */
-export const DEFAULT_EXE_ARGS = '/S'
-export const DEFAULT_MSI_ARGS = '/qn'
-const MAX_ARGS_LENGTH = 200
 
 export type TargetPhase =
   | 'pending'      // command not sent yet
@@ -57,7 +53,6 @@ export interface TransferJob {
   createdAt: string
   file: StagedFileInfo
   run: boolean
-  args: string
   elevate: boolean
   targets: TransferTarget[]
 }
@@ -93,14 +88,6 @@ export function sanitizeFileName(raw: unknown): string {
   return cleaned.slice(0, 120)
 }
 
-/** Default silent-install arguments for a file, by extension; '' for anything not runnable. */
-export function defaultArgsFor(fileName: string): string {
-  const ext = extensionOf(fileName)
-  if (ext === '.exe') return DEFAULT_EXE_ARGS
-  if (ext === '.msi') return DEFAULT_MSI_ARGS
-  return ''
-}
-
 /** Files the client can execute after download. */
 export function isRunnable(fileName: string): boolean {
   const ext = extensionOf(fileName)
@@ -118,14 +105,6 @@ export function supportsTransfer(version: string): boolean {
     if (have[i] < need[i]) return false
   }
   return true
-}
-
-/** Normalise run arguments: single line, trimmed, bounded. null when unusable. */
-export function normalizeArgs(raw: unknown): string | null {
-  if (raw === undefined || raw === null) return ''
-  if (typeof raw !== 'string') return null
-  const args = raw.replace(/[\r\n\t]+/g, ' ').trim()
-  return args.length > MAX_ARGS_LENGTH ? null : args
 }
 
 export function isTargetActive(target: TransferTarget): boolean {
@@ -147,7 +126,6 @@ export function buildTransferCommand(job: TransferJob, serverIp: string, port: n
     size: job.file.size,
     sha256: job.file.sha256,
     run: job.run,
-    args: job.args,
     elevate: job.elevate,
   }
 }

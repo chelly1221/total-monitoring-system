@@ -145,7 +145,6 @@ export interface JobTargetInput {
 export interface CreateJobInput {
   file: StagedFileInfo
   run: boolean
-  args: string
   elevate: boolean
   targets: JobTargetInput[]
 }
@@ -157,7 +156,6 @@ export function createJob(input: CreateJobInput): TransferJob {
     createdAt: now,
     file: { id: input.file.id, name: input.file.name, size: input.file.size, sha256: input.file.sha256, createdAt: input.file.createdAt },
     run: input.run,
-    args: input.run ? input.args : '',
     elevate: input.run ? input.elevate : false,
     targets: input.targets.map(target => ({
       ...target,

@@ -93,7 +93,6 @@ rejected (invalid payload).
   "size": 303182776,                       // exact byte count
   "sha256": "9f2c...",                     // lowercase hex digest of the file
   "run": true,                             // run the file after download (exe/msi only)
-  "args": "/S",                            // command line for `run` ("" = none)
   "elevate": true                          // run with the `runas` verb (UAC prompt)
 }
 ```
@@ -101,18 +100,20 @@ rejected (invalid payload).
 The server never pushes bytes over UDP. It stages the file and the client
 **pulls** it over plain HTTP from `url` (this server's web port, reachable from
 every PC that can open the dashboard). The client validates the payload (http
-URL, safe base name, size 1 byte – 2 GB, 64 hex sha256, single-line `args` up
-to 200 chars, `run` only for `.exe`/`.msi`) and replies with `ack` at once:
+URL, safe base name, size 1 byte – 2 GB, 64 hex sha256, `run` only for
+`.exe`/`.msi`) and replies with `ack` at once:
 `ok: true` means the download started in the background, `ok: false` with
 `error` when the payload is invalid or another transfer is still running.
 
 The client saves the file as `received/<name>` next to its settings file
 (`received/<name>.part` while downloading; the two newest received files are
 kept), verifies `size` and `sha256`, and when `run` is set launches the file
-through `ShellExecuteEx` (`msiexec /i <file> <args>` for msi; verb `runas`
-when `elevate`, so a `requireAdministrator` installer such as the AhnLab V3
-engine setup shows its UAC prompt on that PC) and waits for it to exit.
-Nothing is executed when verification fails.
+through `ShellExecuteEx` with its window shown normally (`msiexec /i <file>`
+for msi; verb `runas` when `elevate`, so a `requireAdministrator` installer
+such as the AhnLab V3 engine setup shows its UAC prompt on that PC). The
+installer's own UI appears on the facility PC; the client waits for the
+process to exit and reports the exit code. No silent-install switches are
+passed. Nothing is executed when verification fails.
 
 Progress goes back over HTTP as JSON `POST`s to `report`, at most once per
 second while downloading and on every phase change:
@@ -166,8 +167,9 @@ sends `transfer` to the selected ones (`POST /api/transfers`). Only sound
 clients of version 3.2.0 or later are selectable; ping clients ignore the
 command. Jobs are kept in memory (`GET /api/transfers`, `GET /api/transfers/<id>`)
 and reports arrive at `POST /api/transfers/<id>/report`. Selecting an
-`.exe`/`.msi` turns on 자동 실행 with `/S` (NSIS silent) or `/qn` (msi) by
-default, which is what the AhnLab V3 engine setup needs.
+`.exe`/`.msi` turns on 자동 실행; the installer then runs visibly on each
+facility PC. Any number of PCs (up to 50 per job) can be selected at once and
+each pulls the file independently.
 
 ## Server-side storage
 

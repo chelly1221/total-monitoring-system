@@ -10,12 +10,10 @@ import { sendClientCommand } from '../src/lib/client-discovery'
 import {
   applyReport,
   buildTransferCommand,
-  defaultArgsFor,
   expireStalledTargets,
   isJobActive,
   isRunnable,
   markCommandResult,
-  normalizeArgs,
   parseReport,
   phaseLabel,
   sanitizeFileName,
@@ -30,7 +28,6 @@ function sampleJob(): TransferJob {
     createdAt: now,
     file: { id: '0123456789abcdef', name: 'ahnlabengine_setup260819.exe', size: 303182776, sha256: 'a'.repeat(64), createdAt: now },
     run: true,
-    args: '/S',
     elevate: true,
     targets: [
       { clientId: 'c1', name: '1레이더 LCMS PC', host: 'RADAR1', ip: '192.168.0.21', discoveryPort: 7790, phase: 'pending', received: 0, total: 303182776, message: '', exitCode: null, updatedAt: now },
@@ -49,17 +46,10 @@ test('file names are reduced to a safe base name', () => {
   assert.equal(sanitizeFileName('x'.repeat(200)).length, 120)
 })
 
-test('runnable files get silent-install defaults', () => {
+test('only exe and msi files can be run after delivery', () => {
   assert.ok(isRunnable('ahnlabengine_setup260819.exe'))
   assert.ok(isRunnable('Agent.MSI'))
   assert.ok(!isRunnable('notice.pdf'))
-  assert.equal(defaultArgsFor('setup.exe'), '/S')
-  assert.equal(defaultArgsFor('agent.msi'), '/qn')
-  assert.equal(defaultArgsFor('notice.pdf'), '')
-  assert.equal(normalizeArgs(undefined), '')
-  assert.equal(normalizeArgs(' /S\r\n/D=C:\\x '), '/S /D=C:\\x')
-  assert.equal(normalizeArgs('x'.repeat(201)), null)
-  assert.equal(normalizeArgs(5), null)
 })
 
 test('only clients from 3.2.0 on can receive files', () => {
@@ -79,7 +69,8 @@ test('transfer command points the client at this server and fits one datagram', 
   assert.equal(fields.name, 'ahnlabengine_setup260819.exe')
   assert.equal(fields.sha256, 'a'.repeat(64))
   assert.equal(fields.run, true)
-  assert.equal(fields.args, '/S')
+  assert.equal(fields.elevate, true)
+  assert.equal('args' in fields, false)
   const datagram = JSON.stringify({ v: 1, t: 'transfer', nonce: 'ffffffffffffffff', ts: 1757600000, ...fields })
   assert.ok(Buffer.byteLength(datagram) < 1200)
 })
@@ -161,7 +152,7 @@ test('staged uploads are hashed, kept once and served by id', async () => {
     await assert.rejects(stageFile('big.bin', Readable.from([Buffer.alloc(10)]), 5), /너무 큽니다/)
     assert.deepEqual(await readdir(dir), [path.basename(staged2.path)])
 
-    const job = createJob({ file: staged2, run: true, args: '/S', elevate: true, targets: [{ clientId: 'c1', name: 'PC', host: 'H', ip: '127.0.0.1', discoveryPort: 7790 }] })
+    const job = createJob({ file: staged2, run: true, elevate: true, targets: [{ clientId: 'c1', name: 'PC', host: 'H', ip: '127.0.0.1', discoveryPort: 7790 }] })
     assert.equal(getJob(job.id)?.targets[0].phase, 'pending')
     assert.equal(listJobs()[0].id, job.id)
     // A file referenced by an active job is kept when a newer upload arrives.

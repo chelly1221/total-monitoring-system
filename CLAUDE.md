@@ -197,11 +197,11 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## 파일 전송 · V3 자동설치 (헤더 아이콘)
 
-2026-09-16 추가. 헤더의 모니터 업로드 아이콘(`src/components/layout/transfer-dialog.tsx`)을 누르면 이 PC의 파일을 골라 음성탐지기(SoundSense 3.2.0+)가 실행 중인 시설 PC들로 보내고, exe/msi면 받은 뒤 자동 실행(V3 엔진 설치 파일은 NSIS `/S`로 조용히 설치)한다. 와이어 계약은 `docs/sound-client-protocol.md`의 `transfer` 절이다.
+2026-09-16 추가. 헤더의 모니터 업로드 아이콘(`src/components/layout/transfer-dialog.tsx`)을 누르면 이 PC의 파일을 골라 음성탐지기(SoundSense 3.2.0+)가 실행 중인 시설 PC들(한 작업당 최대 50대, 각 PC가 독립적으로 내려받음)로 보내고, exe/msi면 받은 뒤 자동 실행한다. 사용자 요청으로 실행 인수(무음 설치 `/S`) 기능은 두지 않는다. 설치 프로그램 창이 시설 PC 화면에 그대로 뜨고, 프로세스가 끝나면 종료 코드로 완료를 보고한다. 와이어 계약은 `docs/sound-client-protocol.md`의 `transfer` 절이다.
 
-- **흐름**: 대화상자에서 파일을 고르면 `POST /api/transfers/files?name=`으로 원본 바디를 스트리밍 업로드(`TRANSFERS_DIR`, 데스크톱 앱은 데이터 폴더 `transfers/`, 개발은 OS 임시 폴더; 진행 중인 작업이 쓰지 않는 이전 파일은 삭제). 이어 `POST /api/transfers {fileId, run, args, elevate, targets}`가 각 대상에 UDP `transfer` 명령을 보내고, 클라이언트가 서버의 7777 HTTP에서 파일을 **끌어간 뒤** SHA-256 검증·실행하고 `POST /api/transfers/<id>/report`로 진행률을 올린다. 대화상자는 1초마다 `GET /api/transfers/<id>`를 폴링하며, 닫았다 열면 진행 중인 최신 작업을 이어서 보여준다.
-- **코드**: 순수 규칙(`src/lib/transfer-rules.ts`: 파일명 정리, 기본 인수, 버전 판정, 보고 적용, 정체 판정)은 브라우저 번들에서도 쓰므로 Node 모듈을 import하지 않는다. 저장소·스테이징은 `src/lib/transfers.ts`(메모리 작업 목록 최대 20개, `globalThis`에 보관). 대상 phase는 `pending → sent → downloading → verifying → running → done`, 실패는 `error`/`unreachable`(ack 없음)/`rejected`(클라이언트 거부: 잘못된 페이로드·다른 전송 진행 중). 보고가 끊기면 `expireStalledTargets`가 단계별 시간(sent 60초, 다운로드 3분, 실행 30분)으로 `error` 처리한다.
-- **클라이언트**: `sound-client/src-tauri/src/transfer.rs`. `received/` 폴더(설정 파일 옆)에 `.part`로 받고 검증 후 이름 변경, 최신 3개만 보관. 실행은 `ShellExecuteExW`(`runas` 승격, msi는 `msiexec /i`)로 종료까지 대기해 종료 코드를 보고한다. 시설 PC의 UAC 확인이 켜져 있으면 그 PC에서 승인해야 하며 취소 시 "관리자 권한 요청이 취소" 오류로 보고한다. 상태 탭 칩(`chip-transfer`)에 진행률·결과를 2분간 표시. reqwest(HTTP 전용, TLS 없음)·sha2는 이미 tauri 의존 트리에 있던 크레이트다.
+- **흐름**: 대화상자에서 파일을 고르면 `POST /api/transfers/files?name=`으로 원본 바디를 스트리밍 업로드(`TRANSFERS_DIR`, 데스크톱 앱은 데이터 폴더 `transfers/`, 개발은 OS 임시 폴더; 진행 중인 작업이 쓰지 않는 이전 파일은 삭제). 이어 `POST /api/transfers {fileId, run, elevate, targets}`가 각 대상에 UDP `transfer` 명령을 보내고, 클라이언트가 서버의 7777 HTTP에서 파일을 **끌어간 뒤** SHA-256 검증·실행하고 `POST /api/transfers/<id>/report`로 진행률을 올린다. 대화상자는 1초마다 `GET /api/transfers/<id>`를 폴링하며, 닫았다 열면 진행 중인 최신 작업을 이어서 보여준다.
+- **코드**: 순수 규칙(`src/lib/transfer-rules.ts`: 파일명 정리, 실행 가능 판정, 버전 판정, 보고 적용, 정체 판정)은 브라우저 번들에서도 쓰므로 Node 모듈을 import하지 않는다. 저장소·스테이징은 `src/lib/transfers.ts`(메모리 작업 목록 최대 20개, `globalThis`에 보관). 대상 phase는 `pending → sent → downloading → verifying → running → done`, 실패는 `error`/`unreachable`(ack 없음)/`rejected`(클라이언트 거부: 잘못된 페이로드·다른 전송 진행 중). 보고가 끊기면 `expireStalledTargets`가 단계별 시간(sent 60초, 다운로드 3분, 실행 30분)으로 `error` 처리한다.
+- **클라이언트**: `sound-client/src-tauri/src/transfer.rs`. `received/` 폴더(설정 파일 옆)에 `.part`로 받고 검증 후 이름 변경, 최신 3개만 보관. 실행은 `ShellExecuteExW`(창 표시 SW_SHOWNORMAL, `runas` 승격, msi는 `msiexec /i`)로 인수 없이 띄우고 종료까지 대기해 종료 코드를 보고한다. 시설 PC의 UAC 확인이 켜져 있으면 그 PC에서 승인해야 하며 취소 시 "관리자 권한 요청이 취소" 오류로 보고한다. 상태 탭 칩(`chip-transfer`)에 진행률·결과를 2분간 표시. reqwest(HTTP 전용, TLS 없음)·sha2는 이미 tauri 의존 트리에 있던 크레이트다.
 - **테스트**: `tests/transfers.test.ts`(규칙, 스테이징·정리, 루프백 가짜 클라이언트로 `transfer` ack). Rust는 `transfer::tests`가 페이로드 검증을 확인한다. 실제 설치 검증은 Windows 시설 PC에서 V3 파일로 수행해야 한다.
 
 ## 클라이언트 프로그램 다운로드 메뉴
@@ -270,3 +270,10 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - 메인 장비 목록, 온습도 장비/그래프, UPS 장비/그래프는 `SortableGroup`과 `SortableCard`로 기존 영역 안에서 바로 드래그해 재정렬한다. 별도 배치 변경/완료 모드는 없다. 6px를 넘는 포인터 이동에서만 드래그를 시작하고 놓으면 즉시 저장한다. 일반 클릭과 수정키 클릭은 기존 상세보기 동작을 유지하며, 드래그 직후 클릭은 차단한다. 호버 시 이동 버튼은 표시하지 않는다. 카드 자체에 키보드 포커스를 두고 Enter → 방향키 → Enter 및 Escape 취소도 지원한다.
 - `useCardOrder`는 이 PC의 브라우저/WebView 저장소에 화면·영역별 순서를 자동 저장한다. 키는 `tms:card-order:<group>:v1`. 삭제된 ID는 무시하고 새 장비는 뒤에 추가한다. 온습도 표시 개수를 바꿔도 숨겨진 장비의 순서를 보존한다. 센서/UPS 그래프 색상은 원래 장비 ID의 색상 매핑을 유지한다.
 - 실시간 알람의 심각도 우선순위와 장비 설정은 카드 순서와 별개다. 테스트는 `tests/card-order.test.ts`이며 브라우저에서는 일반 클릭과 직접 드래그가 구분되는지도 확인한다.
+
+## 음성탐지기 ZIP 압축 풀기 문제 (2026-09-16 조사)
+
+- 증상: 다른 PC로 복사한 `tms-soundsense.zip`을 탐색기에서 열면 "내용이 없음"으로 보이거나 "다중 볼륨 세트의 마지막 디스크를 삽입하십시오"가 뜬다. 둘 다 탐색기가 ZIP 끝의 중앙 디렉터리를 찾지 못할 때 내는 메시지이며, 거의 항상 파일이 끝까지 복사되지 않은(잘린) 경우다.
+- 서버 쪽은 정상임을 확인했다: 빌드된 ZIP(3.2.0, 313,434,371바이트)은 탐색기 엔진(Shell.Application)·Expand-Archive·tar.exe 모두로 풀리고, 빌드된 서버가 `/api/downloads/sound-client`로 내보낸 파일은 원본과 SHA-256이 같다. ZIP64·경로 길이·`./` 접두사 문제도 없다.
+- 확인 방법: 시설 PC에서 파일 속성의 크기(바이트)를 서버의 `src-tauri/resources/downloads/tms-soundsense.zip` 크기와 비교한다. 다르면 다시 복사한다. USB는 복사 완료 후 "안전하게 제거"로 뺀 뒤 옮기고, 브라우저 다운로드는 완료 표시를 확인한다.
+- 탐색기 대신 `tar -xf tms-soundsense.zip`(Windows 10 1803+)으로 풀면 잘린 파일은 즉시 오류를 낸다. 정상 파일이면 `tms-soundsense.exe`와 `webview2` 폴더가 함께 나온다.

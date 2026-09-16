@@ -5,7 +5,6 @@ import { AlertTriangle, CheckCircle2, Loader2, MonitorCheck, MonitorUp, RefreshC
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { identifyClient } from '@/components/forms/client-discovery-panel'
 import {
-  defaultArgsFor,
   formatBytes,
   isJobActive,
   isRunnable,
@@ -114,7 +112,6 @@ export function TransferDialog() {
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [run, setRun] = useState(false)
-  const [args, setArgs] = useState('')
   const [elevate, setElevate] = useState(true)
   const [clients, setClients] = useState<DiscoveredClient[] | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -182,9 +179,7 @@ export function TransferDialog() {
     const picked = event.target.files?.[0] ?? null
     setFile(picked)
     if (picked) {
-      const runnable = isRunnable(picked.name)
-      setRun(runnable)
-      setArgs(defaultArgsFor(picked.name))
+      setRun(isRunnable(picked.name))
       setElevate(true)
     }
   }
@@ -228,7 +223,6 @@ export function TransferDialog() {
         body: JSON.stringify({
           fileId: staged.id,
           run,
-          args,
           elevate,
           targets: targets.map(client => ({ id: client.id, name: client.name, host: client.host, ip: client.ip, discoveryPort: client.discoveryPort ?? 7790 })),
         }),
@@ -259,7 +253,7 @@ export function TransferDialog() {
         <DialogHeader>
           <DialogTitle>파일 전송 · V3 자동설치</DialogTitle>
           <DialogDescription>
-            이 PC의 파일을 음성탐지기가 실행 중인 시설 PC로 보냅니다. V3 엔진 설치 파일(예: ahnlabengine_setup260819.exe)을 고르면 받은 뒤 자동으로 조용히 설치합니다.
+            이 PC의 파일을 음성탐지기가 실행 중인 시설 PC들로 한 번에 보냅니다. V3 엔진 설치 파일(예: ahnlabengine_setup260819.exe)을 고르면 받은 뒤 그 PC 화면에서 설치 프로그램이 자동으로 실행됩니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -292,13 +286,9 @@ export function TransferDialog() {
                 <Checkbox checked={elevate} onCheckedChange={value => setElevate(value === true)} disabled={busy || !run} />
                 관리자 권한으로 실행
               </label>
-              <label className="flex flex-1 items-center gap-2">
-                <span className="shrink-0">실행 인수</span>
-                <Input value={args} onChange={event => setArgs(event.target.value)} disabled={busy || !run} placeholder="/S" className="h-8 max-w-[200px] font-mono text-xs" />
-              </label>
             </div>
             <p className="text-xs text-muted-foreground">
-              V3 엔진 설치 파일(NSIS)은 <span className="font-mono">/S</span> 인수로 창 없이 설치됩니다. 시설 PC에서 UAC 확인 창이 켜져 있으면 그 PC에서 승인해야 설치가 이어집니다.
+              설치 프로그램 창이 시설 PC 화면에 그대로 뜨며, 설치를 마쳐 창이 닫히면 완료로 보고됩니다. 시설 PC에서 UAC 확인 창이 켜져 있으면 그 PC에서 승인해야 합니다.
               exe·msi가 아닌 파일은 실행하지 않고 음성탐지기 폴더의 received 안에 저장만 합니다.
             </p>
           </section>
@@ -388,7 +378,7 @@ export function TransferDialog() {
             <section className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  진행 상황 · {job.file.name} ({formatBytes(job.file.size)}){job.run ? ` · 실행 ${job.args || '(인수 없음)'}` : ''}
+                  진행 상황 · {job.file.name} ({formatBytes(job.file.size)}){job.run ? ' · 전송 후 실행' : ''}
                 </div>
                 {!jobActive && (
                   <Button type="button" variant="ghost" size="xs" onClick={() => setJob(null)}>

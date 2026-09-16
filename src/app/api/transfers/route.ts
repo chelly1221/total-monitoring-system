@@ -14,7 +14,6 @@ import {
   listJobs,
   locateStagedFile,
   markCommandResult,
-  normalizeArgs,
   type JobTargetInput,
 } from '@/lib/transfers'
 
@@ -79,13 +78,9 @@ export async function POST(request: Request) {
     if (run && !isRunnable(file.name)) {
       return NextResponse.json({ error: '자동 실행은 exe 또는 msi 파일만 가능합니다' }, { status: 400 })
     }
-    const args = normalizeArgs(body.args)
-    if (args === null) {
-      return NextResponse.json({ error: '실행 인수가 너무 깁니다' }, { status: 400 })
-    }
     const elevate = body.elevate !== false
 
-    const job = createJob({ file, run, args, elevate, targets })
+    const job = createJob({ file, run, elevate, targets })
     await Promise.all(job.targets.map(async target => {
       const serverIp = pickServerAddressFor(target.ip)
       if (!serverIp) {
