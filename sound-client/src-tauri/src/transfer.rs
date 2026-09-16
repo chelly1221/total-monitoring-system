@@ -2,7 +2,7 @@
 //!
 //! The server stages a file and points us at it over HTTP. We pull it into the
 //! `received` folder next to the settings file, verify the SHA-256 the server
-//! announced, optionally run it (elevated, e.g. a silent V3 engine setup) and
+//! announced, optionally run it with its window shown (elevated, e.g. the V3 engine setup) and
 //! post progress reports back to the server. One transfer runs at a time.
 
 use crate::state::AppState;
@@ -29,7 +29,6 @@ pub struct TransferRequest {
     pub size: u64,
     pub sha256: String,
     pub run: bool,
-    pub args: String,
     pub elevate: bool,
 }
 
@@ -89,19 +88,11 @@ impl TransferRequest {
             return Err("invalid sha256".into());
         }
         let run = msg.get("run").and_then(Value::as_bool).unwrap_or(false);
-        let args = msg
-            .get("args")
-            .map(|v| v.as_str().map(str::trim).map(str::to_string).ok_or_else(|| "invalid args".to_string()))
-            .transpose()?
-            .unwrap_or_default();
-        if args.len() > 200 || args.chars().any(|c| c.is_control()) {
-            return Err("invalid args".into());
-        }
         let elevate = msg.get("elevate").and_then(Value::as_bool).unwrap_or(true);
         if run && !matches!(extension_of(&name).as_str(), "exe" | "msi") {
             return Err("only exe/msi files can be run".into());
         }
-        Ok(Self { job, url, report, name, size, sha256, run, args, elevate })
+        Ok(Self { job, url, report, name, size, sha256, run, elevate })
     }
 }
 
@@ -271,9 +262,8 @@ async fn run_transfer(state: &AppState, req: &TransferRequest, reporter: &Report
         .send("running", req.size, req.size, "설치 프로그램을 실행했습니다. 완료될 때까지 기다리는 중입니다.", None)
         .await;
     let path = final_path.clone();
-    let args = req.args.clone();
     let elevate = req.elevate;
-    let code = tauri::async_runtime::spawn_blocking(move || run_file(&path, &args, elevate))
+    let code = tauri::async_runtime::spawn_blocking(move || run_file(&path, elevate))
         .await
         .map_err(|e| format!("실행 작업이 중단되었습니다: {e}"))??;
     log::info!("transfer {}: {} exited with {code}", req.job, req.name);
@@ -332,10 +322,10 @@ async fn download(state: &AppState, req: &TransferRequest, reporter: &Reporter, 
     Ok(())
 }
 
-/// Launch the received file through ShellExecuteEx (verb `runas` when elevated so a
-/// `requireAdministrator` installer such as the V3 engine setup gets its UAC prompt) and
-/// wait for it to exit. msi files go through msiexec.
-fn run_file(path: &Path, args: &str, elevate: bool) -> Result<i32, String> {
+/// Launch the received file through ShellExecuteEx with its normal window shown (verb
+/// `runas` when elevated so a `requireAdministrator` installer such as the V3 engine setup
+/// gets its UAC prompt) and wait for it to exit. msi files go through msiexec.
+fn run_file(path: &Path, elevate: bool) -> Result<i32, String> {
     use windows::core::{HSTRING, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED};
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
@@ -345,9 +335,9 @@ fn run_file(path: &Path, args: &str, elevate: bool) -> Result<i32, String> {
 
     let is_msi = extension_of(&path.to_string_lossy()) == "msi";
     let (file, params) = if is_msi {
-        ("msiexec.exe".to_string(), format!("/i \"{}\" {}", path.display(), args).trim().to_string())
+        ("msiexec.exe".to_string(), format!("/i \"{}\"", path.display()))
     } else {
-        (path.display().to_string(), args.to_string())
+        (path.display().to_string(), String::new())
     };
     let directory = path.parent().map(|p| p.display().to_string()).unwrap_or_default();
     let verb = HSTRING::from(if elevate { "runas" } else { "open" });
@@ -409,7 +399,6 @@ mod tests {
             "size": 303182776,
             "sha256": "A".repeat(64),
             "run": true,
-            "args": "/S",
             "elevate": true
         })
     }
@@ -421,7 +410,6 @@ mod tests {
         assert_eq!(req.size, 303182776);
         assert_eq!(req.sha256, "a".repeat(64));
         assert!(req.run && req.elevate);
-        assert_eq!(req.args, "/S");
     }
 
     #[test]
@@ -429,12 +417,10 @@ mod tests {
         let mut msg = base();
         msg["name"] = json!("notice.pdf");
         msg.as_object_mut().unwrap().remove("run");
-        msg.as_object_mut().unwrap().remove("args");
         msg.as_object_mut().unwrap().remove("elevate");
         let req = TransferRequest::parse(&msg).unwrap();
         assert!(!req.run);
         assert!(req.elevate);
-        assert_eq!(req.args, "");
     }
 
     #[test]
@@ -452,7 +438,6 @@ mod tests {
             mutate(&|m| { m["url"] = json!("file:///C:/x"); }),
             mutate(&|m| { m["size"] = json!(0); }),
             mutate(&|m| { m["sha256"] = json!("zz"); }),
-            mutate(&|m| { m["args"] = json!("/S\nrm"); }),
             mutate(&|m| { m["name"] = json!("readme.txt"); m["run"] = json!(true); }),
             mutate(&|m| { m.as_object_mut().unwrap().remove("report"); }),
             mutate(&|m| { m["job"] = json!("../x"); }),
