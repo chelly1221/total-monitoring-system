@@ -14,6 +14,7 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { toast } from 'sonner'
 import { useRealtime } from '@/components/realtime/realtime-provider'
 import { DownloadMenu } from '@/components/layout/download-menu'
+import { TransferDialog } from '@/components/layout/transfer-dialog'
 import type { Window as TauriWindow } from '@tauri-apps/api/window'
 
 const MUTE_DURATIONS = [
@@ -314,6 +315,8 @@ export function HeaderWithStatus() {
         )}
 
         <DownloadMenu />
+
+        <TransferDialog />
 
         <Link href="/settings">
           <Button variant="ghost" size="icon">
