@@ -248,6 +248,7 @@ fn spawn_server(resource_dir: &PathBuf, database_url: &str, data_dir: &PathBuf, 
         .env("DATABASE_URL", database_url)
         .env("AUDIO_DIR", data_dir.join("audio"))
         .env("DOWNLOADS_DIR", resource_dir.join("downloads"))
+        .env("TRANSFERS_DIR", data_dir.join("transfers"))
         .current_dir(resource_dir.join("standalone"))
         .kill_on_drop(true);
     attach_log(&mut cmd, log);

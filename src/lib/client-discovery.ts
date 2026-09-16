@@ -247,13 +247,15 @@ export class ClientCommandError extends Error {
   }
 }
 
+export type ClientCommandType = 'identify' | 'config' | 'transfer'
+
 /**
- * Send a command (`identify` or `config`) to one client and wait for its ack.
+ * Send a command (`identify`, `config` or `transfer`) to one client and wait for its ack.
  * Retries once by default (UDP may drop the first datagram).
  */
 export async function sendClientCommand(
   ip: string,
-  type: 'identify' | 'config',
+  type: ClientCommandType,
   fields: Record<string, unknown>,
   options: CommandOptions = {},
 ): Promise<AckReply> {
