@@ -118,6 +118,14 @@ pub fn settings_path() -> PathBuf {
     PathBuf::from(SETTINGS_FILE)
 }
 
+/// Folder that holds the settings file; other per-PC data (received files) lives beside it.
+pub fn data_dir() -> PathBuf {
+    settings_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 /// Load settings, generating the stable client id on first run and persisting it.
 pub fn load() -> Settings {
     let path = settings_path();

@@ -39,6 +39,7 @@ interface Snapshot {
   audioStatus: string;
   discoveryStatus: string;
   unmuteMinutes: number;
+  transferStatus: string;
 }
 
 const NO_TARGET_TEXT = "서버 미등록 (서버에서 자동탐지로 추가하세요)";
@@ -152,6 +153,10 @@ function renderStatus(s: Snapshot): void {
     chipMute.textContent = "음소거 아님";
     chipMute.className = "chip";
   }
+
+  const chipTransfer = $("chip-transfer");
+  chipTransfer.textContent = s.transferStatus;
+  chipTransfer.classList.toggle("hidden", !s.transferStatus);
 
   const muteEl = $("mute-state");
   muteEl.textContent = s.muted ? "음소거됨" : "정상 (음소거 아님)";

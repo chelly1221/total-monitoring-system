@@ -20,6 +20,10 @@ pub struct Inner {
     pub audio_status: String,
     pub discovery_status: String,
     pub host: String,
+    /// A server-initiated file transfer is downloading or running.
+    pub transfer_busy: bool,
+    /// Progress / outcome of the latest transfer for the status tab ("" when idle).
+    pub transfer_status: String,
 }
 
 pub struct Shared {
@@ -53,6 +57,8 @@ impl Shared {
                 audio_status: "초기화 중".into(),
                 discovery_status: "초기화 중".into(),
                 host,
+                transfer_busy: false,
+                transfer_status: String::new(),
             }),
             started: Instant::now(),
             sender_notify: Notify::new(),
@@ -95,6 +101,7 @@ impl Shared {
             audio_status: g.audio_status.clone(),
             discovery_status: g.discovery_status.clone(),
             unmute_minutes: g.settings.unmute_minutes,
+            transfer_status: g.transfer_status.clone(),
         }
     }
 }
@@ -118,6 +125,7 @@ pub struct Snapshot {
     pub audio_status: String,
     pub discovery_status: String,
     pub unmute_minutes: u32,
+    pub transfer_status: String,
 }
 
 pub fn now_ms() -> u64 {

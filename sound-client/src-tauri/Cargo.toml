@@ -1,7 +1,7 @@
 [package]
 name = "tms-soundsense"
-version = "3.1.0"
-description = "TMS SoundSense - sound detection, auto-unmute and LAN discovery client"
+version = "3.2.0"
+description = "TMS SoundSense - sound detection, auto-unmute, LAN discovery and file transfer client"
 authors = ["chelly1221"]
 edition = "2021"
 
@@ -23,6 +23,9 @@ cpal = "0.16"
 uuid = { version = "1", features = ["v4"] }
 hostname = "0.4"
 anyhow = "1"
+# Pulls server-staged files over HTTP and posts progress (already in the tree via tauri).
+reqwest = { version = "0.13", default-features = false }
+sha2 = "0.10"
 log = "0.4"
 env_logger = "0.11"
 
@@ -34,9 +37,11 @@ windows = { version = "0.61", features = [
   "Win32_Media_Audio_Endpoints",
   "Win32_System_Com",
   "Win32_System_Diagnostics_Debug",
+  "Win32_System_Threading",
   "Win32_NetworkManagement_IpHelper",
   "Win32_NetworkManagement_Ndis",
   "Win32_Networking_WinSock",
+  "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
 

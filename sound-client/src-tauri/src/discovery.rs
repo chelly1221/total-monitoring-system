@@ -1,6 +1,6 @@
 //! LAN discovery responder (Sound Client Discovery Protocol v1).
 //! Binds UDP 0.0.0.0:<discoveryPort>, answers `probe` with `here`, and executes
-//! `identify` / `config` commands replying with `ack`.
+//! `identify` / `config` / `transfer` commands replying with `ack`.
 
 use crate::settings::Target;
 use crate::state::{local_ip_toward, mac_for_local_ip, AppState, VERSION};
@@ -75,11 +75,11 @@ async fn handle(app: &AppHandle, state: &AppState, sock: &UdpSocket, data: &[u8]
             let reply = build_here(state, &nonce, src);
             send_json(sock, &reply, src).await;
         }
-        "identify" | "config" => {
-            let result = if t == "identify" {
-                handle_identify(app, &msg)
-            } else {
-                handle_config(app, state, &msg)
+        "identify" | "config" | "transfer" => {
+            let result = match t {
+                "identify" => handle_identify(app, &msg),
+                "config" => handle_config(app, state, &msg),
+                _ => handle_transfer(app, state, &msg),
             };
             let (ok, error) = match result {
                 Ok(()) => (true, String::new()),
@@ -142,6 +142,13 @@ fn handle_identify(app: &AppHandle, msg: &Value) -> Result<(), String> {
 fn handle_config(app: &AppHandle, state: &AppState, msg: &Value) -> Result<(), String> {
     let settings = parse_config(state.settings(), msg)?;
     crate::apply_settings(app, settings).map(|_| ())
+}
+
+/// Validate a `transfer` command and start the download in the background; the ack
+/// only says whether the request was accepted (progress goes back over HTTP).
+fn handle_transfer(app: &AppHandle, state: &AppState, msg: &Value) -> Result<(), String> {
+    let req = crate::transfer::TransferRequest::parse(msg)?;
+    crate::transfer::start(app, state, req)
 }
 
 fn parse_config(

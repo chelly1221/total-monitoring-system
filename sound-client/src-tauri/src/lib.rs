@@ -1,4 +1,5 @@
-//! TMS SoundSense: WASAPI loopback sound detection + auto-unmute + LAN discovery client.
+//! TMS SoundSense: WASAPI loopback sound detection + auto-unmute + LAN discovery client
+//! (with server-initiated file transfer / silent install).
 
 mod audio;
 mod badge;
@@ -9,6 +10,7 @@ mod netinfo;
 mod sender;
 mod settings;
 mod state;
+mod transfer;
 
 use mute::MuteCmd;
 use settings::Settings;
