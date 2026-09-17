@@ -19,16 +19,14 @@ pub fn report_url(settings: &crate::settings::Settings) -> Option<String> {
     Some(format!("http://{}:{}/api/ping-events", settings.udp_ip, settings.server_http_port))
 }
 
-/// Queue one event (called by the monitor on every 장애 발생 / 정상 복구 transition).
-pub fn enqueue(state: &AppState, event: Value) {
-    {
-        let mut g = state.lock();
-        if g.report_queue.len() >= MAX_QUEUE {
-            g.report_queue.pop_front();
-        }
-        g.report_queue.push_back(event);
+/// Queue one event. The monitor calls this while it already holds the state lock, so it
+/// takes the guard instead of locking again (std mutexes are not re-entrant); the caller
+/// wakes the reporter with `report_notify` afterwards.
+pub fn enqueue(g: &mut crate::state::Inner, event: Value) {
+    if g.report_queue.len() >= MAX_QUEUE {
+        g.report_queue.pop_front();
     }
-    state.report_notify.notify_one();
+    g.report_queue.push_back(event);
 }
 
 /// Queue the recent history so a server that just (re)connected gets the backlog.

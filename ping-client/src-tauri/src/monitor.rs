@@ -150,7 +150,8 @@ pub async fn run(app: AppHandle, state: AppState) {
                 {
                     g.send_status = e;
                 }
-                crate::report::enqueue(&state, event.clone());
+                crate::report::enqueue(&mut g, event.clone());
+                state.report_notify.notify_one();
                 let _ = app.emit("failure-log", event);
             }
             let _ = app.emit("ping-result", &result);
