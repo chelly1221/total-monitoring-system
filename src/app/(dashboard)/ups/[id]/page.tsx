@@ -11,12 +11,20 @@ import { UpsDetailHeader } from "@/components/forms/ups-detail-header"
 import { UpsBasicInfoBar } from "@/components/forms/ups-basic-info-bar"
 import { UpsPreviewAlarmSidebar } from "@/components/forms/ups-preview-alarm-sidebar"
 import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
+import {
+  SoundClientSection,
+  buildUpsClientSelection,
+  provisionUpsClient,
+  type RegistrationMode,
+} from "@/components/forms/sound-client-section"
+import { upsClientUnit } from "@/lib/ups-client-preset"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import type {
   SystemStatus,
   WebSocketMessage,
   MetricsConfig,
   AudioConfig,
+  DiscoveredClient,
 } from "@/types"
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
@@ -94,6 +102,7 @@ export default function UpsDetailPage() {
   const [offlineThresholdMin, setOfflineThresholdMin] = React.useState("")
   const [metricsConfig, setMetricsConfig] = React.useState<MetricsConfig>(DEFAULT_METRICS_CONFIG)
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>(DEFAULT_AUDIO_CONFIG)
+  const [registrationMode, setRegistrationMode] = React.useState<RegistrationMode>("manual")
 
   // Custom code test result state
   const [customCodeTestResult, setCustomCodeTestResult] = React.useState<Record<string, number | string> | null>(null)
@@ -220,6 +229,7 @@ export default function UpsDetailPage() {
           try {
             const parsed = JSON.parse(data.config)
             setMetricsConfig(parsed as MetricsConfig)
+            setRegistrationMode((parsed as MetricsConfig).client ? "auto" : "manual")
           } catch {
             // Use defaults
           }
@@ -368,6 +378,22 @@ export default function UpsDetailPage() {
       // Refetch system data
       const updatedData = await response.json()
       setSystem(updatedData)
+
+      // Auto-registered UPS PC: (re)send this server's address and the UPS number.
+      const linkedClient = metricsConfig.client
+      if (linkedClient?.kind === "ups" && portNum !== null) {
+        const provisioned = await provisionUpsClient({ client: linkedClient, port: portNum, facilityName: name.trim() })
+        if (provisioned) {
+          const nextConfig = { ...metricsConfig, client: provisioned }
+          setMetricsConfig(nextConfig)
+          await fetch(`/api/systems/${systemId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config: nextConfig }),
+          }).catch(() => undefined)
+        }
+      }
+
       setIsEditMode(false)
       router.refresh()
     } catch (err) {
@@ -388,8 +414,10 @@ export default function UpsDetailPage() {
         try {
           const parsed = JSON.parse(system.config)
           setMetricsConfig(parsed as MetricsConfig)
+          setRegistrationMode((parsed as MetricsConfig).client ? "auto" : "manual")
         } catch {
           setMetricsConfig(DEFAULT_METRICS_CONFIG)
+          setRegistrationMode("manual")
         }
       }
       if (system.audioConfig) {
@@ -405,6 +433,23 @@ export default function UpsDetailPage() {
     setError(null)
     setCustomCodeTestResult(null)
     setIsEditMode(false)
+  }
+
+  const handleClientSelect = (client: DiscoveredClient, suggestedPort: number | null, unit: 1 | 2 = upsClientUnit(metricsConfig.client?.unit)) => {
+    const selection = buildUpsClientSelection(client, unit, suggestedPort, metricsConfig)
+    if (!name.trim() || metricsConfig.client) setName(selection.name)
+    setPort(selection.port)
+    setProtocol(selection.protocol)
+    setEncoding(selection.encoding)
+    setMetricsConfig(selection.config)
+  }
+
+  const handleClientUnlink = () => {
+    setMetricsConfig((prev) => {
+      const next = { ...prev }
+      delete next.client
+      return next
+    })
   }
 
   if (loading) {
@@ -471,6 +516,25 @@ export default function UpsDetailPage() {
           offlineThresholdMin={offlineThresholdMin}
           onEncodingChange={setEncoding}
           onOfflineThresholdChange={setOfflineThresholdMin}
+        />
+
+        {/* 등록 방식 + 자동 탐지 (UPS 클라이언트 PC) */}
+        <SoundClientSection
+          mode={registrationMode}
+          onModeChange={setRegistrationMode}
+          client={metricsConfig.client}
+          currentSystemId={systemId}
+          isEditMode={isEditMode}
+          onSelect={handleClientSelect}
+          onUnlink={handleClientUnlink}
+          allowedKinds={['ups']}
+          upsUnit={upsClientUnit(metricsConfig.client?.unit)}
+          onUpsUnitChange={(unit) => {
+            const client = metricsConfig.client
+            if (!client) return
+            const discovered: DiscoveredClient = { ...client, kind: 'ups', serverIp: client.serverIp ?? '', mac: client.mac ?? '', ver: client.ver ?? '', target: null, muted: false, sound: false, uptimeSec: 0, registered: null }
+            handleClientSelect(discovered, port ? Number(port) : null, unit)
+          }}
         />
 
         {error && (

@@ -195,6 +195,24 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - 빌드: `cd ping-client && npm ci && npm run build && npm test && npm run tauri:build && npm run smoke && npm run package`. `smoke`는 실제 EXE와 격리 설정으로 UDP 연결·재시작·장애를 검증하며 방화벽/자동 시작 등록을 건너뛴다. `npm run smoke:setup`은 별도 경로에 Setup 설치·재설치·EXE 실행·제거와 설정 보존을 검증한다. 두 클라이언트를 먼저 빌드한 뒤 서버의 `npm run tauri:build`를 실행하면 두 ZIP과 버전이 포함된다(`scripts/build-standalone.js`가 각 클라이언트의 `package.mjs`를 호출).
 - Setup은 사용자 요청에 따라 폐쇄망용 한 종류만 생성한다. Npcap 공식 설치 파일과 WebView2를 내장하며 설치 PC에서 다운로드하지 않는다. `windows/hooks.nsh`와 `install-network.ps1`로 방화벽·Npcap을 준비한다. 빌드 시 해시·전자서명을 확인하고 설치 시 고정 해시로 오프라인 검증한다. 무료판은 조직 내 최대 5대의 내부 사용용이며 Npcap 자체 약관 마법사를 연다. OEM 빌드는 `TMS_NPCAP_OEM_INSTALLER`에 적절한 내부 사용 라이선스의 설치 파일 경로를 지정한다. 드라이버 바이너리는 Git에 넣지 않는다. `/SKIPNETWORK`는 네트워크 구성 요소가 별도로 준비된 PC와 격리 설치 검증용이다.
 
+## 세 번째 클라이언트: 2026 1레이더 UPS (SNMP UPS 감시)
+
+2026-09-17 추가. `ups-client/`는 `chelly1221/gpradar1-snmpups`(Electron, 원본은 PyQt6 snmpups.py)의 김포 제1레이더 UPS 2대(UPS#1 3상 24항목, UPS#2 단상 9항목) SNMP v2c 감시를 Rust/Tauri 2로 이관한 앱이다. 이름 **2026 1레이더 UPS**, 실행 파일 `tms-ups-monitor.exe`, 탐지 포트 **UDP 7792**, `kind: "ups"`. 화면·설정 창·타이틀바·상태줄은 ping 클라이언트의 흰색·벽돌색 테마를 그대로 쓰고(`src/styles.css`+`workspace.css` 복사, `ups.css` 추가), UPS#1(3상 표+타일)·UPS#2(타일)를 위아래로 두고 각 행 오른쪽에 이벤트 로그(500줄)를 둔다. 값 색은 원본 규칙(임계 이탈·비정상 상태 빨강, 정상 상태 초록)을 따른다.
+
+- **SNMP**: `src-tauri/src/snmp.rs`가 v2c GET을 BER로 직접 인코딩/디코딩한다(크레이트 없음, 다중 OID 한 번에, 2초 타임아웃 1회 재시도, 주소에 `:포트` 허용). OID 표·값 변환(`/10`, `/100`, `/1000`, 상태 코드 맵)·임계값·상태 변화 로그·"5회 연속 비정상이면 경보" 규칙은 `ups.rs`/`monitor.rs`에 원본 1:1로 옮겼고 테스트가 지킨다.
+- **설정**: `ups-settings.json` 한 파일(`units[0..1]`: ip, community, interval_sec, server_enabled/ip/port, sound_file, muted, limits). 설정 창의 가져오기는 자체 백업(`format: tms-ups-monitor`)과 원본 `settings.json`/`ups2_settings.json`(ups_ip/ups2_ 접두 키·`*_min/_max`)을 모두 읽는다. 경보음은 내장 `assets/UPS1.wav`/`UPS2.wav`(원본 저장소 파일) 또는 사용자 WAV, 유닛별 음소거, 4초 반복.
+- **서버 연동**: `docs/sound-client-protocol.md`의 "UPS client extension". `here.units[]`에 유닛별 서버 대상·경보, `config`는 `unit`(1|2)로 한 카드를 한 시설에 묶고 on/off 없음. 데이터는 원본과 같은 `{"UPS":n,"Data":{...}}` UTF-8 JSON을 폴링마다 전송(하트비트 겸용). 서버는 `src/lib/client-kinds.ts`(종류·포트·이름 표, 브라우저 안전)와 `client-discovery.ts`(7792 스캔, `units` 파싱), `system-validation.ts`(`kind: ups`는 `unit` 필수), `transfer-rules.ts`(UPS 1.0.0+ 전송 가능), `provision` API(7792면 `unit` 필수, on/off 생략)를 확장했다. UPS 추가/상세 페이지에 `SoundClientSection`(`allowedKinds=['ups']`, UPS#1/#2 선택)을 넣었고 PC를 고르면 `src/lib/ups-client-preset.ts`가 시설명·포트·UTF-8·커스텀 파서·표시 항목(원본 기본 임계값, 하한 0은 미설정, 상태 항목은 "정상"이 아니면 심각)을 채운다. 장비 폼은 `allowedKinds=['sound','ping']`로 UPS 클라이언트를 숨긴다.
+- **다운로드·빌드**: `DOWNLOAD_ITEMS`에 `ups-client`(`tms-ups-monitor.zip`), `build-standalone.js`가 세 클라이언트를 묶는다. 빌드는 `cd ups-client && npm ci && npm run build && npm test && npm run tauri:portable && npm run package`(Setup은 `npm run tauri:build`, 방화벽 7792만 등록하는 `windows/hooks.nsh`). `npm run smoke`는 실제 EXE를 격리 설정으로 띄우고 루프백 가짜 SNMP 에이전트로 탐지·설정·수신 전송·경보 디바운스·재시작을 검증한다. WebView2 런타임은 다른 클라이언트의 폴더를 복사해 쓴다(`scripts/prepare-runtime.mjs`).
+- **테스트**: `tests/ups-client.test.ts`(종류 표, `here` units 파싱, 루프백 탐지, 검증, 전송 버전, 프리셋 항목과 생성 파서 실행, 대시보드 상세 문구). Rust는 `cargo test`(snmp BER·가짜 에이전트, 설정·프로비저닝·가져오기, 폴링 규칙, 탐지 응답).
+
+## PC 음소거 자동 해제 (ping·UPS 클라이언트)
+
+2026-09-17 추가. 음성탐지기의 Windows 음소거 감시(음소거되면 트레이 옆 팝업으로 해제 시간을 묻고, 시간이 지나면 자동 해제 + 볼륨 100%, 트레이 아이콘에 남은 시간 배지, 트레이 메뉴 "음소거 타이머 취소")를 네트워크 ping 감시 1.2.0과 UPS 클라이언트에 같은 코드로 넣었다. `src-tauri/src/pcmute.rs`(sound-client `mute.rs` 이식, `Inner.pc_mute`, 명령 `unmute_now`/`mute_choose`/`mute_cancel`/`mute_popup_dismiss`, `tray_loop`)와 `badge.rs`, 별도 창 `mute.html`+`src/mute.js`+`src/presets.js`+`src/mute.css`, 설정 `unmute_minutes`(기본 10분, 1~1440)는 두 클라이언트에 동일한 사본이므로 함께 고친다. 각 클라이언트의 경보 대화상자에 "PC 음소거 자동 해제" 구역(현재 상태·남은 시간·시간 선택·지금 해제·타이머 취소·기본 해제 시간)이 있다. 이 창은 `alwaysOnTop`·`skipTaskbar`이며 capabilities의 `windows`에 `mute`를 포함해야 한다.
+
+## 메인 대시보드의 ping 장애 세부내역
+
+2026-09-17 추가. ping 클라이언트 시설의 열린 알람 `value`(어느 감시 대상이 끊겼는지)를 알람 로그뿐 아니라 메인 화면에도 보인다. `src/lib/alarm-details.ts`(순수)가 `config.client.kind === 'ping'`인 장비의 미해결 알람에서 문구를 고르고(심각 우선), `RealtimeDashboard`가 왼쪽 `HealthCheckCard`의 둘째 줄(`detail`, 말줄임+title)과 오른쪽 장애 패널의 시설명 아래에 표시한다. 다른 장비 알람의 `value`(예: `SOUND`)는 보이지 않는다.
+
 ## 파일 전송 · V3 자동설치 (헤더 아이콘)
 
 2026-09-16 추가. 헤더의 모니터 업로드 아이콘(`src/components/layout/transfer-dialog.tsx`)을 누르면 이 PC의 파일을 골라 음성탐지기(SoundSense 3.2.0+)가 실행 중인 시설 PC들(한 작업당 최대 50대, 각 PC가 독립적으로 내려받음)로 보내고, exe/msi면 받은 뒤 자동 실행한다. 사용자 요청으로 실행 인수(무음 설치 `/S`) 기능은 두지 않는다. 설치 프로그램 창이 시설 PC 화면에 그대로 뜨고, 프로세스가 끝나면 종료 코드로 완료를 보고한다. 와이어 계약은 `docs/sound-client-protocol.md`의 `transfer` 절이다.

@@ -32,6 +32,8 @@ pub struct Settings {
     pub auto_monitor: bool,
     pub capture_devices: Vec<CaptureDevice>,
     pub topology: Value,
+    /// Default PC 음소거 자동 해제 duration offered by the popup (minutes).
+    pub unmute_minutes: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,6 +77,7 @@ impl Default for Settings {
             auto_monitor: true,
             capture_devices: vec![],
             topology: Value::Null,
+            unmute_minutes: 10,
         }
     }
 }
@@ -171,6 +174,9 @@ impl Settings {
         }
         if self.server_http_port == 0 {
             return Err("서버 웹 포트가 올바르지 않습니다".into());
+        }
+        if !crate::pcmute::valid_minutes(self.unmute_minutes) {
+            return Err("음소거 해제 시간은 1분~24시간 범위입니다".into());
         }
         if self.udp_enabled
             && (self.udp_ip.parse::<std::net::Ipv4Addr>().is_err()

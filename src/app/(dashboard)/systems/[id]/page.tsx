@@ -616,6 +616,7 @@ export default function SystemDetailPage() {
             currentSystemId={systemId}
             isEditMode={isEditMode}
             onSelect={handleClientSelect}
+            allowedKinds={['sound', 'ping']}
             onUnlink={handleClientUnlink}
           />
 

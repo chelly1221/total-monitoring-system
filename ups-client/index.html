@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2026 1레이더 UPS</title>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+
+<header id="titlebar" data-tauri-drag-region>
+  <section class="overview" aria-label="감시 제어 및 요약">
+    <div class="control-group">
+      <button type="button" class="btn btn-primary" id="btnStart">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/></svg>
+        시작
+      </button>
+      <button type="button" class="btn btn-danger" id="btnStop" disabled>
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+        정지
+      </button>
+    </div>
+    <div class="metric" id="summary1"><span>UPS#1</span><strong class="ups-summary" data-unit="1">대기</strong></div>
+    <div class="metric" id="summary2"><span>UPS#2</span><strong class="ups-summary" data-unit="2">대기</strong></div>
+  </section>
+  <nav class="toolbar" aria-label="감시 설정"><div class="titlebar-menu">
+    <button type="button" class="titlebar-btn menu-btn" id="menuUps1" title="UPS#1 설정 (SNMP · 서버 · 임계값)">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.251.068a.5.5 0 01.227.58L9.677 6.5H13a.5.5 0 01.364.843l-8 8.5a.5.5 0 01-.842-.49L6.323 9.5H3a.5.5 0 01-.364-.843l8-8.5a.5.5 0 01.615-.09z"/></svg>
+      <span>UPS#1</span>
+    </button>
+    <button type="button" class="titlebar-btn menu-btn" id="menuUps2" title="UPS#2 설정 (SNMP · 서버 · 임계값)">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.251.068a.5.5 0 01.227.58L9.677 6.5H13a.5.5 0 01.364.843l-8 8.5a.5.5 0 01-.842-.49L6.323 9.5H3a.5.5 0 01-.364-.843l8-8.5a.5.5 0 01.615-.09z"/></svg>
+      <span>UPS#2</span>
+    </button>
+    <button type="button" class="titlebar-btn menu-btn" id="menuSound" title="경보소리 설정">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M8.707 11.182A4.486 4.486 0 0010.025 8a4.486 4.486 0 00-1.318-3.182L8 5.525A3.489 3.489 0 019.025 8 3.49 3.49 0 018 10.475l.707.707zM6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
+      <span>경보</span>
+    </button>
+  </div>
+  <button type="button" class="titlebar-btn menu-btn" id="menuClient" title="설정"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 3-.5 2-2 1-2-.5-2 3 1.5 1.5v3L2.5 15l2 3 2-.5 2 1L9 21h4l.5-2.5 2-1 2 .5 2-3-1.5-2v-3L19.5 8l-2-3-2 .5-2-1L13 3Z"/><circle cx="11" cy="12" r="3"/></svg><span>설정</span></button></nav>
+  <div class="titlebar-drag-space" data-tauri-drag-region aria-hidden="true"></div>
+  <div class="titlebar-window-controls">
+    <button type="button" class="titlebar-btn window-btn" id="btnMinimize" title="최소화">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6"/></svg>
+    </button>
+    <button type="button" class="titlebar-btn window-btn" id="btnMaximize" title="최대화">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5"/></svg>
+    </button>
+    <button type="button" class="titlebar-btn window-btn window-btn-close" id="btnClose" title="트레이로 숨기기 (감시 유지)">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.2"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Main Content: one row per UPS (readings on the left, event log on the right) -->
+<div class="main-container ups-main">
+  <section class="ups-row" id="ups1" data-unit="1" aria-label="UPS#1">
+    <div class="panel panel-left">
+      <div class="panel-header">
+        <span class="panel-header-title">제1레이더 UPS#1 <small>3상 · SNMP</small></span>
+        <span class="ups-chip" data-role="output">출력 —</span>
+        <span class="ups-chip" data-role="battery">배터리 —</span>
+        <span class="panel-header-badge" data-role="poll">대기 중</span>
+        <label class="mute-toggle btn btn-danger" title="UPS#1 경보음 음소거"><input type="checkbox" class="sr-only chk-mute" data-unit="1"><svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg><svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg><span>음소거</span></label>
+      </div>
+      <div class="ups-body" data-role="body"></div>
+    </div>
+    <div class="panel panel-right">
+      <div class="log-tools"><span data-role="logCount">0건</span><button type="button" class="btn btn-sm btn-clear-logs" data-unit="1">초기화</button></div>
+      <div class="table-container log-scroll"><table><tbody data-role="logs"></tbody></table></div>
+    </div>
+  </section>
+  <section class="ups-row" id="ups2" data-unit="2" aria-label="UPS#2">
+    <div class="panel panel-left">
+      <div class="panel-header">
+        <span class="panel-header-title">제1레이더 UPS#2 <small>단상 · SNMP</small></span>
+        <span class="ups-chip" data-role="output">출력 —</span>
+        <span class="ups-chip" data-role="battery">배터리 —</span>
+        <span class="panel-header-badge" data-role="poll">대기 중</span>
+        <label class="mute-toggle btn btn-danger" title="UPS#2 경보음 음소거"><input type="checkbox" class="sr-only chk-mute" data-unit="2"><svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg><svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg><span>음소거</span></label>
+      </div>
+      <div class="ups-body" data-role="body"></div>
+    </div>
+    <div class="panel panel-right">
+      <div class="log-tools"><span data-role="logCount">0건</span><button type="button" class="btn btn-sm btn-clear-logs" data-unit="2">초기화</button></div>
+      <div class="table-container log-scroll"><table><tbody data-role="logs"></tbody></table></div>
+    </div>
+  </section>
+</div>
+
+<!-- Status Bar -->
+<div id="statusbar">
+  <span id="hostName" class="host-name"></span>
+  <div class="statusbar-left">
+    <span class="status-indicator" id="statusIndicator"></span>
+    <span id="statusText">대기 중</span>
+  </div>
+  <section class="connection-strip" aria-label="통합 감시 서버 연결">
+    <span class="connection-dot" data-conn="1"></span><strong data-conn-target="1">UPS#1 서버 대기</strong>
+    <span class="connection-dot" data-conn="2"></span><strong data-conn-target="2">UPS#2 서버 대기</strong>
+    <span id="connectionStatus">시설 등록 화면에서 이 PC를 검색하세요.</span>
+    <span id="transferStatus" class="transfer-status" hidden></span>
+  </section>
+  <div class="statusbar-right">
+    <span id="statusTime"></span>
+  </div>
+</div>
+
+<!-- UPS Settings Modal (shared by both units) -->
+<div class="modal-overlay" id="upsModal" role="dialog" aria-modal="true" aria-labelledby="upsModalTitle">
+  <div class="modal ups-modal">
+    <div class="modal-header">
+      <h3 id="upsModalTitle">UPS#1 설정</h3>
+      <p>SNMP 주소, 통합감시 서버 전송, 항목별 임계값을 설정합니다. 저장하면 감시에 바로 반영됩니다.</p>
+    </div>
+    <div class="ups-tabs" role="tablist">
+      <button type="button" class="ups-tab active" data-tab="general" role="tab" aria-selected="true">일반</button>
+      <button type="button" class="ups-tab" data-tab="limits" role="tab" aria-selected="false">이벤트 (임계값)</button>
+    </div>
+    <div class="modal-body">
+      <div class="ups-tab-panel" data-panel="general">
+        <div class="form-section">※ SNMP</div>
+        <div class="form-row"><label for="inputUpsIp">UPS 주소</label><input type="text" id="inputUpsIp" placeholder="예: 192.168.0.99"></div>
+        <div class="form-row"><label for="inputCommunity">Community</label><input type="text" id="inputCommunity" placeholder="public"></div>
+        <div class="form-row"><label for="inputInterval">갱신 간격 (초)</label><input type="number" id="inputInterval" min="1" max="3600" step="1"></div>
+        <div class="form-section">※ 통합감시 서버</div>
+        <div class="form-row"><label style="min-width:auto"><input type="checkbox" id="chkServerEnabled"> 서버로 데이터 전송</label></div>
+        <div class="form-row"><label for="inputServerIp">UDP IP</label><input type="text" id="inputServerIp" placeholder="자동 탐지 시 자동 입력"></div>
+        <div class="form-row"><label for="inputServerPort">UDP 포트</label><input type="number" id="inputServerPort" min="1" max="65535"></div>
+        <div class="form-section">※ 경보음</div>
+        <div class="form-row"><label for="inputSoundFile">경보음 파일</label><input type="text" id="inputSoundFile" readonly placeholder="기본 경보음 (내장)"><button type="button" class="btn btn-sm" id="btnBrowseSound">찾아보기</button><button type="button" class="btn btn-sm" id="btnDefaultSound">기본</button><button type="button" class="btn btn-sm" id="btnTestSound">테스트</button></div>
+      </div>
+      <div class="ups-tab-panel" data-panel="limits" hidden>
+        <table class="target-settings-table limits-table">
+          <colgroup><col><col style="width:110px"><col style="width:110px"></colgroup>
+          <thead><tr><th scope="col">항목</th><th scope="col">최소</th><th scope="col">최대</th></tr></thead>
+          <tbody id="limitsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" id="btnCancelUps">취소</button>
+      <button type="button" class="btn btn-primary" id="btnSaveUps">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sound Settings Modal -->
+<div class="modal-overlay" id="soundModal" role="dialog" aria-modal="true" aria-labelledby="soundModalTitle">
+  <div class="modal" style="width: 440px; max-width: calc(100vw - 32px);">
+    <div class="modal-header">
+      <h3 id="soundModalTitle">경보소리 설정</h3>
+      <p>출력 상태·배터리 상태가 5회 연속 비정상이면 4초 간격으로 경보음을 반복합니다. UPS별 경보음 파일은 각 UPS 설정에서 고릅니다.</p>
+    </div>
+    <div class="modal-body">
+      <div class="form-row"><label style="min-width: auto;"><input type="checkbox" id="chkSoundEnabled"> 경보음 활성화</label></div>
+      <div class="form-row"><label style="min-width: auto;"><input type="checkbox" id="chkMute1"> UPS#1 음소거</label></div>
+      <div class="form-row"><label style="min-width: auto;"><input type="checkbox" id="chkMute2"> UPS#2 음소거</label></div>
+      <section class="pcmute-section" aria-label="PC 음소거 자동 해제">
+        <strong>PC 음소거 자동 해제</strong>
+        <p>Windows 소리를 음소거하면 트레이 옆에 해제 시간을 묻는 창이 뜹니다. 시간이 지나면 자동으로 음소거를 풀고 볼륨을 100%로 올립니다.</p>
+        <div class="pcmute-state"><span class="chip" id="pcMuteChip">PC 소리 켜짐</span><span class="mono" id="pcMuteRemaining"></span></div>
+        <div class="opt-grid" id="pcMuteGrid"></div>
+        <div class="pcmute-actions">
+          <button type="button" class="btn btn-sm" id="btnPcUnmute">지금 해제</button>
+          <button type="button" class="btn btn-sm" id="btnPcCancelTimer" disabled>타이머 취소</button>
+          <label for="selectUnmuteMinutes">기본 해제 시간 <select id="selectUnmuteMinutes"></select></label>
+        </div>
+      </section>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" id="btnTestSound1">UPS#1 테스트</button>
+      <button type="button" class="btn" id="btnTestSound2">UPS#2 테스트</button>
+      <button type="button" class="btn" id="btnCancelSound">취소</button>
+      <button type="button" class="btn btn-primary" id="btnSaveSound">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="clientModal" role="dialog" aria-modal="true" aria-labelledby="clientModalTitle"><div class="modal client-modal">
+  <div class="modal-header"><h3 id="clientModalTitle">설정</h3><p>서버에서 이 PC를 선택하면 UPS별 서버 연결 정보가 자동으로 저장됩니다.</p></div>
+  <div class="modal-body">
+    <div class="form-row"><label for="clientName">장비명</label><input id="clientName" maxlength="64" placeholder="예: 1레이더 UPS 감시 PC"></div>
+    <div class="form-row"><label><input type="checkbox" id="clientAutostart" checked> Windows 로그인 시 자동 실행</label></div>
+    <div class="form-row"><label><input type="checkbox" id="clientAutoMonitor"> 프로그램 실행 시 감시 자동 시작</label></div>
+    <div class="client-help"><strong>자동 연결 방법</strong><p>통합알람감시체계 → UPS 추가 → 자동 탐지 (PC)에서<br>‘2026 1레이더 UPS’를 선택하고 UPS#1 또는 UPS#2를 고른 뒤 저장하세요.</p><p>닫기 버튼은 감시를 유지하며 트레이로 숨깁니다.<br>완전히 종료하려면 트레이 메뉴의 ‘종료’를 누르세요.</p></div>
+    <section class="settings-transfer" aria-label="설정 백업"><strong>설정 백업</strong><p>UPS 주소·서버 연결·임계값·환경 설정을 JSON 파일로 저장하고 불러옵니다. 기존 UPS 감시 프로그램의 settings.json / ups2_settings.json도 가져올 수 있습니다.</p><div><button type="button" class="btn" id="btnImportSettings">설정 가져오기</button><button type="button" class="btn" id="btnExportSettings">설정 내보내기</button></div></section>
+    <p id="clientDiscovery" class="muted"></p>
+  </div>
+  <div class="modal-footer"><button class="btn" id="cancelClient">취소</button><button class="btn btn-primary" id="saveClient">저장</button></div>
+</div></div>
+<div id="identifyBanner" hidden role="alert"><span>이 PC를 확인 중입니다</span><strong>2026 1레이더 UPS</strong><p>통합알람감시체계에서 보낸 PC 확인 요청입니다.</p></div>
+<div id="toast" hidden role="status"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

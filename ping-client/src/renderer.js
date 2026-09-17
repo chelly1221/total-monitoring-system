@@ -1,4 +1,5 @@
 import { theme } from './theme.js';
+import { UNMUTE_PRESETS, presetLabel, formatRemaining } from './presets.js';
 // State
 let settings = {};
 let isRunning = false;
@@ -470,7 +471,36 @@ document.getElementById('menuSound').addEventListener('click', () => {
   if (!showModal('soundModal')) return;
   document.getElementById('chkSoundEnabled').checked = settings.sound_enabled !== false;
   document.getElementById('inputSoundFile').value = settings.sound_file || '';
+  const select = document.getElementById('selectUnmuteMinutes');
+  const minutes = settings.unmute_minutes ?? 10;
+  select.innerHTML = UNMUTE_PRESETS.map(p => `<option value="${p.minutes}">${p.label}</option>`).join('') + (UNMUTE_PRESETS.some(p => p.minutes === minutes) ? '' : `<option value="${minutes}">${presetLabel(minutes)}</option>`);
+  select.value = String(minutes);
+  renderPcMute(latestSnapshot);
 });
+
+// PC 음소거 자동 해제 (Windows endpoint mute watched by the Rust side, as in SoundSense).
+function renderPcMute(snap) {
+  if (!snap) return;
+  const chip = document.getElementById('pcMuteChip');
+  const remaining = document.getElementById('pcMuteRemaining');
+  const running = snap.pcMuted && snap.unmuteRemainingSec != null;
+  chip.textContent = snap.pcMuted ? (running ? '음소거됨 · 자동 해제 대기' : '음소거됨') : 'PC 소리 켜짐';
+  chip.classList.toggle('muted', !!snap.pcMuted);
+  remaining.textContent = running ? formatRemaining(snap.unmuteRemainingSec) + ' 후 해제' : '';
+  document.getElementById('btnPcCancelTimer').disabled = !running;
+  const grid = document.getElementById('pcMuteGrid');
+  const minutes = snap.settings?.unmute_minutes ?? 10;
+  if (grid.dataset.minutes !== String(minutes)) {
+    grid.dataset.minutes = String(minutes);
+    grid.innerHTML = UNMUTE_PRESETS.map(p => `<button type="button" class="popup-opt${p.minutes === minutes ? ' default' : ''}" data-minutes="${p.minutes}" title="${p.label} 후 자동 해제">${p.label}</button>`).join('');
+  }
+}
+document.getElementById('pcMuteGrid').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-minutes]'); if (!btn) return;
+  window.api.muteChoose(Number(btn.dataset.minutes)).catch(err => window.notify(String(err)));
+});
+document.getElementById('btnPcUnmute').addEventListener('click', () => window.api.unmuteNow().catch(e => window.notify(String(e))));
+document.getElementById('btnPcCancelTimer').addEventListener('click', () => window.api.muteCancel().catch(e => window.notify(String(e))));
 
 document.getElementById('btnBrowseSound').addEventListener('click', async () => {
   try {
@@ -491,7 +521,8 @@ document.getElementById('btnTestSound').addEventListener('click', async () => {
 document.getElementById('btnSaveSound').addEventListener('click', async () => {
   const soundSettings = {
     sound_enabled: document.getElementById('chkSoundEnabled').checked,
-    sound_file: document.getElementById('inputSoundFile').value
+    sound_file: document.getElementById('inputSoundFile').value,
+    unmute_minutes: Number(document.getElementById('selectUnmuteMinutes').value)
   };
   try {
     const saved = await window.api.saveSettings(soundSettings);
@@ -879,6 +910,7 @@ export function syncSnapshot(snap) {
   const transferEl = document.getElementById('transferStatus');
   transferEl.textContent = snap.transferStatus || '';
   transferEl.hidden = !snap.transferStatus;
+  if (document.getElementById('soundModal').classList.contains('show')) renderPcMute(snap);
   document.getElementById('npcapStatus').title = snap.captureStatus;
 }
 function setText(id, value) { document.getElementById(id).textContent = value; }

@@ -1,0 +1,24 @@
+{
+  "name": "tms-ups-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/prepare-runtime.mjs && vite build",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "smoke": "node scripts/smoke.mjs",
+    "lint": "node --check src/main.js && node --check src/renderer.js && node --check src/mute.js && node --check src/presets.js && node --check scripts/smoke.mjs",
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "node scripts/build-setup.mjs",
+    "tauri:portable": "cargo tauri build --no-bundle",
+    "package": "node scripts/package.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

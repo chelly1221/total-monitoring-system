@@ -525,6 +525,7 @@ function SystemNewForm() {
               client={equipmentConfig.client}
               isEditMode
               onSelect={handleClientSelect}
+            allowedKinds={['sound', 'ping']}
               onUnlink={handleClientUnlink}
             />
 

@@ -19,9 +19,17 @@ import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
 import { UpsAudioConfig } from "@/components/forms/ups-audio-config"
 import { SystemCustomCode } from "@/components/forms/system-custom-code"
 import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
+import {
+  SoundClientSection,
+  buildUpsClientSelection,
+  provisionUpsClient,
+  type RegistrationMode,
+} from "@/components/forms/sound-client-section"
+import { upsClientUnit } from "@/lib/ups-client-preset"
 import type {
   MetricsConfig,
   AudioConfig,
+  DiscoveredClient,
 } from "@/types"
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
@@ -50,6 +58,9 @@ export default function UpsNewPage() {
 
   // Audio config state
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>({ type: 'none' })
+
+  // 등록 방식: 수동 입력 / 자동 탐지 (2026 1레이더 UPS 클라이언트)
+  const [registrationMode, setRegistrationMode] = React.useState<RegistrationMode>("manual")
 
   // Custom code test result state
   const [customCodeTestResult, setCustomCodeTestResult] = React.useState<Record<string, number | string> | null>(null)
@@ -157,6 +168,20 @@ export default function UpsNewPage() {
       }
 
       const newSystem = await response.json()
+
+      // Auto-registered UPS PC: hand it this server's address and the UPS number.
+      const linkedClient = metricsConfig.client
+      if (linkedClient?.kind === "ups" && portNum !== null) {
+        const provisioned = await provisionUpsClient({ client: linkedClient, port: portNum, facilityName: name.trim() })
+        if (provisioned) {
+          await fetch(`/api/systems/${newSystem.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config: { ...metricsConfig, client: provisioned } }),
+          }).catch(() => undefined)
+        }
+      }
+
       router.push(`/ups/${newSystem.id}`)
       router.refresh()
     } catch (err) {
@@ -164,6 +189,23 @@ export default function UpsNewPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleClientSelect = (client: DiscoveredClient, suggestedPort: number | null, unit: 1 | 2 = upsClientUnit(metricsConfig.client?.unit)) => {
+    const selection = buildUpsClientSelection(client, unit, suggestedPort, metricsConfig)
+    if (!name.trim() || metricsConfig.client) setName(selection.name)
+    setPort(selection.port)
+    setProtocol(selection.protocol)
+    setEncoding(selection.encoding)
+    setMetricsConfig(selection.config)
+  }
+
+  const handleClientUnlink = () => {
+    setMetricsConfig((prev) => {
+      const next = { ...prev }
+      delete next.client
+      return next
+    })
   }
 
   return (
@@ -264,6 +306,24 @@ export default function UpsNewPage() {
               onOfflineThresholdChange={setOfflineThresholdMin}
             />
           </div>
+
+          {/* 등록 방식 + 자동 탐지 (UPS 클라이언트 PC) */}
+          <SoundClientSection
+            mode={registrationMode}
+            onModeChange={setRegistrationMode}
+            client={metricsConfig.client}
+            isEditMode
+            onSelect={handleClientSelect}
+            onUnlink={handleClientUnlink}
+            allowedKinds={['ups']}
+            upsUnit={upsClientUnit(metricsConfig.client?.unit)}
+            onUpsUnitChange={(unit) => {
+              const client = metricsConfig.client
+              if (!client) return
+              const discovered: DiscoveredClient = { ...client, kind: 'ups', serverIp: client.serverIp ?? '', mac: client.mac ?? '', ver: client.ver ?? '', target: null, muted: false, sound: false, uptimeSec: 0, registered: null }
+              handleClientSelect(discovered, port ? Number(port) : null, unit)
+            }}
+          />
 
           {error && (
             <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">

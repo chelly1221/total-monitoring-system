@@ -49,6 +49,8 @@ pub struct Inner {
     /// Failure / recovery events waiting to be posted to the server.
     pub report_queue: VecDeque<Value>,
     pub report_status: String,
+    /// Windows endpoint mute state and the auto-unmute countdown.
+    pub pc_mute: crate::pcmute::PcMute,
 }
 
 #[derive(Clone)]
@@ -87,6 +89,7 @@ impl AppState {
                 transfer_status: String::new(),
                 report_queue: VecDeque::new(),
                 report_status: "서버 미연결 · 이력 공유 대기".into(),
+                pc_mute: Default::default(),
             })),
             dir,
             started: Instant::now(),
@@ -104,6 +107,7 @@ impl AppState {
             "captureStatus": g.capture_status, "lastSentAt": g.last_sent_at,
             "configRevision": g.config_revision, "uptimeSec": self.started.elapsed().as_secs(),
             "transferStatus": g.transfer_status, "reportStatus": g.report_status,
+            "pcMuted": g.pc_mute.muted, "unmuteRemainingSec": g.pc_mute.remaining_sec(),
             "host": hostname::get().unwrap_or_default().to_string_lossy(), "version": env!("CARGO_PKG_VERSION")})
     }
     pub fn apply(&self, patch: Value, provision: bool) -> Result<Settings, String> {

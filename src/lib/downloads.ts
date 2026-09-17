@@ -28,6 +28,14 @@ export const DOWNLOAD_ITEMS: DownloadItem[] = [
     description: '시설 PC용 네트워크 ping 감시 클라이언트 (Windows x64, 압축을 풀고 실행, 설치 불필요)',
     file: 'tms-ping-monitor.zip',
   },
+  {
+    id: 'ups-client',
+    name: '2026 1레이더 UPS',
+    // Same portable layout: exe + its own WebView2 runtime folder. Polls two UPS cards over
+    // SNMP v2c and forwards the readings to the server. Built by ups-client/scripts/package.mjs.
+    description: '김포 제1레이더 UPS SNMP 감시 클라이언트 (Windows x64, 압축을 풀고 실행, 설치 불필요)',
+    file: 'tms-ups-monitor.zip',
+  },
 ]
 
 export interface DownloadInfo extends DownloadItem {
@@ -53,6 +61,7 @@ export function downloadDirectories(): string[] {
     path.join(cwd, 'downloads'),
     path.join(cwd, 'sound-client', 'src-tauri', 'target', 'release'),
     path.join(cwd, 'ping-client', 'src-tauri', 'target', 'release'),
+    path.join(cwd, 'ups-client', 'src-tauri', 'target', 'release'),
   ]
   return dirs.filter((d): d is string => Boolean(d))
 }
@@ -85,7 +94,7 @@ async function readVersion(item: DownloadItem): Promise<string | null> {
       // no manifest here
     }
   }
-  if (item.id === 'sound-client' || item.id === 'ping-client') {
+  if (item.id === 'sound-client' || item.id === 'ping-client' || item.id === 'ups-client') {
     try {
       const conf = JSON.parse(await readFile(path.join(process.cwd(), item.id, 'src-tauri', 'tauri.conf.json'), 'utf8')) as { version?: string }
       return conf.version ?? null

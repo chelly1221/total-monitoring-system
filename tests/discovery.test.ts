@@ -182,6 +182,7 @@ test('download catalog resolves known ids and reports missing files', async () =
   const { findDownload, listDownloads, locateDownload } = await import('../src/lib/downloads')
   assert.equal(findDownload('sound-client')?.file, 'tms-soundsense.zip')
   assert.equal(findDownload('ping-client')?.file, 'tms-ping-monitor.zip')
+  assert.equal(findDownload('ups-client')?.file, 'tms-ups-monitor.zip')
   assert.equal(findDownload('../etc/passwd'), undefined)
   assert.equal(await locateDownload({ id: 'x', name: 'x', description: '', file: 'definitely-missing.exe' }), null)
   const items = await listDownloads()
@@ -189,7 +190,7 @@ test('download catalog resolves known ids and reports missing files', async () =
 })
 
 test('sound and ping clients on the same PC are discovered independently', async () => {
-  assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791])
+  assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791, 7792])
   const sound = await startFakeClient({ id: 'sound' })
   const ping = await startFakeClient({ id: 'ping', kind: 'ping' })
   try {

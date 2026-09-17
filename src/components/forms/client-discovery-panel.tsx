@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { DiscoveredClient } from "@/types"
+import { CLIENT_KIND_PORTS, clientKindName, clientKindOf, type ClientKind } from "@/lib/client-kinds"
 
 interface ClientDiscoveryPanelProps {
   /** Client id currently bound to this facility (highlighted, cannot be re-selected). */
@@ -16,10 +17,12 @@ interface ClientDiscoveryPanelProps {
   onSelect: (client: DiscoveredClient, suggestedPort: number | null) => void
   disabled?: boolean
   className?: string
+  /** Client kinds to list; others discovered on the LAN are hidden. */
+  allowedKinds?: ClientKind[]
 }
 
 /** Send the identify command; shared by the panel rows and the edit page. */
-export async function identifyClient(ip: string, discoveryPort = 7790): Promise<boolean> {
+export async function identifyClient(ip: string, discoveryPort: number = CLIENT_KIND_PORTS.sound): Promise<boolean> {
   try {
     const response = await fetch("/api/discovery/identify", {
       method: "POST",
@@ -49,8 +52,14 @@ export function ClientDiscoveryPanel({
   onSelect,
   disabled = false,
   className,
+  allowedKinds,
 }: ClientDiscoveryPanelProps) {
-  const [clients, setClients] = React.useState<DiscoveredClient[] | null>(null)
+  const [allClients, setAllClients] = React.useState<DiscoveredClient[] | null>(null)
+  // Equipment forms hide UPS clients and the UPS forms hide the pattern clients.
+  const clients = React.useMemo(
+    () => allClients && allowedKinds ? allClients.filter(c => allowedKinds.includes(clientKindOf(c.kind))) : allClients,
+    [allClients, allowedKinds],
+  )
   const [suggestedPort, setSuggestedPort] = React.useState<number | null>(null)
   const [scanning, setScanning] = React.useState(false)
   const [identifying, setIdentifying] = React.useState<string | null>(null)
@@ -66,7 +75,7 @@ export function ClientDiscoveryPanel({
         throw new Error(data.error || "PC 탐지에 실패했습니다")
       }
       const data = await response.json()
-      setClients(data.clients as DiscoveredClient[])
+      setAllClients(data.clients as DiscoveredClient[])
       setSuggestedPort(typeof data.suggestedPort === "number" ? data.suggestedPort : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "PC 탐지에 실패했습니다")
@@ -110,7 +119,7 @@ export function ClientDiscoveryPanel({
 
       {clients && clients.length === 0 && !scanning && !error && (
         <div className="py-2 text-xs text-muted-foreground">
-          같은 네트워크에서 실행 중인 음성탐지기 또는 네트워크 ping 감시 클라이언트를 찾지 못했습니다.
+          같은 네트워크에서 실행 중인 음성탐지기·네트워크 ping 감시·2026 1레이더 UPS 클라이언트를 찾지 못했습니다.
           클라이언트가 실행 중인지, 같은 서브넷인지 확인한 뒤 다시 검색하세요.
         </div>
       )}
@@ -141,14 +150,20 @@ export function ClientDiscoveryPanel({
                   >
                     <td className="py-1 pr-2 font-medium">
                       {client.name || <span className="text-muted-foreground">(미등록)</span>}
-                      <div className="text-[10px] font-normal text-muted-foreground">{client.kind === 'ping' ? '네트워크 ping 감시' : '음성탐지기'}</div>
+                      <div className="text-[10px] font-normal text-muted-foreground">{clientKindName(client.kind)}</div>
                     </td>
                     <td className="py-1 pr-2">{client.host}</td>
                     <td className="py-1 pr-2 font-mono">{client.ip}</td>
                     <td className="py-1 pr-2 font-mono text-muted-foreground">{client.mac || "-"}</td>
                     <td className="py-1 pr-2">
                       <span className="inline-flex items-center gap-1">
-                        {client.kind === 'ping' ? (
+                        {client.kind === 'ups' ? (
+                          (client.units ?? []).map(u => (
+                            <Badge key={u.unit} variant={u.alarm ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[10px]" title={u.target ? `서버 ${u.target.ip}:${u.target.port}` : '서버 미연결'}>
+                              UPS#{u.unit} {!client.running ? '정지' : u.alarm === null ? '대기' : u.alarm ? '경보' : '정상'}
+                            </Badge>
+                          ))
+                        ) : client.kind === 'ping' ? (
                           <Badge variant={client.alarm ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[10px]">
                             {!client.running ? '정지' : client.alarm === null ? '대기' : client.alarm ? '장애' : '정상'}
                           </Badge>

@@ -28,15 +28,15 @@ import {
 } from '@/lib/transfer-rules'
 import { cn } from '@/lib/utils'
 import type { DiscoveredClient } from '@/types'
+import { clientKindName, clientKindOf, discoveryPortFor } from '@/lib/client-kinds'
 
 const POLL_INTERVAL_MS = 1000
 
 /** Why a discovered client cannot be a transfer target; null when it can. */
 function unsupportedReason(client: DiscoveredClient): string | null {
-  const kind = client.kind === 'ping' ? 'ping' : 'sound'
+  const kind = clientKindOf(client.kind)
   if (!supportsTransfer(client.ver, kind)) {
-    const program = kind === 'ping' ? '네트워크 ping 감시' : '음성탐지기'
-    return `${program} ${minTransferVersion(kind)} 이상이 필요합니다 (현재 v${client.ver || '?'})`
+    return `${clientKindName(kind)} ${minTransferVersion(kind)} 이상이 필요합니다 (현재 v${client.ver || '?'})`
   }
   return null
 }
@@ -227,7 +227,7 @@ export function TransferDialog() {
           fileId: staged.id,
           run,
           elevate,
-          targets: targets.map(client => ({ id: client.id, name: client.name, host: client.host, ip: client.ip, discoveryPort: client.discoveryPort ?? 7790 })),
+          targets: targets.map(client => ({ id: client.id, name: client.name, host: client.host, ip: client.ip, discoveryPort: client.discoveryPort ?? discoveryPortFor(client.kind) })),
         }),
       })
       const data = await response.json().catch(() => ({}))
@@ -256,7 +256,7 @@ export function TransferDialog() {
         <DialogHeader>
           <DialogTitle>파일 전송 · V3 자동설치</DialogTitle>
           <DialogDescription>
-            이 PC의 파일을 음성탐지기나 네트워크 ping 감시가 실행 중인 시설 PC들로 한 번에 보냅니다. V3 엔진 설치 파일(예: ahnlabengine_setup260819.exe)을 고르면 받은 뒤 그 PC 화면에서 설치 프로그램이 자동으로 실행됩니다.
+            이 PC의 파일을 음성탐지기·네트워크 ping 감시·2026 1레이더 UPS가 실행 중인 시설 PC들로 한 번에 보냅니다. V3 엔진 설치 파일(예: ahnlabengine_setup260819.exe)을 고르면 받은 뒤 그 PC 화면에서 설치 프로그램이 자동으로 실행됩니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -292,7 +292,7 @@ export function TransferDialog() {
             </div>
             <p className="text-xs text-muted-foreground">
               설치 프로그램 창이 시설 PC 화면에 그대로 뜨며, 설치를 마쳐 창이 닫히면 완료로 보고됩니다. 시설 PC에서 UAC 확인 창이 켜져 있으면 그 PC에서 승인해야 합니다.
-              exe·msi가 아닌 파일은 실행하지 않고 음성탐지기 폴더의 received 안에 저장만 합니다.
+              exe·msi가 아닌 파일은 실행하지 않고 클라이언트 프로그램 폴더의 received 안에 저장만 합니다.
             </p>
           </section>
 
@@ -319,7 +319,7 @@ export function TransferDialog() {
             </div>
             {scanError && <div className="text-xs text-destructive">{scanError}</div>}
             {clients && clients.length === 0 && !scanning && !scanError && (
-              <div className="py-2 text-xs text-muted-foreground">같은 네트워크에서 실행 중인 음성탐지기·네트워크 ping 감시를 찾지 못했습니다.</div>
+              <div className="py-2 text-xs text-muted-foreground">같은 네트워크에서 실행 중인 음성탐지기·네트워크 ping 감시·2026 1레이더 UPS를 찾지 못했습니다.</div>
             )}
             {clients && clients.length > 0 && (
               <ul className="max-h-48 overflow-y-auto rounded border">
@@ -335,7 +335,7 @@ export function TransferDialog() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">
                           {client.name || <span className="text-muted-foreground">(미등록)</span>}
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">{client.host} · {client.kind === 'ping' ? 'ping 감시' : '음성탐지기'}</span>
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">{client.host} · {clientKindName(client.kind)}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span className="font-mono">{client.ip}</span>

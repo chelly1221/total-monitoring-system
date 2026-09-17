@@ -11,6 +11,7 @@ import { LightningAlertPanel } from '@/components/wing15/lightning-alert-panel'
 import { useCompactScreen } from '@/hooks/useCompactScreen'
 import { useCardOrder } from '@/hooks/use-card-order'
 import { SortableGroup, SortableCard } from '@/components/layout/sortable-cards'
+import { alarmDetailsBySystem } from '@/lib/alarm-details'
 
 export function RealtimeDashboard({ initialTime }: { initialTime: string }) {
   const router = useRouter()
@@ -22,6 +23,8 @@ export function RealtimeDashboard({ initialTime }: { initialTime: string }) {
     (s) => s.type === '장비상태' || s.type === 'equipment'
   )
   const equipmentOrder = useCardOrder('dashboard-equipment', equipmentSystems)
+  // Ping clients report which targets failed; show that next to the facility, not only in the log.
+  const alarmDetails = alarmDetailsBySystem(equipmentSystems, alarms)
 
   // Update clock every 10 seconds (sufficient for monitoring dashboard)
   useEffect(() => {
@@ -84,6 +87,7 @@ export function RealtimeDashboard({ initialTime }: { initialTime: string }) {
               name={system.name}
               status={system.status}
               isEnabled={system.isEnabled !== false}
+              detail={alarmDetails.get(system.id) ?? null}
             />
             </SortableCard>
           ))}
@@ -128,6 +132,11 @@ export function RealtimeDashboard({ initialTime }: { initialTime: string }) {
                         {system.name}
                       </span>
                     </div>
+                    {alarmDetails.get(system.id) && (
+                      <p className={`mt-2 text-center ${compact ? 'text-xl' : 'text-3xl'} font-semibold text-red-50`}>
+                        {alarmDetails.get(system.id)}
+                      </p>
+                    )}
                   </div>
                 ))}
 

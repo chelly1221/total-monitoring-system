@@ -64,6 +64,8 @@ test('transfer support is gated per client kind', () => {
   assert.ok(!supportsTransferForKind('1.1.0', 'sound'))
   assert.ok(supportsTransferForKind('1.1.0', 'ping'))
   assert.ok(!supportsTransferForKind('1.0.2', 'ping'))
+  assert.ok(supportsTransferForKind('1.0.0', 'ups'))
+  assert.ok(!supportsTransferForKind('0.9.9', 'ups'))
 })
 
 // ---------------------------------------------------------------- database-backed

@@ -4,6 +4,7 @@ import {
   ClientCommandError,
   CLIENT_DISCOVERY_PORTS,
   DEFAULT_HEARTBEAT_MS,
+  UPS_CLIENT_DISCOVERY_PORT,
   pickServerAddressFor,
   sendClientCommand,
 } from '@/lib/client-discovery'
@@ -34,9 +35,15 @@ export async function POST(request: Request) {
     if (port === null) {
       return NextResponse.json({ error: '포트는 1~65535 사이의 정수여야 합니다' }, { status: 400 })
     }
+    // A UPS client streams metric JSON for one of its two UPS cards; it has no on/off patterns.
+    const isUps = discoveryPort === UPS_CLIENT_DISCOVERY_PORT
+    const unit = body.unit === 1 || body.unit === 2 ? body.unit : null
+    if (isUps && unit === null) {
+      return NextResponse.json({ error: 'UPS 번호(1 또는 2)를 선택하세요' }, { status: 400 })
+    }
     const on = typeof body.on === 'string' ? body.on.trim() : ''
     const off = typeof body.off === 'string' ? body.off.trim() : ''
-    if (!on || !off || on === off || on.length > 64 || off.length > 64) {
+    if (!isUps && (!on || !off || on === off || on.length > 64 || off.length > 64)) {
       return NextResponse.json({ error: '정상 패턴과 심각 패턴을 서로 다르게 입력하세요' }, { status: 400 })
     }
     const intervalMs = Number.isInteger(body.intervalMs) && body.intervalMs >= 1000 && body.intervalMs <= 60000
@@ -54,7 +61,9 @@ export async function POST(request: Request) {
       ip,
       'config',
       // httpPort lets a ping client post its failure events back to this server.
-      { target: { ip: serverIp, port }, on, off, intervalMs, httpPort: serverHttpPort(), ...(name ? { name } : {}) },
+      isUps
+        ? { target: { ip: serverIp, port }, unit, intervalMs, httpPort: serverHttpPort(), ...(name ? { name } : {}) }
+        : { target: { ip: serverIp, port }, on, off, intervalMs, httpPort: serverHttpPort(), ...(name ? { name } : {}) },
       { port: discoveryPort },
     )
     return NextResponse.json({ ok: true, id: ack.id, target: { ip: serverIp, port } })

@@ -1,9 +1,12 @@
 // Pure rules for file transfer / remote install jobs. No Node imports: this
 // module is shared by the API routes, the header dialog and the tests.
 
+import type { ClientKind } from './client-kinds'
+
 /** Clients older than these ignore the `transfer` command. */
 export const MIN_TRANSFER_CLIENT_VERSION = '3.2.0'
 export const MIN_PING_TRANSFER_CLIENT_VERSION = '1.1.0'
+export const MIN_UPS_TRANSFER_CLIENT_VERSION = '1.0.0'
 export const MAX_TRANSFER_FILE_BYTES = 2 * 1024 * 1024 * 1024
 
 export type TargetPhase =
@@ -96,12 +99,14 @@ export function isRunnable(fileName: string): boolean {
 }
 
 /** Minimum client version that understands `transfer`, by client kind. */
-export function minTransferVersion(kind: 'sound' | 'ping' = 'sound'): string {
-  return kind === 'ping' ? MIN_PING_TRANSFER_CLIENT_VERSION : MIN_TRANSFER_CLIENT_VERSION
+export function minTransferVersion(kind: ClientKind = 'sound'): string {
+  if (kind === 'ping') return MIN_PING_TRANSFER_CLIENT_VERSION
+  if (kind === 'ups') return MIN_UPS_TRANSFER_CLIENT_VERSION
+  return MIN_TRANSFER_CLIENT_VERSION
 }
 
 /** True when a client version (e.g. "3.2.0") supports the transfer command. */
-export function supportsTransfer(version: string, kind: 'sound' | 'ping' = 'sound'): boolean {
+export function supportsTransfer(version: string, kind: ClientKind = 'sound'): boolean {
   const parse = (v: string) => v.trim().split('.').map(part => Number.parseInt(part, 10))
   const have = parse(version)
   const need = parse(minTransferVersion(kind))

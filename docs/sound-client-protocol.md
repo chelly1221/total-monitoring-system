@@ -1,13 +1,13 @@
 # Sound Client Discovery Protocol (v1)
 
 Shared contract between 통합알람감시체계 (server, `tms-portable`) and the Tauri
-clients (`sound-client`, `ping-client`). All implementations follow this file.
+clients (`sound-client`, `ping-client`, `ups-client`). All implementations follow this file.
 
 ## Transport
 
 - UDP, IPv4 only. One JSON object per datagram, UTF-8, no framing, max 1200 bytes.
-- SoundSense binds **UDP 7790**; 네트워크 ping 감시 binds **UDP 7791** on all IPv4 interfaces.
-- The server probes both ports during the same on-demand scan. The two clients may coexist on one PC with independent UUIDs, settings and server data ports.
+- SoundSense binds **UDP 7790**; 네트워크 ping 감시 binds **UDP 7791**; 2026 1레이더 UPS binds **UDP 7792** on all IPv4 interfaces.
+- The server probes all three ports during the same on-demand scan. The clients may coexist on one PC with independent UUIDs, settings and server data ports.
 - The server never binds a fixed port. It opens an ephemeral socket per
   operation and receives replies on it.
 - Discovery is **server-initiated and on-demand only**. Clients never broadcast
@@ -245,3 +245,70 @@ Ping provisioning stores `target.ip`, `target.port`, `on`, `off`, `intervalMs`, 
 An active target becomes failed after its configured consecutive failure count (default 1). Any confirmed failure yields `on`; `off` requires successful measurements for all active targets. No active targets, stopped monitoring or pending first measurements produce no normal heartbeat. The server's ordinary offline detection therefore remains effective. State changes send immediately (within the 250ms sender tick); otherwise a heartbeat repeats at the provisioned interval. Persisted targets and server settings resume when the application starts with automatic monitoring enabled.
 
 The ping client registers its own inbound UDP 7791 firewall rule. It does not open the SoundSense port. PC identification shows the window, requests taskbar attention, displays the Korean banner and beeps, then acknowledges.
+
+## UPS client extension (2026 1레이더 UPS 1.0.0)
+
+The UPS client (`ups-client/`, `tms-ups-monitor.exe`) polls the two UPS cards of 김포
+제1레이더 over SNMP v2c (RFC 1628 UPS-MIB, same OIDs and value scaling as the original
+snmpups program) and forwards each poll to the server. It uses the same v1 `probe`,
+`identify`, `config`, `ack` and `transfer` messages at **UDP 7792**; the firewall rule is
+"TMS UPS Monitor Discovery". Files received through `transfer` go to `received/` next to
+`ups-settings.json` (exe folder, or `%APPDATA%/tms-ups-monitor/`).
+
+`here` adds `kind: "ups"`, `discoveryPort: 7792` and one entry per UPS card:
+
+```json
+"units": [
+  { "unit": 1, "target": { "ip": "192.168.0.10", "port": 6102 }, "alarm": false, "reachable": true, "muted": false, "ups": "192.168.0.99" },
+  { "unit": 2, "target": null, "alarm": null, "reachable": null, "muted": false, "ups": "192.168.0.98" }
+]
+```
+
+`target` mirrors unit 1 for readers of the base protocol; `alarm` is the summary
+(`true` when any unit is in alarm, `false` when every unit answered and is healthy, `null`
+while stopped or before the first reply). A unit's `alarm` follows the same rule for that
+card alone.
+
+`config` binds **one** UPS card to one server facility and carries no `on`/`off`:
+
+```json
+{ "v": 1, "t": "config", "nonce": "...", "target": { "ip": "192.168.0.10", "port": 6102 },
+  "unit": 2, "intervalMs": 5000, "httpPort": 7777, "name": "1레이더 UPS PC" }
+```
+
+`unit` (1 or 2) is required; `target: null` unbinds that card. `intervalMs` maps onto the
+card's poll period (readings are forwarded once per poll, so it also acts as the
+heartbeat). The other card's binding and the local SNMP settings are untouched.
+
+### Data path
+
+After each poll the client sends the reading as UTF-8 JSON to the bound card's
+`target.ip:target.port`, exactly like the original program:
+
+```json
+{ "UPS": 2, "Data": { "출력 상태": "정상", "입력 전압 (V)": "220 V", "출력 전압 (V)": "221 V",
+  "입력 주파수 (Hz)": "60.0 Hz", "출력 주파수 (Hz)": "59.9 Hz", "배터리 상태": "정상",
+  "배터리 전압 (V)": "13.50 V", "배터리 잔량 (%)": "100.0 %", "배터리 온도 (°C)": "28°C" } }
+```
+
+Values are the formatted display strings; `"No Data"` marks parameters the UPS did not
+answer (or the whole set when the UPS is unreachable, so the server still sees the
+heartbeat). UPS#1 has 24 keys (3-phase R/S/T input voltage/current/power, output
+voltage/current/load, frequencies, output/battery status, battery voltage/charge);
+UPS#2 has 9 keys.
+
+On the server this is a `System` of type `ups`, protocol `udp`, encoding `utf8`, whose
+`config` holds the auto-generated parser and display items from
+`src/lib/ups-client-preset.ts` (thresholds = the client's default limits, status items
+alarm when the text is not 정상) plus
+`client: { kind: "ups", unit: 2, discoveryPort: 7792, id, name, host, ip, ... }`. The
+UPS add/edit pages offer 자동 탐지 (PC) with a UPS#1/UPS#2 selector; saving the facility
+sends `config` with that unit.
+
+## PC 음소거 자동 해제 (all three clients)
+
+The SoundSense feature that watches the Windows default render endpoint (mute popup
+near the tray, countdown badge on the tray icon, auto-unmute + 100% volume when the
+countdown ends) is also built into 네트워크 ping 감시 1.2.0+ and the UPS client
+(`pcmute.rs`, `mute.html`; same behaviour, default duration `unmute_minutes` in each
+client's settings, editable in its 경보 dialog). It never touches the discovery protocol.

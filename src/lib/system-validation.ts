@@ -1,4 +1,5 @@
 import { validateCustomCode } from './validate-custom-code'
+import { CLIENT_KIND_PORTS, discoveryPortFor } from './client-kinds'
 import { isValidCriticalConfirmations, MAX_CRITICAL_CONFIRMATIONS, MIN_CRITICAL_CONFIRMATIONS } from './equipment-alarm'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,8 +58,10 @@ export function validateSystemBody(body: unknown, partial = false): string | nul
     if (!isRecord(client) || typeof client.id !== 'string' || !client.id.trim() || typeof client.ip !== 'string') {
       return '연결된 PC 정보가 올바르지 않습니다'
     }
-    if (client.kind !== undefined && client.kind !== 'sound' && client.kind !== 'ping') return '클라이언트 종류가 올바르지 않습니다'
-    if (client.discoveryPort !== undefined && client.discoveryPort !== (client.kind === 'ping' ? 7791 : 7790)) return '클라이언트 탐지 포트가 올바르지 않습니다'
+    if (client.kind !== undefined && !(typeof client.kind === 'string' && client.kind in CLIENT_KIND_PORTS)) return '클라이언트 종류가 올바르지 않습니다'
+    if (client.discoveryPort !== undefined && client.discoveryPort !== discoveryPortFor(client.kind)) return '클라이언트 탐지 포트가 올바르지 않습니다'
+    if (client.kind === 'ups' && client.unit !== 1 && client.unit !== 2) return 'UPS 클라이언트의 UPS 번호(1 또는 2)를 선택하세요'
+    if (client.kind !== 'ups' && client.unit !== undefined) return 'UPS 번호는 UPS 클라이언트에만 지정할 수 있습니다'
   }
   if (config.criticalConfirmations != null && !isValidCriticalConfirmations(config.criticalConfirmations)) {
     return `심각 판정 연속 횟수는 ${MIN_CRITICAL_CONFIRMATIONS}~${MAX_CRITICAL_CONFIRMATIONS} 사이의 정수여야 합니다`

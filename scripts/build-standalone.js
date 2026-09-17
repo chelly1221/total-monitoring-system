@@ -111,12 +111,12 @@ for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
 fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
 
 // Bundle client programs offered from the header 다운로드 menu (see src/lib/downloads.ts).
-// Both clients must have been built first (cd <client> && cargo tauri build --no-bundle);
+// Every client must have been built first (cd <client> && cargo tauri build --no-bundle);
 // each package script zips the exe together with the WebView2 fixed runtime folder it carries.
 const downloadsDir = path.join(RESOURCES, 'downloads');
 fs.mkdirSync(downloadsDir, { recursive: true });
 const manifest = {};
-for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 'tms-ping-monitor']]) {
+for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 'tms-ping-monitor'], ['ups-client', 'tms-ups-monitor']]) {
   const clientDir = path.join(ROOT, id);
   const release = path.join(clientDir, 'src-tauri', 'target', 'release');
   const filename = `${binary}.zip`;

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>음소거 해제 시간 선택</title>
+    <link rel="stylesheet" href="/src/mute.css" />
+  </head>
+  <body class="popup-body">
+    <div class="popup" id="popup">
+      <header class="popup-head" data-tauri-drag-region>
+        <svg class="popup-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+          <path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        <div data-tauri-drag-region>
+          <div class="popup-title" data-tauri-drag-region>PC가 음소거 상태입니다</div>
+          <div class="popup-sub" data-tauri-drag-region>얼마 후 자동으로 해제할까요?</div>
+        </div>
+      </header>
+      <div class="popup-grid" id="popup-grid"></div>
+      <div class="popup-actions">
+        <button type="button" class="link" id="popup-later">나중에</button>
+        <button type="button" class="primary" id="popup-unmute">지금 해제</button>
+      </div>
+    </div>
+    <script type="module" src="/src/mute.js"></script>
+  </body>
+</html>

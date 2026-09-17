@@ -1,0 +1,43 @@
+[package]
+name = "tms-ups-monitor"
+version = "1.0.0"
+description = "2026 1레이더 UPS - TMS SNMP UPS monitoring client"
+authors = ["chelly1221"]
+edition = "2021"
+
+[lib]
+name = "tms_ups_monitor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["net", "time", "sync", "macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["v4"] }
+hostname = "0.4"
+log = "0.4"
+env_logger = "0.11"
+# Pulls server-staged files over HTTP (already in the tree via tauri).
+reqwest = { version = "0.13", default-features = false }
+sha2 = "0.10"
+windows = { version = "0.61", features = [
+  "Win32_Foundation", "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock",
+  "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Diagnostics_Debug",
+  "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem",
+  "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Com"
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

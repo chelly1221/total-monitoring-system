@@ -9,7 +9,20 @@ import { isIP } from 'net'
 
 export const CLIENT_DISCOVERY_PORT = 7790
 export const PING_CLIENT_DISCOVERY_PORT = 7791
-export const CLIENT_DISCOVERY_PORTS = [CLIENT_DISCOVERY_PORT, PING_CLIENT_DISCOVERY_PORT] as const
+export const UPS_CLIENT_DISCOVERY_PORT = 7792
+export const CLIENT_DISCOVERY_PORTS = [CLIENT_DISCOVERY_PORT, PING_CLIENT_DISCOVERY_PORT, UPS_CLIENT_DISCOVERY_PORT] as const
+
+export { CLIENT_KIND_PORTS, CLIENT_KIND_NAMES, clientKindOf, clientKindName, discoveryPortFor } from './client-kinds'
+export type { ClientKind } from './client-kinds'
+import { clientKindOf, discoveryPortFor } from './client-kinds'
+import type { ClientKind } from './client-kinds'
+
+/** One UPS card of a `kind: 'ups'` client (the client monitors two). */
+export interface HereUnit {
+  unit: number
+  target: { ip: string; port: number } | null
+  alarm: boolean | null
+}
 export const PROTOCOL_VERSION = 1
 /** Server listening ports handed to auto-registered sound clients. */
 export const SOUND_CLIENT_PORT_RANGE = { from: 6100, to: 6199 } as const
@@ -20,8 +33,10 @@ export const DEFAULT_HEARTBEAT_MS = 5000
 const MAX_DATAGRAM = 1200
 
 export interface HereReply {
-  kind: 'sound' | 'ping'
+  kind: ClientKind
   discoveryPort: number
+  /** UPS client only: per-unit server binding and alarm state. */
+  units?: HereUnit[]
   alarm: boolean | null
   running: boolean
   id: string
@@ -114,13 +129,20 @@ export function parseHereReply(raw: Buffer | string, nonce: string, from: string
   }
   if (!isRecord(message) || message.v !== PROTOCOL_VERSION || message.t !== 'here' || message.nonce !== nonce) return null
   if (typeof message.id !== 'string' || !message.id.trim()) return null
-  const target = isRecord(message.target) && typeof message.target.ip === 'string' &&
-    Number.isInteger(message.target.port)
-    ? { ip: message.target.ip, port: Number(message.target.port) }
+  const parseTarget = (value: unknown) => isRecord(value) && typeof value.ip === 'string' && Number.isInteger(value.port)
+    ? { ip: value.ip, port: Number(value.port) }
     : null
+  const target = parseTarget(message.target)
+  const kind = clientKindOf(message.kind)
+  const units = kind === 'ups' && Array.isArray(message.units)
+    ? message.units.flatMap((u): HereUnit[] => isRecord(u) && Number.isInteger(u.unit) && Number(u.unit) >= 1
+      ? [{ unit: Number(u.unit), target: parseTarget(u.target), alarm: typeof u.alarm === 'boolean' ? u.alarm : null }]
+      : [])
+    : undefined
   return {
-    kind: message.kind === 'ping' ? 'ping' : 'sound',
-    discoveryPort: message.kind === 'ping' ? PING_CLIENT_DISCOVERY_PORT : CLIENT_DISCOVERY_PORT,
+    kind,
+    discoveryPort: discoveryPortFor(kind),
+    ...(units ? { units } : {}),
     alarm: typeof message.alarm === 'boolean' ? message.alarm : null,
     running: message.running === true,
     id: message.id.trim(),

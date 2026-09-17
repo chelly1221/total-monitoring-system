@@ -1,3 +1,4 @@
+mod badge;
 mod capture;
 mod discovery;
 mod firewall;
@@ -5,6 +6,7 @@ mod history;
 mod monitor;
 mod netinfo;
 mod npcap;
+mod pcmute;
 mod report;
 mod settings;
 mod state;
@@ -12,7 +14,7 @@ mod transfer;
 
 use serde_json::{json, Value};
 use state::AppState;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::ManagerExt;
@@ -289,7 +291,11 @@ pub fn run() {
             export_settings,
             capture_interfaces,
             npcap_installer_available,
-            install_npcap
+            install_npcap,
+            pcmute::unmute_now,
+            pcmute::mute_choose,
+            pcmute::mute_cancel,
+            pcmute::mute_popup_dismiss
         ])
         .setup(move |app| {
             // Single-instance plugins initialize before storage, avoiding concurrent migration.
@@ -297,17 +303,31 @@ pub fn run() {
             let settings = settings::load(&dir).map_err(std::io::Error::other)?;
             let state = AppState::new(settings, dir).map_err(std::io::Error::other)?;
             app.manage(state.clone());
+            let (mute_ctx, mute_rx) = pcmute::MuteCtx::new();
+            app.manage(mute_ctx);
+            let status = MenuItem::with_id(app, "status", "PC 소리 켜짐", false, None::<&str>)?;
+            let cancel = MenuItem::with_id(app, "cancel-timer", "음소거 타이머 취소", false, None::<&str>)?;
             let open =
                 MenuItem::with_id(app, "open", "네트워크 ping 감시 열기", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &quit])?;
-            TrayIconBuilder::new()
+            let menu = Menu::with_items(
+                app,
+                &[&status, &cancel, &PredefinedMenuItem::separator(app)?, &open, &PredefinedMenuItem::separator(app)?, &quit],
+            )?;
+            if let Ok(mut slot) = app.state::<pcmute::MuteCtx>().tray_items.lock() {
+                *slot = Some((status, cancel));
+            }
+            TrayIconBuilder::with_id(pcmute::TRAY_ID)
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("네트워크 ping 감시")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show(app),
+                    "cancel-timer" => {
+                        app.state::<pcmute::MuteCtx>().send(pcmute::MuteCmd::CancelCountdown);
+                        pcmute::hide_popup(app);
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -344,6 +364,18 @@ pub fn run() {
             tauri::async_runtime::spawn(monitor::run(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(monitor::heartbeat(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(report::run(state.clone()));
+            if let Some(mw) = app.get_webview_window(pcmute::MUTE_WINDOW) {
+                let mw2 = mw.clone();
+                mw.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = mw2.hide();
+                    }
+                });
+            }
+            pcmute::spawn(handle.clone(), state.clone(), mute_rx);
+            static ICON: &[u8] = include_bytes!("../icons/128x128.png");
+            tauri::async_runtime::spawn(pcmute::tray_loop(handle.clone(), state.clone(), ICON, "네트워크 ping 감시"));
             let capture_state = state.clone();
             std::thread::spawn(move || capture::run(handle, capture_state));
             Ok(())

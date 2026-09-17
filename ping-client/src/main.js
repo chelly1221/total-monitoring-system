@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import './workspace.css';
+import './mute.css';
 import './topoEditor.js';
 import './view2d.js';
 
@@ -29,6 +30,9 @@ window.api = {
   importSettings: () => invoke('import_settings'),
   exportSettings: patch => invoke('export_settings', { patch }),
   updateMute: async mute => { await invoke('save_settings', { patch: { mute_state: mute } }); return true; },
+  muteChoose: minutes => invoke('mute_choose', { minutes }),
+  muteCancel: () => invoke('mute_cancel'),
+  unmuteNow: () => invoke('unmute_now'),
   windowMinimize: () => win.minimize(),
   windowMaximize: () => win.toggleMaximize(),
   windowClose: () => win.hide(),

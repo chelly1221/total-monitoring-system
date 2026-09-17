@@ -10,6 +10,8 @@ interface HealthCheckCardProps {
   status: string
   isEnabled?: boolean
   className?: string
+  /** Second line under the name, e.g. which ping targets are down ("1레이더 스위치 192.168.0.5 응답 없음"). */
+  detail?: string | null
 }
 
 function getStatusLeftBorder(status: string, isEnabled: boolean): string {
@@ -71,6 +73,7 @@ export function HealthCheckCard({
   status,
   isEnabled = true,
   className,
+  detail,
 }: HealthCheckCardProps) {
   const isCritical = status === 'critical' && isEnabled
   const badge = getStatusBadge(status, isEnabled)
@@ -87,23 +90,36 @@ export function HealthCheckCard({
           className
         )}
       >
-        <CardContent className="flex items-center justify-between gap-1 py-1 px-2">
-          <p className={cn(
-            'truncate text-xs font-semibold drop-shadow-sm',
-            !isEnabled && 'text-neutral-400',
-            isEnabled && status === 'normal' && 'text-green-900',
-            isEnabled && status === 'warning' && 'text-yellow-900',
-            isEnabled && status === 'critical' && 'text-white',
-            isEnabled && status === 'offline' && 'text-yellow-900'
-          )}>
-            {name}
-          </p>
-          <span className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 shadow-inner border border-white/20 backdrop-blur-sm',
-            badge.className
-          )}>
-            {badge.text}
-          </span>
+        <CardContent className="flex flex-col gap-0.5 py-1 px-2">
+          <div className="flex items-center justify-between gap-1">
+            <p className={cn(
+              'truncate text-xs font-semibold drop-shadow-sm',
+              !isEnabled && 'text-neutral-400',
+              isEnabled && status === 'normal' && 'text-green-900',
+              isEnabled && status === 'warning' && 'text-yellow-900',
+              isEnabled && status === 'critical' && 'text-white',
+              isEnabled && status === 'offline' && 'text-yellow-900'
+            )}>
+              {name}
+            </p>
+            <span className={cn(
+              'text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 shadow-inner border border-white/20 backdrop-blur-sm',
+              badge.className
+            )}>
+              {badge.text}
+            </span>
+          </div>
+          {detail && (
+            <p
+              className={cn(
+                'truncate text-[11px] font-medium leading-4 drop-shadow-sm',
+                isEnabled && status === 'critical' ? 'text-red-50' : 'text-black/80'
+              )}
+              title={detail}
+            >
+              {detail}
+            </p>
+          )}
         </CardContent>
       </Card>
     </Link>

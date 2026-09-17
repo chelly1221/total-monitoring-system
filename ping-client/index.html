@@ -251,6 +251,19 @@
         <button type="button" class="btn btn-sm" id="btnBrowseSound">찾아보기</button>
       </div>
     </div>
+    <div class="modal-body" style="padding-top:0">
+      <section class="pcmute-section" aria-label="PC 음소거 자동 해제" style="margin-top:0">
+        <strong>PC 음소거 자동 해제</strong>
+        <p>Windows 소리를 음소거하면 트레이 옆에 해제 시간을 묻는 창이 뜹니다. 시간이 지나면 자동으로 음소거를 풀고 볼륨을 100%로 올립니다.</p>
+        <div class="pcmute-state"><span class="chip" id="pcMuteChip">PC 소리 켜짐</span><span class="mono" id="pcMuteRemaining"></span></div>
+        <div class="opt-grid" id="pcMuteGrid"></div>
+        <div class="pcmute-actions">
+          <button type="button" class="btn btn-sm" id="btnPcUnmute">지금 해제</button>
+          <button type="button" class="btn btn-sm" id="btnPcCancelTimer" disabled>타이머 취소</button>
+          <label for="selectUnmuteMinutes">기본 해제 시간 <select id="selectUnmuteMinutes"></select></label>
+        </div>
+      </section>
+    </div>
     <div class="modal-footer">
       <button type="button" class="btn" id="btnTestSound">테스트</button>
       <button type="button" class="btn" id="btnCancelSound">취소</button>

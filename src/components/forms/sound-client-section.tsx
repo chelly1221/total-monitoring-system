@@ -13,7 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ClientDiscoveryPanel, identifyClient } from "@/components/forms/client-discovery-panel"
-import type { DiscoveredClient, EquipmentConfig, SoundClientInfo } from "@/types"
+import { clientKindName, discoveryPortFor, upsUnitLabel, type ClientKind } from "@/lib/client-kinds"
+import { buildUpsClientPreset, isUpsClientPreset, upsClientUnit } from "@/lib/ups-client-preset"
+import type { DiscoveredClient, EquipmentConfig, MetricsConfig, SoundClientInfo } from "@/types"
 
 export type RegistrationMode = "manual" | "auto"
 
@@ -30,7 +32,7 @@ export function buildClientSelection(client: DiscoveredClient, suggestedPort: nu
     mac: client.mac || undefined,
     ver: client.ver || undefined,
     kind: client.kind ?? 'sound',
-    discoveryPort: client.discoveryPort ?? 7790,
+    discoveryPort: client.discoveryPort ?? discoveryPortFor(client.kind),
     serverIp: client.serverIp,
   }
   // The client's old destination may belong to another server or facility.
@@ -53,6 +55,61 @@ export function buildClientSelection(client: DiscoveredClient, suggestedPort: nu
     protocol: "udp" as const,
     encoding: "utf8" as const,
     config,
+  }
+}
+
+/**
+ * Form values for a UPS facility fed by one card of a discovered UPS client: this
+ * server's free port, UTF-8 JSON, and the parser/display-item preset for that card
+ * (kept when the operator already tuned the same preset).
+ */
+export function buildUpsClientSelection(client: DiscoveredClient, unit: 1 | 2, suggestedPort: number | null, previous: MetricsConfig) {
+  const info: SoundClientInfo = {
+    id: client.id,
+    name: client.name,
+    host: client.host,
+    ip: client.ip,
+    mac: client.mac || undefined,
+    ver: client.ver || undefined,
+    kind: 'ups',
+    unit,
+    discoveryPort: client.discoveryPort ?? discoveryPortFor('ups'),
+    serverIp: client.serverIp,
+  }
+  const keepItems = previous.client?.id === client.id && previous.client.unit === unit && isUpsClientPreset(previous, unit) && previous.displayItems.length > 0
+  const config: MetricsConfig = {
+    ...previous,
+    ...(keepItems ? {} : buildUpsClientPreset(unit)),
+    client: info,
+  }
+  return {
+    name: `${client.name || client.host} ${upsUnitLabel(unit)}`,
+    port: suggestedPort != null ? String(suggestedPort) : "",
+    protocol: "udp" as const,
+    encoding: "utf8" as const,
+    config,
+  }
+}
+
+/** Push the server address and UPS number to a UPS client after the facility is saved. */
+export async function provisionUpsClient({ client, port, facilityName }: { client: SoundClientInfo; port: number; facilityName: string }): Promise<SoundClientInfo | null> {
+  const unit = upsClientUnit(client.unit)
+  try {
+    const response = await fetch("/api/discovery/provision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip: client.ip, port, unit, name: client.name || facilityName, discoveryPort: client.discoveryPort ?? discoveryPortFor('ups'), serverIp: client.serverIp }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      toast.warning(`시설은 저장되었지만 PC 설정 전송에 실패했습니다: ${data.error || "응답 없음"}`)
+      return null
+    }
+    toast.success(`PC에 서버 주소와 ${upsUnitLabel(unit)} 전송 설정을 보냈습니다`)
+    return { ...client, provisionedAt: new Date().toISOString() }
+  } catch {
+    toast.warning("시설은 저장되었지만 PC 설정 전송에 실패했습니다")
+    return null
   }
 }
 
@@ -79,7 +136,7 @@ export async function provisionSoundClient({ client, port, config, facilityName 
     const response = await fetch("/api/discovery/provision", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip: client.ip, port, on, off, name: client.name || facilityName, discoveryPort: client.discoveryPort ?? 7790, serverIp: client.serverIp }),
+      body: JSON.stringify({ ip: client.ip, port, on, off, name: client.name || facilityName, discoveryPort: client.discoveryPort ?? discoveryPortFor(client.kind), serverIp: client.serverIp }),
     })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
@@ -103,6 +160,11 @@ interface SoundClientSectionProps {
   isEditMode: boolean
   onSelect: (client: DiscoveredClient, suggestedPort: number | null) => void
   onUnlink: () => void
+  /** Client kinds offered in the discovery list (equipment forms: sound + ping, UPS forms: ups). */
+  allowedKinds?: ClientKind[]
+  /** UPS forms: which card of the UPS client feeds this facility, with its change handler. */
+  upsUnit?: 1 | 2
+  onUpsUnitChange?: (unit: 1 | 2) => void
 }
 
 /**
@@ -117,6 +179,9 @@ export function SoundClientSection({
   isEditMode,
   onSelect,
   onUnlink,
+  allowedKinds,
+  upsUnit,
+  onUpsUnitChange,
 }: SoundClientSectionProps) {
   const [showPanel, setShowPanel] = React.useState(false)
   const [identifying, setIdentifying] = React.useState(false)
@@ -167,12 +232,29 @@ export function SoundClientSection({
             <span className="text-muted-foreground">연결된 PC</span>
             <span className="font-medium">{client.name || client.host}</span>
             <span className="text-muted-foreground">
+              {clientKindName(client.kind)}
+              {" · "}
               {client.host}
               {" · "}
               <span className="font-mono">{client.ip}</span>
               {client.mac && <> · <span className="font-mono">{client.mac}</span></>}
               {client.ver && <> · v{client.ver}</>}
             </span>
+            {client.kind === 'ups' && (
+              isEditMode && mode === "auto" && onUpsUnitChange ? (
+                <Select value={String(upsUnit ?? client.unit ?? 1)} onValueChange={(value) => onUpsUnitChange(upsClientUnit(value))}>
+                  <SelectTrigger className="w-24 h-6 text-xs" title="이 시설이 받을 UPS">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">UPS#1 (3상)</SelectItem>
+                    <SelectItem value="2">UPS#2 (단상)</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="rounded border px-1.5 py-0.5 text-[10px]">{upsUnitLabel(client.unit)}</span>
+              )
+            )}
             <Button
               type="button"
               variant="outline"
@@ -213,7 +295,9 @@ export function SoundClientSection({
         ) : (
           isEditMode && mode === "auto" && (
             <span className="text-xs text-muted-foreground">
-              아래 목록에서 PC를 선택하면 시설명·포트·프로토콜·패턴이 자동으로 채워지고, 저장 시 PC에 서버 주소가 전송됩니다.
+              {allowedKinds?.length === 1 && allowedKinds[0] === 'ups'
+                ? "아래 목록에서 UPS 감시 PC를 선택하면 시설명·포트·수신 파서·표시 항목이 자동으로 채워지고, 저장 시 PC에 서버 주소와 UPS 번호가 전송됩니다."
+                : "아래 목록에서 PC를 선택하면 시설명·포트·프로토콜·패턴이 자동으로 채워지고, 저장 시 PC에 서버 주소가 전송됩니다."}
             </span>
           )
         )}
@@ -223,6 +307,7 @@ export function SoundClientSection({
         <ClientDiscoveryPanel
           selectedClientId={client?.id ?? null}
           currentSystemId={currentSystemId}
+          allowedKinds={allowedKinds}
           onSelect={(picked, suggestedPort) => {
             onSelect(picked, suggestedPort)
             setShowPanel(false)
