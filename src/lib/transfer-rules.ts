@@ -1,8 +1,9 @@
 // Pure rules for file transfer / remote install jobs. No Node imports: this
 // module is shared by the API routes, the header dialog and the tests.
 
-/** Clients older than this ignore the `transfer` command. */
+/** Clients older than these ignore the `transfer` command. */
 export const MIN_TRANSFER_CLIENT_VERSION = '3.2.0'
+export const MIN_PING_TRANSFER_CLIENT_VERSION = '1.1.0'
 export const MAX_TRANSFER_FILE_BYTES = 2 * 1024 * 1024 * 1024
 
 export type TargetPhase =
@@ -94,11 +95,16 @@ export function isRunnable(fileName: string): boolean {
   return ext === '.exe' || ext === '.msi'
 }
 
+/** Minimum client version that understands `transfer`, by client kind. */
+export function minTransferVersion(kind: 'sound' | 'ping' = 'sound'): string {
+  return kind === 'ping' ? MIN_PING_TRANSFER_CLIENT_VERSION : MIN_TRANSFER_CLIENT_VERSION
+}
+
 /** True when a client version (e.g. "3.2.0") supports the transfer command. */
-export function supportsTransfer(version: string): boolean {
+export function supportsTransfer(version: string, kind: 'sound' | 'ping' = 'sound'): boolean {
   const parse = (v: string) => v.trim().split('.').map(part => Number.parseInt(part, 10))
   const have = parse(version)
-  const need = parse(MIN_TRANSFER_CLIENT_VERSION)
+  const need = parse(minTransferVersion(kind))
   if (have.length < 3 || have.some(n => !Number.isInteger(n))) return false
   for (let i = 0; i < 3; i++) {
     if (have[i] > need[i]) return true

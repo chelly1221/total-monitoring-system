@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { isIP } from 'net'
 import {
   CLIENT_DISCOVERY_PORT,
+  CLIENT_DISCOVERY_PORTS,
   ClientCommandError,
   pickServerAddressFor,
   sendClientCommand,
@@ -40,8 +41,8 @@ function parseTargets(raw: unknown): JobTargetInput[] | string {
     const clientId = typeof item.id === 'string' ? item.id.trim() : ''
     const ip = typeof item.ip === 'string' ? item.ip.trim() : ''
     if (!clientId || isIP(ip) !== 4) return '대상 PC 정보가 올바르지 않습니다'
-    const discoveryPort = item.discoveryPort ?? CLIENT_DISCOVERY_PORT
-    if (discoveryPort !== CLIENT_DISCOVERY_PORT) return '파일 전송은 음성탐지기 클라이언트만 지원합니다'
+    const discoveryPort = typeof item.discoveryPort === 'number' ? item.discoveryPort : CLIENT_DISCOVERY_PORT
+    if (!(CLIENT_DISCOVERY_PORTS as readonly number[]).includes(discoveryPort)) return '지원하지 않는 클라이언트 탐지 포트입니다'
     if (seen.has(clientId)) continue
     seen.add(clientId)
     targets.push({
