@@ -60,6 +60,13 @@ pub async fn run(app: AppHandle, state: AppState) {
             };
             let reply = match msg["t"].as_str() {
                 Some("probe") => here(&state, &msg, source),
+                Some("transfer") => {
+                    // Validate and start the download in the background; the ack only says
+                    // whether the request was accepted (progress goes back over HTTP).
+                    let result = crate::transfer::TransferRequest::parse(&msg)
+                        .and_then(|req| crate::transfer::start(&app, &state, req));
+                    json!({"v":1,"t":"ack","nonce":msg["nonce"],"id":state_id(&state),"ok":result.is_ok(),"error":result.err().unwrap_or_default()})
+                }
                 Some("identify") | Some("config") => {
                     // Disk and window operations run outside the async I/O executor.
                     let app = app.clone();

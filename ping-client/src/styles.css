@@ -1174,3 +1174,7 @@ tr.log-recovery:hover {
   cursor: default;
   background: var(--bg-surface);
 }
+
+/* Server-initiated file transfer progress (hidden while idle) */
+#statusbar #transferStatus { color: var(--accent, #60a5fa); font-weight: 600; }
+#statusbar #transferStatus[hidden] { display: none; }

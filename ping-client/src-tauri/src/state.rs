@@ -1,10 +1,11 @@
 use crate::settings::{self, Settings};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::Notify;
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -41,6 +42,13 @@ pub struct Inner {
     pub last_sent_at: Option<u64>,
     pub last_payload: Option<String>,
     pub config_revision: u64,
+    /// A server-initiated file transfer is downloading or running.
+    pub transfer_busy: bool,
+    /// Progress / outcome of the latest transfer for the UI ("" when idle).
+    pub transfer_status: String,
+    /// Failure / recovery events waiting to be posted to the server.
+    pub report_queue: VecDeque<Value>,
+    pub report_status: String,
 }
 
 #[derive(Clone)]
@@ -49,6 +57,8 @@ pub struct AppState {
     pub dir: PathBuf,
     pub started: Instant,
     pub history: Arc<Mutex<crate::history::HistoryStore>>,
+    /// Wakes the event reporter when something was queued.
+    pub report_notify: Arc<Notify>,
 }
 
 impl AppState {
@@ -73,10 +83,15 @@ impl AppState {
                 last_sent_at: None,
                 last_payload: None,
                 config_revision: 0,
+                transfer_busy: false,
+                transfer_status: String::new(),
+                report_queue: VecDeque::new(),
+                report_status: "서버 미연결 · 이력 공유 대기".into(),
             })),
             dir,
             started: Instant::now(),
             history: Arc::new(Mutex::new(history)),
+            report_notify: Arc::new(Notify::new()),
         })
     }
     pub fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -88,6 +103,7 @@ impl AppState {
             "logs": g.logs, "logBytes": self.history.lock().unwrap_or_else(|e| e.into_inner()).bytes_used(), "logMaxBytes": crate::history::MAX_BYTES, "discoveryStatus": g.discovery_status, "sendStatus": g.send_status,
             "captureStatus": g.capture_status, "lastSentAt": g.last_sent_at,
             "configRevision": g.config_revision, "uptimeSec": self.started.elapsed().as_secs(),
+            "transferStatus": g.transfer_status, "reportStatus": g.report_status,
             "host": hostname::get().unwrap_or_default().to_string_lossy(), "version": env!("CARGO_PKG_VERSION")})
     }
     pub fn apply(&self, patch: Value, provision: bool) -> Result<Settings, String> {

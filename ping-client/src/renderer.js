@@ -861,7 +861,10 @@ export function syncSnapshot(snap) {
   setText('connectionStatus', snap.sendStatus);
   setText('lastSent', settings.udp_enabled && snap.lastSentAt ? '최근 전송 ' + formatTime(snap.lastSentAt) : '시설 등록 → 자동 탐지 (PC)');
   document.getElementById('connectionDot').classList.toggle('active', settings.udp_enabled && isRunning && snap.lastSentAt != null && Date.now() - snap.lastSentAt < settings.interval_ms * 2);
-  setText('clientDiscovery', snap.discoveryStatus);
+  setText('clientDiscovery', snap.discoveryStatus + (snap.reportStatus ? ' · ' + snap.reportStatus : ''));
+  const transferEl = document.getElementById('transferStatus');
+  transferEl.textContent = snap.transferStatus || '';
+  transferEl.hidden = !snap.transferStatus;
   document.getElementById('npcapStatus').title = snap.captureStatus;
 }
 function setText(id, value) { document.getElementById(id).textContent = value; }

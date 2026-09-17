@@ -23,6 +23,8 @@ pub struct Settings {
     pub udp_message: String,
     pub udp_no_failure_message: String,
     pub interval_ms: u64,
+    /// TMS web port used to post failure events (provisioned as `httpPort`).
+    pub server_http_port: u16,
     pub sound_enabled: bool,
     pub sound_file: String,
     pub mute_state: bool,
@@ -65,6 +67,7 @@ impl Default for Settings {
             udp_message: "PING_FAIL".into(),
             udp_no_failure_message: "PING_OK".into(),
             interval_ms: 5000,
+            server_http_port: 7777,
             sound_enabled: true,
             sound_file: String::new(),
             mute_state: false,
@@ -166,6 +169,9 @@ impl Settings {
         if !(1000..=60000).contains(&self.interval_ms) {
             return Err("하트비트는 1~60초 범위입니다".into());
         }
+        if self.server_http_port == 0 {
+            return Err("서버 웹 포트가 올바르지 않습니다".into());
+        }
         if self.udp_enabled
             && (self.udp_ip.parse::<std::net::Ipv4Addr>().is_err()
                 || self.udp_port.parse::<u16>().unwrap_or(0) == 0)
@@ -266,6 +272,7 @@ impl Settings {
             ("on", "udp_message"),
             ("off", "udp_no_failure_message"),
             ("intervalMs", "interval_ms"),
+            ("httpPort", "server_http_port"),
             ("name", "name"),
         ] {
             if let Some(v) = msg.get(wire) {
@@ -389,6 +396,10 @@ mod tests {
         assert_eq!(next.id, s.id);
         assert!(next.udp_enabled);
         assert_eq!(next.udp_port, "6101");
+        assert_eq!(next.server_http_port, 7777);
+        let with_http = s.provision(&json!({"target":{"ip":"127.0.0.1","port":6101},"httpPort":7778})).unwrap();
+        assert_eq!(with_http.server_http_port, 7778);
+        assert!(s.provision(&json!({"target":{"ip":"127.0.0.1","port":6101},"httpPort":0})).is_err());
         for msg in [
             json!({}),
             json!({"target":{"ip":"bad","port":1}}),

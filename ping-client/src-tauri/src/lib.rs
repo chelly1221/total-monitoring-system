@@ -4,8 +4,10 @@ mod firewall;
 mod history;
 mod monitor;
 mod netinfo;
+mod report;
 mod settings;
 mod state;
+mod transfer;
 
 use serde_json::{json, Value};
 use state::AppState;
@@ -320,6 +322,7 @@ pub fn run() {
             tauri::async_runtime::spawn(discovery::run(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(monitor::run(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(monitor::heartbeat(handle.clone(), state.clone()));
+            tauri::async_runtime::spawn(report::run(state.clone()));
             let capture_state = state.clone();
             std::thread::spawn(move || capture::run(handle, capture_state));
             Ok(())
