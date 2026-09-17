@@ -19,9 +19,9 @@
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 00-1 0V8a.5.5 0 00.252.434l3.5 2a.5.5 0 00.496-.868L8 7.71V3.5z"/><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm7-8A7 7 0 111 8a7 7 0 0114 0z"/></svg>
         <span>주기</span>
       </button>
-      <button type="button" class="titlebar-btn menu-btn" id="menuUdp" title="UDP송신 설정">
+      <button type="button" class="titlebar-btn menu-btn" id="menuUdp" title="서버 연결 설정">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H2a2 2 0 01-2-2V4zm2-1a1 1 0 00-1 1v.217l7 4.2 7-4.2V4a1 1 0 00-1-1H2zm13 2.383l-4.708 2.825L15 11.105V5.383zm-.034 6.876L10.93 8.97 8 10.683 5.07 8.97l-4.036 3.29A1 1 0 002 13h12a1 1 0 00.966-.741zM1 11.105l4.708-2.897L1 5.383v5.722z"/></svg>
-        <span>UDP</span>
+        <span>서버</span>
       </button>
       <button type="button" class="titlebar-btn menu-btn" id="menuSound" title="경보소리 설정">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M8.707 11.182A4.486 4.486 0 0010.025 8a4.486 4.486 0 00-1.318-3.182L8 5.525A3.489 3.489 0 019.025 8 3.49 3.49 0 018 10.475l.707.707zM6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
@@ -205,11 +205,11 @@
 <div class="modal-overlay" id="udpModal" role="dialog" aria-modal="true" aria-labelledby="udpModalTitle">
   <div class="modal" style="width: 400px; max-width: calc(100vw - 32px);">
     <div class="modal-header">
-      <h3 id="udpModalTitle">UDP 송신 설정</h3>
+      <h3 id="udpModalTitle">서버 연결 설정</h3>
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <label style="min-width: auto;"><input type="checkbox" id="chkUdpEnabled"> UDP송신 활성화</label>
+        <label style="min-width: auto;"><input type="checkbox" id="chkUdpEnabled"> 서버로 상태 전송</label>
       </div>
       <div class="form-row">
         <label for="inputUdpIp">IP 주소:</label>
