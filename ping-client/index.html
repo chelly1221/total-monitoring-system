@@ -32,9 +32,9 @@
         <span>네트워크</span>
       </button>
       <span class="titlebar-separator"></span>
-      <button type="button" class="titlebar-btn menu-btn" id="menuTopo" title="물리 토폴로지 편집">
+      <button type="button" class="titlebar-btn menu-btn" id="menuTopo" title="구성도 편집">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 1v3H1V1h5zM1 0a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1H1zm14 12v3h-5v-3h5zm-5-1a1 1 0 00-1 1v3a1 1 0 001 1h5a1 1 0 001-1v-3a1 1 0 00-1-1h-5zM6 8v7H1V8h5zM1 7a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V8a1 1 0 00-1-1H1zm14-6v7h-5V1h5zm-5-1a1 1 0 00-1 1v7a1 1 0 001 1h5a1 1 0 001-1V1a1 1 0 00-1-1h-5z"/></svg>
-        <span>토폴로지</span>
+        <span>구성도</span>
       </button></div><button type="button" class="titlebar-btn menu-btn" id="menuClient" title="설정"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 3-.5 2-2 1-2-.5-2 3 1.5 1.5v3L2.5 15l2 3 2-.5 2 1L9 21h4l.5-2.5 2-1 2 .5 2-3-1.5-2v-3L19.5 8l-2-3-2 .5-2-1L13 3Z"/><circle cx="11" cy="12" r="3"/></svg><span>설정</span></button></nav>
   <div class="titlebar-drag-space" data-tauri-drag-region aria-hidden="true"></div>
   <div class="titlebar-window-controls">
@@ -63,8 +63,8 @@
         <button type="button" class="view-toggle-btn" data-view="table" aria-pressed="false" title="테이블 보기">
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="1" width="14" height="2.5" rx="0.5"/><rect x="0" y="5.5" width="14" height="2.5" rx="0.5"/><rect x="0" y="10" width="14" height="2.5" rx="0.5"/></svg><span>목록</span>
         </button>
-        <button type="button" class="view-toggle-btn active" data-view="2d" aria-pressed="true" title="토폴로지 보기">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg><span>토폴로지</span>
+        <button type="button" class="view-toggle-btn active" data-view="2d" aria-pressed="true" title="구성도 보기">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg><span>구성도</span>
         </button>
       </div>
 
@@ -104,7 +104,7 @@
     <!-- 2D Topology View -->
     <div class="view-2d" id="view2d">
       <div class="view-2d-canvas-wrap" id="view2dContainer">
-        <canvas id="view2dCanvas" role="img" aria-label="네트워크 토폴로지 시각화"></canvas>
+        <canvas id="view2dCanvas" role="img" aria-label="네트워크 구성도"></canvas>
       </div>
 
     </div>
@@ -283,7 +283,7 @@
 <div class="modal-overlay" id="topoModal" role="dialog" aria-modal="true" aria-labelledby="topoModalTitle">
   <div class="modal topo-modal">
     <div class="modal-header">
-      <h3 id="topoModalTitle">물리 토폴로지 편집</h3>
+      <h3 id="topoModalTitle">구성도 편집</h3>
       <p>네트워크 장비를 배치하고 물리 연결을 설정합니다.</p>
     </div>
     <div class="modal-body" style="padding: 0; display: flex; flex-direction: column; min-height: 0;">
@@ -320,7 +320,7 @@
         </button>
       </div>
       <div class="topo-canvas-wrap">
-        <canvas id="topoCanvas" role="img" aria-label="물리 토폴로지 편집 캔버스"></canvas>
+        <canvas id="topoCanvas" role="img" aria-label="구성도 편집 캔버스"></canvas>
       </div>
       <div class="topo-props" id="topoProps">
         <div class="topo-props-row">
@@ -366,7 +366,7 @@
     <div class="form-row"><label><input type="checkbox" id="clientAutostart" checked> Windows 로그인 시 자동 실행</label></div>
     <div class="form-row"><label><input type="checkbox" id="clientAutoMonitor"> 프로그램 실행 시 감시 자동 시작</label></div>
     <div class="client-help"><strong>자동 연결 방법</strong><p>통합알람감시체계 → 시설 추가 → 자동 탐지 (PC)에서<br>‘네트워크 ping 감시’를 선택하고 시설을 저장하세요.</p><p>닫기 버튼은 감시를 유지하며 트레이로 숨깁니다.<br>완전히 종료하려면 트레이 메뉴의 ‘종료’를 누르세요.</p></div>
-    <section class="settings-transfer" aria-label="설정 백업"><strong>설정 백업</strong><p>감시 대상·토폴로지·서버 연결·환경 설정을 JSON 파일로 저장하고 불러옵니다.</p><div><button type="button" class="btn" id="btnImportSettings">설정 가져오기</button><button type="button" class="btn" id="btnExportSettings">설정 내보내기</button></div></section>
+    <section class="settings-transfer" aria-label="설정 백업"><strong>설정 백업</strong><p>감시 대상·구성도·서버 연결·환경 설정을 JSON 파일로 저장하고 불러옵니다.</p><div><button type="button" class="btn" id="btnImportSettings">설정 가져오기</button><button type="button" class="btn" id="btnExportSettings">설정 내보내기</button></div></section>
     <p id="clientDiscovery" class="muted"></p>
   </div>
   <div class="modal-footer"><button class="btn" id="cancelClient">취소</button><button class="btn btn-primary" id="saveClient">저장</button></div>

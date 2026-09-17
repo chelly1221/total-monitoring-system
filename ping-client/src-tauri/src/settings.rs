@@ -204,7 +204,7 @@ impl Settings {
                     .and_then(Value::as_array)
                     .is_some_and(|x| x.len() <= 500);
             if !valid || self.topology.to_string().len() > 200_000 {
-                return Err("토폴로지 형식 또는 크기가 올바르지 않습니다".into());
+                return Err("구성도 형식 또는 크기가 올바르지 않습니다".into());
             }
         }
         Ok(())
