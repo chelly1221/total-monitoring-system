@@ -4,6 +4,7 @@ mod firewall;
 mod history;
 mod monitor;
 mod netinfo;
+mod npcap;
 mod report;
 mod settings;
 mod state;
@@ -233,6 +234,20 @@ async fn export_settings(app: AppHandle, patch: Value) -> Result<bool, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// True when the portable zip's Npcap installer sits next to the exe (and Npcap is missing).
+#[tauri::command]
+fn npcap_installer_available() -> bool {
+    !npcap::installed() && npcap::installer_path().is_some()
+}
+
+/// Run the bundled Npcap installer (elevated, interactive) and report whether Npcap is now present.
+#[tauri::command]
+async fn install_npcap() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(npcap::install)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn capture_interfaces() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(capture::interfaces)
@@ -272,7 +287,9 @@ pub fn run() {
             test_sound,
             import_settings,
             export_settings,
-            capture_interfaces
+            capture_interfaces,
+            npcap_installer_available,
+            install_npcap
         ])
         .setup(move |app| {
             // Single-instance plugins initialize before storage, avoiding concurrent migration.
@@ -317,7 +334,11 @@ pub fn run() {
                 if let Err(e) = autostart {
                     log::error!("autostart: {e}");
                 }
-                std::thread::spawn(|| firewall::ensure_rule(settings::DISCOVERY_PORT));
+                std::thread::spawn(|| {
+                    firewall::ensure_rule(settings::DISCOVERY_PORT);
+                    // Portable zip: offer the bundled Npcap installer once the firewall step is done.
+                    npcap::offer_at_startup();
+                });
             }
             tauri::async_runtime::spawn(discovery::run(handle.clone(), state.clone()));
             tauri::async_runtime::spawn(monitor::run(handle.clone(), state.clone()));

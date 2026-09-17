@@ -37,6 +37,8 @@ window.api = {
     try { const interfaces = await invoke('capture_interfaces'); return interfaces[0]?.addresses[0] || ''; } catch { return ''; }
   },
   isNpcapAvailable: async () => { try { await invoke('capture_interfaces'); return true; } catch { return false; } },
+  hasNpcapInstaller: () => invoke('npcap_installer_available'),
+  installNpcap: () => invoke('install_npcap'),
   getNetworkInterfaces: () => invoke('capture_interfaces'),
   saveCaptureSettings: patch => invoke('save_settings', { patch }),
   removeAllListeners: name => callbacks.get(name)?.clear(),

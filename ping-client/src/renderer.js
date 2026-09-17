@@ -509,6 +509,8 @@ document.getElementById('btnCancelSound').addEventListener('click', () => hideMo
 // --- Capture Settings ---
 document.getElementById('menuCapture').addEventListener('click', async () => {
   if (!showModal('captureModal')) return;
+  const installBtn = document.getElementById('btnInstallNpcap');
+  installBtn.hidden = npcapAvailable || !(await window.api.hasNpcapInstaller().catch(() => false));
   const listEl = document.getElementById('captureDeviceList');
   listEl.innerHTML = '';
 
@@ -572,6 +574,18 @@ document.getElementById('btnSaveCapture').addEventListener('click', async () => 
 });
 
 document.getElementById('btnCancelCapture').addEventListener('click', () => hideModal('captureModal'));
+document.getElementById('btnInstallNpcap').addEventListener('click', async () => {
+  const btn = document.getElementById('btnInstallNpcap');
+  btn.disabled = true;
+  try {
+    const ok = await window.api.installNpcap();
+    npcapAvailable = ok;
+    updateNpcapIndicator();
+    btn.hidden = ok;
+    window.notify(ok ? 'Npcap 설치가 끝났습니다. 캡처는 감시를 다시 시작하면 적용됩니다.' : 'Npcap 설치가 완료되지 않았습니다. 설치 창의 결과를 확인하세요.');
+  } catch (e) { window.notify(String(e)); }
+  finally { btn.disabled = false; }
+});
 
 // --- Topology Editor ---
 let topoEditorInited = false;

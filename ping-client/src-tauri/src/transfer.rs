@@ -326,7 +326,7 @@ async fn download(state: &AppState, req: &TransferRequest, reporter: &Reporter, 
 /// Launch the received file through ShellExecuteEx with its normal window shown (verb
 /// `runas` when elevated so a `requireAdministrator` installer such as the V3 engine setup
 /// gets its UAC prompt) and wait for it to exit. msi files go through msiexec.
-fn run_file(path: &Path, elevate: bool) -> Result<i32, String> {
+pub(crate) fn run_file(path: &Path, elevate: bool) -> Result<i32, String> {
     use windows::core::{HSTRING, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED};
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
