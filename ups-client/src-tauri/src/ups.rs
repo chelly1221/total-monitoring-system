@@ -61,7 +61,9 @@ pub fn params(ups: u8) -> &'static [Param] {
     if ups == 1 { UPS1_PARAMS } else { UPS2_PARAMS }
 }
 
-/// Default min/max per limit key (same numbers as the original settings.json defaults).
+/// Default min/max per limit key: the values of the operating settings.json /
+/// ups2_settings.json of the 제1레이더 PC (2026-09-18), which differ from the program
+/// defaults for 배터리 전압 (UPS#1 500 V, UPS#2 290 V) and the UPS#2 voltages (450 V).
 pub fn default_limits(ups: u8) -> BTreeMap<String, Limit> {
     let rows: &[(&str, f64, f64)] = if ups == 1 {
         &[
@@ -73,13 +75,13 @@ pub fn default_limits(ups: u8) -> BTreeMap<String, Limit> {
             ("current_R", 0.0, 50.0), ("current_S", 0.0, 50.0), ("current_T", 0.0, 50.0),
             ("frequency", 50.0, 70.0),
             ("output_R", 0.0, 100.0), ("output_S", 0.0, 100.0), ("output_T", 0.0, 100.0),
-            ("voltage", 200.0, 250.0), ("battery", 0.0, 100.0),
+            ("voltage", 200.0, 500.0), ("battery", 0.0, 100.0),
         ]
     } else {
         &[
-            ("ups2_input_voltage", 180.0, 250.0), ("ups2_output_voltage", 180.0, 250.0),
+            ("ups2_input_voltage", 180.0, 450.0), ("ups2_output_voltage", 180.0, 450.0),
             ("ups2_input_freq", 50.0, 70.0), ("ups2_output_freq", 50.0, 70.0),
-            ("ups2_battery_voltage", 0.0, 20.0), ("ups2_battery_capacity", 0.0, 100.0),
+            ("ups2_battery_voltage", 0.0, 290.0), ("ups2_battery_capacity", 0.0, 100.0),
             ("ups2_temp", 0.0, 60.0),
         ]
     };

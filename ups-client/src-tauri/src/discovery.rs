@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(reply["kind"], "ups");
         assert_eq!(reply["discoveryPort"], 7792);
         assert_eq!(reply["units"].as_array().unwrap().len(), 2);
-        assert!(reply["target"].is_null(), "unit 1 not bound");
+        assert_eq!(reply["target"]["port"], 1991, "target mirrors unit 1's default binding");
         assert_eq!(reply["units"][1]["target"]["port"], 6102);
         assert_eq!(reply["units"][0]["unit"], 1);
         assert!(reply["alarm"].is_null(), "nothing measured yet");

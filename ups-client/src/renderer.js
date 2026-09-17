@@ -11,26 +11,9 @@ const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
 
 const UNIT_LABELS = { 1: 'UPS#1', 2: 'UPS#2' };
-// Layout of the readings per unit: a phase table for the 3-phase card, tiles for the rest.
-const LAYOUT = {
-  1: {
-    phases: {
-      rows: ['R', 'S', 'T'],
-      columns: [
-        { title: '입력 전압', label: p => `입력 전압 ${p} (V)` },
-        { title: '입력 전류', label: p => `입력 전류 ${p} (A)` },
-        { title: '입력 전력', label: p => `입력 전력 ${p} (kW)` },
-        { title: '출력 전압', label: p => `출력 전압 ${p} (V)` },
-        { title: '출력 전류', label: p => `출력 전류 ${p} (A)` },
-        { title: '출력 부하', label: p => `출력 ${p} (%)` },
-      ],
-    },
-    tiles: ['출력 상태', '배터리 상태', '입력 주파수 (Hz)', '출력 주파수(Hz)', '배터리 전압(V)', '배터리 잔량(%)'],
-  },
-  2: {
-    tiles: ['출력 상태', '배터리 상태', '입력 전압 (V)', '출력 전압 (V)', '입력 주파수 (Hz)', '출력 주파수 (Hz)', '배터리 전압 (V)', '배터리 잔량 (%)', '배터리 온도 (°C)'],
-  },
-};
+// Readings are listed as 항목 / 값 rows in the client's parameter order (the original
+// program's table); UPS#1's 24 rows are split into two column groups so they fit.
+const COLUMN_GROUPS = { 1: 2, 2: 2 };
 const STATUS_LABELS = new Set(['출력 상태', '배터리 상태']);
 
 async function init() {
@@ -59,23 +42,19 @@ function renderReadings(unit, live) {
     body.innerHTML = `<div class="empty-state"><strong>${isRunning ? '첫 응답을 기다리는 중입니다' : '감시가 정지되어 있습니다'}</strong><p>${escapeHtml(settings.units?.[unit - 1]?.ip || '')} · SNMP v2c · ${UNIT_LABELS[unit]} 설정에서 주소를 확인하세요.</p></div>`;
     return;
   }
-  const layout = LAYOUT[unit];
-  let html = '';
-  if (layout.phases) {
-    html += '<table class="phase-table"><thead><tr><th scope="col">상</th>' + layout.phases.columns.map(c => `<th scope="col">${c.title}</th>`).join('') + '</tr></thead><tbody>';
-    for (const phase of layout.phases.rows) {
-      html += `<tr><td>${phase}</td>` + layout.phases.columns.map(c => {
-        const label = c.label(phase); const value = data.get(label);
-        return `<td class="${valueClass(label, value, levels)}" title="${escapeAttr(label)}">${escapeHtml(display(value))}</td>`;
-      }).join('') + '</tr>';
+  const rows = live.data;
+  const groups = COLUMN_GROUPS[unit];
+  const per = Math.ceil(rows.length / groups);
+  let html = '<div class="kv-grid">';
+  for (let g = 0; g < groups; g++) {
+    html += '<table class="kv-table"><colgroup><col><col></colgroup><thead><tr><th scope="col">항목</th><th scope="col">값</th></tr></thead><tbody>';
+    for (const [label, value] of rows.slice(g * per, (g + 1) * per)) {
+      const cls = valueClass(label, value, levels);
+      html += `<tr><td>${escapeHtml(label)}</td><td class="${cls}">${escapeHtml(display(value))}</td></tr>`;
     }
     html += '</tbody></table>';
   }
-  html += '<div class="tile-grid">' + layout.tiles.map(label => {
-    const value = data.get(label);
-    const cls = valueClass(label, value, levels);
-    return `<div class="tile ${STATUS_LABELS.has(label) ? 'status' : ''} ${cls}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(display(value))}</strong></div>`;
-  }).join('') + '</div>';
+  html += '</div>';
   body.innerHTML = html;
 }
 

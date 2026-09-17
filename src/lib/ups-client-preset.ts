@@ -2,7 +2,8 @@
 // The client forwards each SNMP poll as {"UPS": 1|2, "Data": {"입력 전압 R (V)": "374 V", ...}}
 // (formatted strings, same wire format as the original snmpups program). This module
 // turns that into a MetricsConfig: a custom parser plus one display item per reading
-// with the client's default limits. No Node imports: used by the browser forms and tests.
+// with the client's default limits (= the 제1레이더 PC's original settings.json /
+// ups2_settings.json). No Node imports: used by the browser forms and tests.
 
 import type { DisplayItem, MetricItemType, MetricsConfig, StatusConditions } from '@/types'
 
@@ -37,17 +38,17 @@ export const UPS_CLIENT_ITEMS: Record<1 | 2, UpsClientItem[]> = {
     ...phase('R'), ...phase('S'), ...phase('T'),
     { name: '입력주파수', source: '입력 주파수 (Hz)', unit: 'Hz', itemType: 'inputFrequency', min: 50, max: 70, chartGroup: '주파수' },
     { name: '출력주파수', source: '출력 주파수(Hz)', unit: 'Hz', itemType: 'outputFrequency', min: 50, max: 70, chartGroup: '주파수' },
-    { name: '배터리전압', source: '배터리 전압(V)', unit: 'V', itemType: 'batteryVoltage', min: 200, max: 250, chartGroup: '배터리' },
+    { name: '배터리전압', source: '배터리 전압(V)', unit: 'V', itemType: 'batteryVoltage', min: 200, max: 500, chartGroup: '배터리' },
     { name: '배터리잔량', source: '배터리 잔량(%)', unit: '%', itemType: 'batteryRemaining', min: null, max: 100, chartGroup: '배터리' },
   ],
   2: [
     { name: '출력상태', source: '출력 상태', unit: '', itemType: 'status', min: null, max: null, chartGroup: null, text: true },
     { name: '배터리상태', source: '배터리 상태', unit: '', itemType: 'status', min: null, max: null, chartGroup: null, text: true },
-    { name: '입력전압', source: '입력 전압 (V)', unit: 'V', itemType: 'inputVoltage', min: 180, max: 250, chartGroup: '전압' },
-    { name: '출력전압', source: '출력 전압 (V)', unit: 'V', itemType: 'outputVoltage', min: 180, max: 250, chartGroup: '전압' },
+    { name: '입력전압', source: '입력 전압 (V)', unit: 'V', itemType: 'inputVoltage', min: 180, max: 450, chartGroup: '전압' },
+    { name: '출력전압', source: '출력 전압 (V)', unit: 'V', itemType: 'outputVoltage', min: 180, max: 450, chartGroup: '전압' },
     { name: '입력주파수', source: '입력 주파수 (Hz)', unit: 'Hz', itemType: 'inputFrequency', min: 50, max: 70, chartGroup: '주파수' },
     { name: '출력주파수', source: '출력 주파수 (Hz)', unit: 'Hz', itemType: 'outputFrequency', min: 50, max: 70, chartGroup: '주파수' },
-    { name: '배터리전압', source: '배터리 전압 (V)', unit: 'V', itemType: 'batteryVoltage', min: null, max: 20, chartGroup: '배터리' },
+    { name: '배터리전압', source: '배터리 전압 (V)', unit: 'V', itemType: 'batteryVoltage', min: null, max: 290, chartGroup: '배터리' },
     { name: '배터리잔량', source: '배터리 잔량 (%)', unit: '%', itemType: 'batteryRemaining', min: null, max: 100, chartGroup: '배터리' },
     { name: '배터리온도', source: '배터리 온도 (°C)', unit: '°C', itemType: 'temperature', min: null, max: 60, chartGroup: '배터리' },
   ],

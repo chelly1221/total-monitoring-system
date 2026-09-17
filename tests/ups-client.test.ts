@@ -102,6 +102,10 @@ test('ups preset display items mirror the client parameters and limits', () => {
   assert.equal(status.warning, null)
   assert.deepEqual(status.conditions?.critical, [{ operator: 'neq', value1: 0, value2: null, stringValue: '정상' }])
   assert.equal(ups2.find(i => i.name === '배터리온도')?.critical, 60)
+  // Limits mirror the operating settings files of the 제1레이더 PC.
+  assert.equal(ups1.find(i => i.name === '배터리전압')?.critical, 500)
+  assert.equal(ups2.find(i => i.name === '입력전압')?.critical, 450)
+  assert.equal(ups2.find(i => i.name === '배터리전압')?.critical, 290)
   assert.equal(validateSystemBody({ config: buildUpsClientPreset(1) }, true), null)
   assert.equal(validateSystemBody({ config: buildUpsClientPreset(2) }, true), null)
   assert.ok(isUpsClientPreset(buildUpsClientPreset(2), 2))

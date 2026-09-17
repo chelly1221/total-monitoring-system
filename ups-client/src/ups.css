@@ -15,27 +15,23 @@
 .ups-chip.bad{color:var(--danger);border-color:#f3c2bb;background:var(--danger-tint)}
 .ups-chip.idle{color:var(--muted)}
 
-/* Readings */
-.ups-body{flex:1;min-height:0;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+/* Readings: 항목 / 값 tables in parameter order, like the original program */
+.ups-body{flex:1;min-height:0;overflow:auto;padding:8px 12px;display:flex;flex-direction:column}
 .ups-body .empty-state{margin:auto;text-align:center;color:var(--text-2)}
-.phase-table{width:100%;border-collapse:collapse;table-layout:fixed}
-.phase-table thead th{background:var(--bg-2);color:var(--text-2);font-size:11px;font-weight:500;padding:6px 8px;text-align:center;border-bottom:1px solid var(--border-2);white-space:nowrap}
-.phase-table thead th:first-child{text-align:left;width:52px}
-.phase-table tbody td{padding:6px 8px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--border-2);white-space:nowrap}
-.phase-table tbody td:first-child{text-align:left;font-weight:600;color:var(--text-2);font-size:12px}
-.phase-table tbody tr:hover{background:var(--bg-2)}
-.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-.tile{border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--bg);display:flex;flex-direction:column;gap:3px;min-width:0}
-.tile span{font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tile strong{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tile.status strong{font-size:14px}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;align-items:start}
+.kv-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.kv-table col:first-child{width:58%}
+.kv-table thead th{background:var(--bg-2);color:var(--text-2);font-size:11px;font-weight:600;padding:5px 8px;border-bottom:1px solid var(--border);text-align:center;position:sticky;top:0}
+.kv-table thead th:first-child{text-align:left}
+.kv-table tbody td{padding:4px 8px;border-bottom:1px solid var(--border-2);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv-table tbody td:first-child{color:var(--text-2);font-size:12px}
+.kv-table tbody td:last-child{text-align:center;font-variant-numeric:tabular-nums;font-weight:500}
+.kv-table tbody tr:nth-child(even){background:rgba(0,0,0,.015)}
+.kv-table tbody tr:hover{background:var(--bg-2)}
 /* Value colours follow the original program: red on a limit breach or fault, green for a normal status. */
-.tile.bad,.phase-table td.bad{background:var(--danger-tint);color:var(--danger)}
-.tile.bad{border-color:#f3c2bb}
-.tile.good{background:var(--ok-tint);border-color:var(--ok-border);color:var(--ok)}
-.tile.nodata strong,.phase-table td.nodata{color:var(--muted);font-weight:400}
-.ups-group{font-size:11px;color:var(--muted);letter-spacing:.3px;margin:2px 0 -4px}
-
+.kv-table td.bad{background:var(--danger-tint);color:var(--danger);font-weight:600}
+.kv-table td.good{background:var(--ok-tint);color:var(--ok);font-weight:600}
+.kv-table td.nodata{color:var(--muted);font-weight:400}
 /* Event log rail */
 .log-tools{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--border-2);flex-shrink:0}
 .log-tools>span{margin-right:auto;font-size:11px;color:var(--text-2)}
@@ -76,4 +72,4 @@
 .limits-table input[type=number]{width:100%;padding:5px 7px!important;text-align:right;font-variant-numeric:tabular-nums}
 .limits-table td{padding:4px 6px!important}
 
-@media(max-width:1200px){.ups-row .panel-right{flex-basis:260px}.tile-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}#statusbar #connectionStatus{display:none}}
+@media(max-width:1200px){.ups-row .panel-right{flex-basis:260px}.kv-grid{gap:0 8px}#statusbar #connectionStatus{display:none}}

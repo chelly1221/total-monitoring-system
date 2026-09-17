@@ -47,9 +47,13 @@ impl Default for Unit {
 }
 
 impl Unit {
+    /// First-run values = the 제1레이더 PC's original settings.json / ups2_settings.json
+    /// (UPS at 192.168.0.99/.98, 통합감시 서버 192.168.1.160 ports 1991/1990, 5 s polls).
     pub fn defaults(unit: u8) -> Self {
         Self {
             ip: if unit == 1 { "192.168.0.99".into() } else { "192.168.0.98".into() },
+            server_enabled: true,
+            server_ip: "192.168.1.160".into(),
             server_port: if unit == 1 { 1991 } else { 1990 },
             limits: ups::default_limits(unit),
             ..Self::default()
@@ -384,6 +388,10 @@ mod tests {
         s.validate().unwrap();
         assert_eq!(s.units[0].server_port, 1991);
         assert_eq!(s.units[1].server_port, 1990);
+        assert!(s.units.iter().all(|u| u.server_enabled && u.server_ip == "192.168.1.160" && u.interval_sec == 5));
+        assert_eq!(s.units[0].limits["voltage"], Limit { min: 200.0, max: 500.0 });
+        assert_eq!(s.units[1].limits["ups2_input_voltage"], Limit { min: 180.0, max: 450.0 });
+        assert_eq!(s.units[1].limits["ups2_battery_voltage"], Limit { min: 0.0, max: 290.0 });
         assert_eq!(s.units[0].limits.len(), 22);
         assert_eq!(s.units[1].limits.len(), 7);
     }
@@ -417,7 +425,7 @@ mod tests {
         assert!(next.units[1].server_enabled);
         assert_eq!(next.units[1].server_port, 6101);
         assert_eq!(next.units[1].interval_sec, 5);
-        assert!(!next.units[0].server_enabled);
+        assert_eq!(next.units[0], s.units[0], "the other unit keeps its default binding");
         assert_eq!(next.server_http_port, 7778);
         assert_eq!(next.name, "1레이더 UPS PC");
         let off = next.provision(&json!({"target": null, "unit": 2})).unwrap();
