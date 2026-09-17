@@ -10,6 +10,38 @@
 
 
 <header id="titlebar" data-tauri-drag-region>
+<section class="overview" aria-label="감시 제어 및 요약">
+      <div class="control-group">
+        <button type="button" class="btn btn-primary" id="btnStart">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/></svg>
+          시작
+        </button>
+        <button type="button" class="btn btn-danger" id="btnStop" disabled>
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+          정지
+        </button>
+        <label class="mute-toggle btn btn-danger" title="경보음 음소거">
+        <input type="checkbox" id="chkMute" class="sr-only">
+        <svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
+        <svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg>
+        <span>음소거</span>
+      </label>
+      </div>
+      <div class="view-toggle" id="viewToggle" data-view="2d" role="group" aria-label="화면 표시 방식">
+        <button type="button" class="view-toggle-btn" data-view="table" aria-pressed="false" title="테이블 보기">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="1" width="14" height="2.5" rx="0.5"/><rect x="0" y="5.5" width="14" height="2.5" rx="0.5"/><rect x="0" y="10" width="14" height="2.5" rx="0.5"/></svg><span>목록</span>
+        </button>
+        <button type="button" class="view-toggle-btn active" data-view="2d" aria-pressed="true" title="구성도 보기">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg><span>구성도</span>
+        </button>
+      </div>
+
+  <div class="metric"><span>활성 대상</span><strong id="metricTotal">0</strong><small>최대 20개 장비</small></div>
+  <div class="metric good"><span>정상</span><strong id="metricHealthy">0</strong><small>응답 수신</small></div>
+  <div class="metric bad"><span>장애</span><strong id="metricFailed">0</strong><small id="metricPending">대기 0개</small></div>
+  <div class="metric"><span>평균 응답</span><strong id="metricRtt">—</strong><small>밀리초 · ms</small></div>
+
+</section>
 <nav class="toolbar" aria-label="감시 설정"><div class="titlebar-menu">
       <button type="button" class="titlebar-btn menu-btn" id="menuTargets" title="감시대상 설정">
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 012.5 1h3A1.5 1.5 0 017 2.5v3A1.5 1.5 0 015.5 7h-3A1.5 1.5 0 011 5.5v-3zm8 0A1.5 1.5 0 0110.5 1h3A1.5 1.5 0 0115 2.5v3A1.5 1.5 0 0113.5 7h-3A1.5 1.5 0 019 5.5v-3zm-8 8A1.5 1.5 0 012.5 9h3A1.5 1.5 0 017 10.5v3A1.5 1.5 0 015.5 15h-3A1.5 1.5 0 011 13.5v-3zm8 0A1.5 1.5 0 0110.5 9h3a1.5 1.5 0 011.5 1.5v3a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 13.5v-3z"/></svg>
@@ -48,38 +80,6 @@
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.2"/></svg>
       </button></div>
 </header>
-<section class="overview" aria-label="감시 제어 및 요약">
-      <div class="control-group">
-        <button type="button" class="btn btn-primary" id="btnStart">
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/></svg>
-          시작
-        </button>
-        <button type="button" class="btn btn-danger" id="btnStop" disabled>
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
-          정지
-        </button>
-      </div>
-      <div class="view-toggle" id="viewToggle" data-view="2d" role="group" aria-label="화면 표시 방식">
-        <button type="button" class="view-toggle-btn" data-view="table" aria-pressed="false" title="테이블 보기">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="1" width="14" height="2.5" rx="0.5"/><rect x="0" y="5.5" width="14" height="2.5" rx="0.5"/><rect x="0" y="10" width="14" height="2.5" rx="0.5"/></svg><span>목록</span>
-        </button>
-        <button type="button" class="view-toggle-btn active" data-view="2d" aria-pressed="true" title="구성도 보기">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><circle cx="7" cy="2.5" r="2" stroke="none"/><circle cx="2.5" cy="11.5" r="2" stroke="none"/><circle cx="11.5" cy="11.5" r="2" stroke="none"/><line x1="7" y1="4.5" x2="2.5" y2="9.5" fill="none"/><line x1="7" y1="4.5" x2="11.5" y2="9.5" fill="none"/><line x1="4.5" y1="11.5" x2="9.5" y2="11.5" fill="none"/></svg><span>구성도</span>
-        </button>
-      </div>
-
-  <div class="metric"><span>활성 대상</span><strong id="metricTotal">0</strong><small>최대 20개 장비</small></div>
-  <div class="metric good"><span>정상</span><strong id="metricHealthy">0</strong><small>응답 수신</small></div>
-  <div class="metric bad"><span>장애</span><strong id="metricFailed">0</strong><small id="metricPending">대기 0개</small></div>
-  <div class="metric"><span>평균 응답</span><strong id="metricRtt">—</strong><small>밀리초 · ms</small></div>
-      <label class="mute-toggle">
-        <input type="checkbox" id="chkMute" class="sr-only">
-        <svg aria-hidden="true" class="icon-mute-off" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/></svg>
-        <svg aria-hidden="true" class="icon-mute-on" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z"/><path d="M11.241 9.828a.5.5 0 00.707-.707L10.12 7.293l1.828-1.828a.5.5 0 00-.707-.707L9.414 6.586 7.586 4.758a.5.5 0 10-.707.707L8.707 7.293 6.879 9.121a.5.5 0 00.707.707l1.828-1.828 1.828 1.828z"/></svg>
-        <span>음소거</span>
-      </label>
-
-</section>
 
 
 <!-- Main Content -->
