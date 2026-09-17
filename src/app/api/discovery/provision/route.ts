@@ -8,6 +8,7 @@ import {
   sendClientCommand,
 } from '@/lib/client-discovery'
 import { parsePort } from '@/lib/system-validation'
+import { serverHttpPort } from '@/lib/transfers'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
     const ack = await sendClientCommand(
       ip,
       'config',
-      { target: { ip: serverIp, port }, on, off, intervalMs, ...(name ? { name } : {}) },
+      // httpPort lets a ping client post its failure events back to this server.
+      { target: { ip: serverIp, port }, on, off, intervalMs, httpPort: serverHttpPort(), ...(name ? { name } : {}) },
       { port: discoveryPort },
     )
     return NextResponse.json({ ok: true, id: ack.id, target: { ip: serverIp, port } })

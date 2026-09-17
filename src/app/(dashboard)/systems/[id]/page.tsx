@@ -649,6 +649,7 @@ export default function SystemDetailPage() {
               previewMessages={previewMessages}
               alarms={system.alarms}
               onAcknowledge={handleAcknowledge}
+              pingSystemId={equipmentConfig.client?.kind === "ping" ? systemId : null}
             />
           </div>
 

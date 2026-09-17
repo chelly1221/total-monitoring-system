@@ -257,7 +257,7 @@ export interface Wing15State {
 }
 
 // WebSocket message types
-export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings' | 'systems-changed' | 'wing15'
+export type WebSocketMessageType = 'metric' | 'alarm' | 'alarm-resolved' | 'system' | 'init' | 'ping' | 'delete' | 'raw' | 'siren-sync' | 'settings' | 'systems-changed' | 'wing15' | 'ping-events'
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -275,6 +275,10 @@ export interface WebSocketMessage {
     // For alarms
     alarmId?: string
     alarmIds?: string[]
+    // 'alarm' with valueOnly: refresh the value text of an existing alarm (ping target detail)
+    valueOnly?: boolean
+    // 'ping-events': a ping client reported new failure / recovery events for systemId
+    clientId?: string
     severity?: AlarmSeverity
     message?: string
     alarmValue?: string | null

@@ -23,6 +23,20 @@ function sendNotification(message: WebSocketMessage): void {
   })
 }
 
+/** A ping client posted new failure / recovery events for a facility. */
+export function notifyPingEvents(systemId: string, clientId: string): void {
+  sendNotification({ type: 'ping-events', data: { systemId, clientId }, timestamp: new Date().toISOString() })
+}
+
+/** The value text of an open alarm changed (e.g. which ping target failed). */
+export function notifyAlarmValue(systemId: string, systemName: string, alarmId: string, value: string): void {
+  sendNotification({
+    type: 'alarm',
+    data: { systemId, systemName, alarmId, alarmValue: value, valueOnly: true },
+    timestamp: new Date().toISOString(),
+  })
+}
+
 export function notifyWing15Changed(state: Wing15State): void {
   sendNotification({ type: 'wing15', data: { wing15: state }, timestamp: new Date().toISOString() })
 }

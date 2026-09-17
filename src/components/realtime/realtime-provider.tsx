@@ -268,6 +268,15 @@ export function RealtimeProvider({
           break
 
         case 'alarm':
+          // 값 문구만 갱신 (ping 장애 대상 등): 발생 횟수·확인 상태는 그대로 둔다
+          if (data.valueOnly && data.alarmId) {
+            setAlarms((prev) =>
+              prev.map((a) => (a.id === data.alarmId ? { ...a, value: data.alarmValue ?? a.value } : a))
+            )
+            setLastUpdate(new Date())
+            break
+          }
+
           // 단일 알람 확인 처리
           if (data.acknowledged && data.alarmId && !data.severity) {
             setAlarms((prev) =>

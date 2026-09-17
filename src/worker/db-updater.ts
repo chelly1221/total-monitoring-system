@@ -15,6 +15,7 @@ import type { EquipmentConfig, MetricsConfig, SystemStatus } from '@/types'
 import { evaluateDisplayItemStatus, isColdCritical, isDryCritical, isHumidCritical } from '@/lib/threshold-evaluator'
 import { matchesDataConditions } from '@/lib/data-match'
 import { criticalConfirmations } from '@/lib/equipment-alarm'
+import { currentFailureSummary } from '@/lib/ping-events'
 import { executeCustomCode, clearCustomCodeCache } from './custom-code-executor'
 import { getLastSeen, livenessKey } from './liveness'
 import { createLogger } from '@/lib/logger'
@@ -417,12 +418,17 @@ async function processSystemMetric(
           const severity = newStatus === 'critical' ? 'critical' : 'warning'
           const statusLabel = newStatus === 'critical' ? '심각' : '오프라인'
           const message = `${system.name} ${statusLabel} 상태 (${data.value})`
+          // A PING_FAIL from a ping client: name the target(s) that failed, if the
+          // client's event report has already arrived (it usually does within a second).
+          const pingClient = newStatus === 'critical' && equipmentConfig.client?.kind === 'ping'
+          const value = pingClient ? await currentFailureSummary(system.id).catch(() => null) : null
 
           const { isNew } = await raiseAlarm({
             systemId: system.id,
             systemName: system.name,
             severity,
             message,
+            value,
           })
 
           if (isNew) log.info(`Alarm created for ${system.name}: ${statusLabel}`)

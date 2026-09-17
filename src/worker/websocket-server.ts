@@ -78,7 +78,7 @@ export function startWebSocketServer(): void {
         }
         // API notifications must reach every dashboard, including configuration
         // edits, status recalculation, alarm resolution and lightning confirmation.
-        if (['delete', 'alarm', 'settings', 'system', 'alarm-resolved', 'systems-changed', 'wing15'].includes(message.type)) {
+        if (['delete', 'alarm', 'settings', 'system', 'alarm-resolved', 'systems-changed', 'wing15', 'ping-events'].includes(message.type)) {
           const payload = JSON.stringify(message)
           for (const client of clients) {
             if (client !== ws && client.readyState === WebSocket.OPEN) {

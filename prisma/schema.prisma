@@ -129,3 +129,26 @@ model Siren {
   @@unique([ip, port])
   @@map("sirens")
 }
+
+// Failure / recovery events reported by 네트워크 ping 감시 clients over HTTP, so the
+// server can show which monitored target tripped a PING_FAIL alarm.
+model PingEvent {
+  id                  String   @id @default(cuid())
+  clientId            String
+  clientName          String
+  systemId            String?
+  targetName          String
+  address             String
+  status              String   // '장애 발생' | '정상 복구'
+  rttMs               Int?
+  sent                Int      @default(0)
+  lost                Int      @default(0)
+  consecutiveFailures Int      @default(0)
+  occurredAt          DateTime
+  receivedAt          DateTime @default(now())
+
+  @@unique([clientId, address, occurredAt, status])
+  @@index([systemId, occurredAt])
+  @@index([receivedAt])
+  @@map("ping_events")
+}
