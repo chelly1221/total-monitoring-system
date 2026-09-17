@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { MetricsConfig, DisplayItem } from '@/types'
 
 /**
@@ -19,17 +19,21 @@ export function extractRepresentativeThreshold(conditions: DisplayItem['conditio
 
 /**
  * Sync displayItems from config to Metric table
- * Creates or updates metrics based on config.displayItems
+ * Creates or updates metrics based on config.displayItems.
+ *
+ * Returns the ids of metrics whose names are no longer in the config. They are
+ * NOT deleted here: deleting a metric cascades into its history, which for a
+ * year of readings takes far longer than an interactive transaction allows
+ * (P2028 "Transaction not found"). Call removeMetrics() with the result after
+ * the transaction has committed.
  */
-export async function syncMetricsFromConfig(systemId: string, config: MetricsConfig, db: Prisma.TransactionClient = prisma): Promise<void> {
+export async function syncMetricsFromConfig(systemId: string, config: MetricsConfig, db: Prisma.TransactionClient = prisma): Promise<string[]> {
   if (!config.displayItems || !Array.isArray(config.displayItems)) {
-    return
+    return []
   }
 
-  // Removed/renamed items must not leave stale values and thresholds on the dashboard.
-  await db.metric.deleteMany({
-    where: { systemId, name: { notIn: config.displayItems.map(item => item.name) } },
-  })
+  const existing = await db.metric.findMany({ where: { systemId }, select: { id: true, name: true } })
+  const byName = new Map(existing.map(metric => [metric.name, metric.id]))
 
   for (const item of config.displayItems) {
     // Use conditions-based thresholds if available, otherwise fall back to legacy
@@ -40,16 +44,10 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
       ? extractRepresentativeThreshold(item.conditions, 'critical')
       : item.critical ?? null
 
-    const existingMetric = await db.metric.findFirst({
-      where: {
-        systemId,
-        name: item.name,
-      },
-    })
-
-    if (existingMetric) {
+    const existingId = byName.get(item.name)
+    if (existingId) {
       await db.metric.update({
-        where: { id: existingMetric.id },
+        where: { id: existingId },
         data: {
           warningThreshold,
           criticalThreshold,
@@ -68,5 +66,29 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
         },
       })
     }
+  }
+
+  // Removed/renamed items must not leave stale values and thresholds on the dashboard.
+  const names = new Set(config.displayItems.map(item => item.name))
+  return existing.filter(metric => !names.has(metric.name)).map(metric => metric.id)
+}
+
+const HISTORY_DELETE_BATCH = 5000
+
+/**
+ * Delete metrics together with their history, outside any transaction.
+ * The history goes in short batches so each statement releases the SQLite write
+ * lock quickly and the worker's inserts interleave instead of hitting busy_timeout.
+ */
+export async function removeMetrics(metricIds: string[], db: PrismaClient = prisma): Promise<void> {
+  for (const metricId of metricIds) {
+    for (;;) {
+      const removed = await db.$executeRaw`DELETE FROM metric_history WHERE rowid IN (
+        SELECT rowid FROM metric_history WHERE metricId = ${metricId} LIMIT ${HISTORY_DELETE_BATCH})`
+      if (removed < HISTORY_DELETE_BATCH) break
+    }
+  }
+  if (metricIds.length > 0) {
+    await db.metric.deleteMany({ where: { id: { in: metricIds } } })
   }
 }

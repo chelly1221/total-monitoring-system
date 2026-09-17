@@ -4,11 +4,15 @@ import { notifySystemDeleted, notifySystemStatusChanged, notifyAlarmResolution, 
 import { validateSystemBody, parsePort, normalizeEncoding, normalizeOfflineThreshold } from '@/lib/system-validation'
 import type { MetricsConfig, SystemStatus } from '@/types'
 import { evaluateDisplayItemStatus } from '@/lib/threshold-evaluator'
-import { syncMetricsFromConfig } from '@/lib/sync-metrics'
+import { syncMetricsFromConfig, removeMetrics } from '@/lib/sync-metrics'
 
 interface RouteParams {
   params: Promise<{ id: string }>
 }
+
+// The worker shares the SQLite file and each contended statement may wait up to
+// busy_timeout (5s), so give the edit transaction more than Prisma's 5s default.
+const TRANSACTION_OPTIONS = { timeout: 30_000 }
 
 /**
  * Recalculate system status based on current metric values and thresholds
@@ -207,12 +211,14 @@ export async function PUT(request: Request, { params }: RouteParams) {
       updateData.encoding = normalizeEncoding(encoding)
     }
 
-    await prisma.$transaction(async (tx) => {
+    const staleMetricIds = await prisma.$transaction(async (tx) => {
       await tx.system.update({ where: { id }, data: updateData })
       if (config?.displayItems && (type === 'ups' || type === 'sensor')) {
-        await syncMetricsFromConfig(id, config as MetricsConfig, tx)
+        return syncMetricsFromConfig(id, config as MetricsConfig, tx)
       }
-    })
+      return []
+    }, TRANSACTION_OPTIONS)
+    await removeMetrics(staleMetricIds)
 
     // Sync metrics from config and recalculate status for UPS/sensor types
     if (config && config.displayItems && (type === 'ups' || type === 'sensor')) {
@@ -280,12 +286,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       updateData.encoding = normalizeEncoding(body.encoding)
     }
 
-    await prisma.$transaction(async (tx) => {
+    const staleMetricIds = await prisma.$transaction(async (tx) => {
       await tx.system.update({ where: { id }, data: updateData })
       if (body.config?.displayItems && (existingSystem.type === 'ups' || existingSystem.type === 'sensor')) {
-        await syncMetricsFromConfig(id, body.config as MetricsConfig, tx)
+        return syncMetricsFromConfig(id, body.config as MetricsConfig, tx)
       }
-    })
+      return []
+    }, TRANSACTION_OPTIONS)
+    await removeMetrics(staleMetricIds)
 
     // Sync metrics from config and recalculate status for UPS/sensor types
     if (body.config && body.config.displayItems) {

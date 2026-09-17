@@ -285,6 +285,23 @@ test('metric deletion and cleared thresholds persist with system edits', async (
   assert.equal(await db.metricHistory.count(), 0)
 })
 
+test('renaming metrics with a long history saves within the transaction limit and purges the history', async () => {
+  const system = await createSystem({ delimiter: ',', displayItems: [item(), { ...item('습도'), index: 1 }] }, 23004, 'ups')
+  const [kept, renamed] = await Promise.all(['온도', '습도'].map(name => db.metric.findFirstOrThrow({ where: { systemId: system.id, name } })))
+  const now = Date.now()
+  for (let offset = 0; offset < 12001; offset += 4000) {
+    await db.metricHistory.createMany({ data: Array.from({ length: Math.min(4000, 12001 - offset) }, (_, i) => ({ metricId: renamed.id, value: offset + i, recordedAt: new Date(now - 20000 + offset + i) })) })
+  }
+  await db.metricHistory.create({ data: { metricId: kept.id, value: 1 } })
+  const body = { name: system.name, type: 'ups', protocol: 'udp', port: 23004, config: { delimiter: ',', displayItems: [item(), { ...item('배터리전압'), index: 1 }] } }
+  const response = await systemApi.PUT(request(body, 'PUT'), { params: Promise.resolve({ id: system.id }) })
+  assert.equal(response.status, 200, await response.clone().text())
+  const saved = await response.json() as { metrics: { name: string }[] }
+  assert.deepEqual(saved.metrics.map(m => m.name).sort(), ['배터리전압', '온도'])
+  assert.equal(await db.metricHistory.count({ where: { metricId: renamed.id } }), 0)
+  assert.equal(await db.metricHistory.count({ where: { metricId: kept.id } }), 1)
+})
+
 test('legacy display thresholds require three confirmed packets, then resolve', async () => {
   const system = await createSystem({ delimiter: ',', displayItems: [item()] }, 23002, 'ups')
   await ingest(23002, '40')
