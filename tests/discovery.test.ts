@@ -181,7 +181,7 @@ test('equipment alarms on the first critical message unless the facility sets it
 test('download catalog resolves known ids and reports missing files', async () => {
   const { findDownload, listDownloads, locateDownload } = await import('../src/lib/downloads')
   assert.equal(findDownload('sound-client')?.file, 'tms-soundsense.zip')
-  assert.equal(findDownload('ping-client')?.file, 'tms-ping-monitor-setup.exe')
+  assert.equal(findDownload('ping-client')?.file, 'tms-ping-monitor.zip')
   assert.equal(findDownload('../etc/passwd'), undefined)
   assert.equal(await locateDownload({ id: 'x', name: 'x', description: '', file: 'definitely-missing.exe' }), null)
   const items = await listDownloads()

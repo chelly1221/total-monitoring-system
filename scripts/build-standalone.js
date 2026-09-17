@@ -111,27 +111,18 @@ for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
 fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
 
 // Bundle client programs offered from the header 다운로드 menu (see src/lib/downloads.ts).
-// The sound client must have been built first (cd sound-client && cargo tauri build --no-bundle);
-// its package script zips the exe together with the WebView2 fixed runtime folder it carries.
+// Both clients must have been built first (cd <client> && cargo tauri build --no-bundle);
+// each package script zips the exe together with the WebView2 fixed runtime folder it carries.
 const downloadsDir = path.join(RESOURCES, 'downloads');
 fs.mkdirSync(downloadsDir, { recursive: true });
 const manifest = {};
 for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 'tms-ping-monitor']]) {
   const clientDir = path.join(ROOT, id);
   const release = path.join(clientDir, 'src-tauri', 'target', 'release');
-  const filename = id === 'ping-client' ? `${binary}-setup.exe` : `${binary}.zip`;
-  const required = id === 'ping-client' ? filename : `${binary}.exe`;
-  if (fs.existsSync(path.join(release, required))) {
+  const filename = `${binary}.zip`;
+  if (fs.existsSync(path.join(release, `${binary}.exe`))) {
     const conf = JSON.parse(fs.readFileSync(path.join(clientDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-    if (id === 'ping-client') {
-      const setup = JSON.parse(fs.readFileSync(path.join(release, 'setup-manifest.json'), 'utf8'));
-      const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(release, filename))).digest('hex');
-      if (setup.offline !== true || setup.version !== conf.version || setup.sha256 !== hash) {
-        throw new Error('Ping Setup이 현재 버전과 일치하지 않습니다. ping-client에서 npm run tauri:build를 실행하세요.');
-      }
-    } else {
-      execSync('node scripts/package.mjs', { cwd: clientDir, stdio: 'inherit' });
-    }
+    execSync('node scripts/package.mjs', { cwd: clientDir, stdio: 'inherit' });
     fs.cpSync(path.join(release, filename), path.join(downloadsDir, filename));
     manifest[id] = { version: conf.version, builtAt: new Date().toISOString() };
     console.log(`  downloads: ${filename} v${conf.version}`);

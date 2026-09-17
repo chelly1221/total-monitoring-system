@@ -23,8 +23,10 @@ export const DOWNLOAD_ITEMS: DownloadItem[] = [
   {
     id: 'ping-client',
     name: '네트워크 ping 감시',
-    description: '폐쇄망 시설 PC용 Ping 감시 설치 마법사 (Windows x64, WebView2·Npcap 내장)',
-    file: 'tms-ping-monitor-setup.exe',
+    // Same portable layout as the sound client: exe + its own WebView2 runtime folder.
+    // Npcap is not included; packet capture needs it installed separately, ping/alarm/auto-connect do not.
+    description: '시설 PC용 네트워크 ping 감시 클라이언트 (Windows x64, 압축을 풀고 실행, 설치 불필요)',
+    file: 'tms-ping-monitor.zip',
   },
 ]
 

@@ -186,13 +186,13 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 
 ## 두 번째 클라이언트: 네트워크 ping 감시
 
-2026-09-13 추가. `ping-client/`는 `chelly1221/network-surveillance`의 ICMP·토폴로지·경보·Npcap 기능을 Rust/Tauri 2로 이관한 별도 앱이다. 이름은 **네트워크 ping 감시**, 실행 파일 `tms-ping-monitor.exe`, 기본 배포 파일 `tms-ping-monitor-setup.exe` (한국어 NSIS). 포터블 ZIP도 별도로 생성할 수 있다. 원본 커밋과 이관 범위는 `ping-client/NOTICE.md`에 기록한다.
+2026-09-13 추가. `ping-client/`는 `chelly1221/network-surveillance`의 ICMP·토폴로지·경보·Npcap 기능을 Rust/Tauri 2로 이관한 별도 앱이다. 이름은 **네트워크 ping 감시**, 실행 파일 `tms-ping-monitor.exe`. 2026-09-17부터 서버 다운로드 메뉴는 음성탐지기와 같은 포터블 `tms-ping-monitor.zip`(exe + `webview2/` 폴더, `npm run package`)을 배포한다. 한국어 NSIS Setup(`tms-ping-monitor-setup.exe`, `npm run tauri:build`)은 Npcap까지 함께 설치해야 하는 PC용으로 계속 만들 수 있지만 서버에 번들하지 않는다. ZIP에는 Npcap이 없어 패킷 캡처만 별도 Npcap 설치가 필요하고 ping·경보·자동 연결·파일 전송·장애 내역 공유는 그대로 동작한다. 원본 커밋과 이관 범위는 `ping-client/NOTICE.md`에 기록한다.
 
 - 자동 연결은 `docs/sound-client-protocol.md`의 v1 메시지를 사용한다. 음성탐지기 UDP 7790, ping 감시 UDP 7791로 분리하여 같은 PC에서 동시 실행한다. 서버가 두 포트를 온디맨드 검색하고 `kind`, `discoveryPort`, `serverIp`를 시설 `config.client`에 보존한다. ping 기본 패턴은 `PING_OK`/`PING_FAIL`, 데이터 포트 범위는 기존 6100~6199를 공유한다.
 - 감시 대상 최대 20개, Windows ICMP API, RTT·손실률·최근 60회 그래프, 1~10회 연속 실패 판정, 최근 100건 장애/복구 영속 이력. 정지/미측정 시 정상 하트비트를 보내지 않는다. 설정 변경 시 세대 번호로 이전 감시 결과를 무효화한다.
 - `ping-client/src-tauri/src/capture.rs`는 시스템 Npcap DLL만 선택적으로 로드하며 Ethernet IPv4·VLAN·ASTERIX를 해석한다. Npcap 미설치 PC에서도 ping·자동 연결은 동작한다. 로컬 캡처 실제 검증은 Npcap 설치 환경이 필요하다.
 - `ping-settings.json`·`ping-history.json`은 EXE 옆 또는 APPDATA에 저장한다. `MoveFileExW`로 원자적 교체. 기존 PingTester 설정 가져오기는 감시 대상·토폴로지 등을 가져오고 새 앱 식별자와 서버 연결은 유지한다.
-- 빌드: `cd ping-client && npm ci && npm run build && npm test && npm run tauri:build && npm run smoke && npm run package`. `smoke`는 실제 EXE와 격리 설정으로 UDP 연결·재시작·장애를 검증하며 방화벽/자동 시작 등록을 건너뛴다. `npm run smoke:setup`은 별도 경로에 Setup 설치·재설치·EXE 실행·제거와 설정 보존을 검증한다. 두 클라이언트를 먼저 빌드한 뒤 서버의 `npm run tauri:build`를 실행하면 음성 ZIP과 Ping Setup·버전이 포함된다.
+- 빌드: `cd ping-client && npm ci && npm run build && npm test && npm run tauri:build && npm run smoke && npm run package`. `smoke`는 실제 EXE와 격리 설정으로 UDP 연결·재시작·장애를 검증하며 방화벽/자동 시작 등록을 건너뛴다. `npm run smoke:setup`은 별도 경로에 Setup 설치·재설치·EXE 실행·제거와 설정 보존을 검증한다. 두 클라이언트를 먼저 빌드한 뒤 서버의 `npm run tauri:build`를 실행하면 두 ZIP과 버전이 포함된다(`scripts/build-standalone.js`가 각 클라이언트의 `package.mjs`를 호출).
 - Setup은 사용자 요청에 따라 폐쇄망용 한 종류만 생성한다. Npcap 공식 설치 파일과 WebView2를 내장하며 설치 PC에서 다운로드하지 않는다. `windows/hooks.nsh`와 `install-network.ps1`로 방화벽·Npcap을 준비한다. 빌드 시 해시·전자서명을 확인하고 설치 시 고정 해시로 오프라인 검증한다. 무료판은 조직 내 최대 5대의 내부 사용용이며 Npcap 자체 약관 마법사를 연다. OEM 빌드는 `TMS_NPCAP_OEM_INSTALLER`에 적절한 내부 사용 라이선스의 설치 파일 경로를 지정한다. 드라이버 바이너리는 Git에 넣지 않는다. `/SKIPNETWORK`는 네트워크 구성 요소가 별도로 준비된 PC와 격리 설치 검증용이다.
 
 ## 파일 전송 · V3 자동설치 (헤더 아이콘)
