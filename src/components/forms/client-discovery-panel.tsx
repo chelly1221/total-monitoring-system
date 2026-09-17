@@ -7,14 +7,17 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { DiscoveredClient } from "@/types"
-import { CLIENT_KIND_PORTS, clientKindName, clientKindOf, type ClientKind } from "@/lib/client-kinds"
+import { CLIENT_KIND_PORTS, clientKindName, clientKindOf, upsUnitLabel, type ClientKind } from "@/lib/client-kinds"
 
 interface ClientDiscoveryPanelProps {
   /** Client id currently bound to this facility (highlighted, cannot be re-selected). */
   selectedClientId?: string | null
+  /** UPS forms: the card of the selected client this facility receives. */
+  selectedUnit?: 1 | 2
   /** Facility id being edited; its own registration is not treated as a conflict. */
   currentSystemId?: string | null
-  onSelect: (client: DiscoveredClient, suggestedPort: number | null) => void
+  /** `unit` is set when a card of a UPS client was picked. */
+  onSelect: (client: DiscoveredClient, suggestedPort: number | null, unit?: 1 | 2) => void
   disabled?: boolean
   className?: string
   /** Client kinds to list; others discovered on the LAN are hidden. */
@@ -48,6 +51,7 @@ export async function identifyClient(ip: string, discoveryPort: number = CLIENT_
  */
 export function ClientDiscoveryPanel({
   selectedClientId,
+  selectedUnit,
   currentSystemId,
   onSelect,
   disabled = false,
@@ -143,6 +147,15 @@ export function ClientDiscoveryPanel({
                 const isSelected = selectedClientId === client.id
                 const boundElsewhere =
                   client.registered !== null && client.registered.systemId !== currentSystemId
+                // One UPS PC feeds two facilities: offer each card separately and only
+                // block the card another facility already receives.
+                const reportedCards = (client.units ?? []).map(u => u.unit).filter((u): u is 1 | 2 => u === 1 || u === 2)
+                const upsCards: readonly (1 | 2)[] = client.kind !== 'ups' ? [] : reportedCards.length ? reportedCards : [1, 2]
+                const cardRegistration = (unit: 1 | 2) => client.registeredUnits?.find(r => r.unit === unit) ?? null
+                const cardBoundElsewhere = (unit: 1 | 2) => {
+                  const registration = cardRegistration(unit)
+                  return registration !== null && registration.systemId !== currentSystemId
+                }
                 return (
                   <tr
                     key={client.id}
@@ -180,7 +193,26 @@ export function ClientDiscoveryPanel({
                       </span>
                     </td>
                     <td className="py-1 pr-2">
-                      {client.registered ? (
+                      {client.kind === 'ups' ? (
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          {upsCards.map(unit => {
+                            const registration = cardRegistration(unit)
+                            const elsewhere = cardBoundElsewhere(unit)
+                            return registration ? (
+                              <Badge
+                                key={unit}
+                                variant={elsewhere ? "outline" : "secondary"}
+                                className="px-1.5 py-0 text-[10px]"
+                                title={registration.systemName}
+                              >
+                                {upsUnitLabel(unit)} {elsewhere ? `등록됨: ${registration.systemName}` : "이 시설"}
+                              </Badge>
+                            ) : (
+                              <span key={unit} className="text-muted-foreground">{upsUnitLabel(unit)} 미등록</span>
+                            )
+                          })}
+                        </span>
+                      ) : client.registered ? (
                         <Badge
                           variant={boundElsewhere ? "outline" : "secondary"}
                           className="px-1.5 py-0 text-[10px]"
@@ -214,18 +246,38 @@ export function ClientDiscoveryPanel({
                           )}
                           PC 확인
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={isSelected ? "secondary" : "default"}
-                          className="h-6 gap-1 px-2 text-xs"
-                          onClick={() => onSelect(client, suggestedPort)}
-                          disabled={disabled || isSelected || boundElsewhere}
-                          title={boundElsewhere ? "이미 다른 시설에 등록된 PC입니다" : undefined}
-                        >
-                          <Check className="h-3 w-3" />
-                          {isSelected ? "선택됨" : "선택"}
-                        </Button>
+                        {client.kind === 'ups' ? upsCards.map(unit => {
+                          const cardSelected = isSelected && selectedUnit === unit
+                          const elsewhere = cardBoundElsewhere(unit)
+                          return (
+                            <Button
+                              key={unit}
+                              type="button"
+                              size="sm"
+                              variant={cardSelected ? "secondary" : "default"}
+                              className="h-6 gap-1 px-2 text-xs"
+                              onClick={() => onSelect(client, suggestedPort, unit)}
+                              disabled={disabled || cardSelected || elsewhere}
+                              title={elsewhere ? `${upsUnitLabel(unit)}은(는) 이미 다른 시설에 등록되어 있습니다` : undefined}
+                            >
+                              <Check className="h-3 w-3" />
+                              {cardSelected ? `${upsUnitLabel(unit)} 선택됨` : `${upsUnitLabel(unit)} 선택`}
+                            </Button>
+                          )
+                        }) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isSelected ? "secondary" : "default"}
+                            className="h-6 gap-1 px-2 text-xs"
+                            onClick={() => onSelect(client, suggestedPort)}
+                            disabled={disabled || isSelected || boundElsewhere}
+                            title={boundElsewhere ? "이미 다른 시설에 등록된 PC입니다" : undefined}
+                          >
+                            <Check className="h-3 w-3" />
+                            {isSelected ? "선택됨" : "선택"}
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

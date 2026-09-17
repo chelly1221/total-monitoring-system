@@ -158,7 +158,8 @@ interface SoundClientSectionProps {
   currentSystemId?: string | null
   /** When false only the linked-PC summary and the PC 확인 button are shown. */
   isEditMode: boolean
-  onSelect: (client: DiscoveredClient, suggestedPort: number | null) => void
+  /** UPS forms receive the picked card as `unit`. */
+  onSelect: (client: DiscoveredClient, suggestedPort: number | null, unit?: 1 | 2) => void
   onUnlink: () => void
   /** Client kinds offered in the discovery list (equipment forms: sound + ping, UPS forms: ups). */
   allowedKinds?: ClientKind[]
@@ -306,10 +307,11 @@ export function SoundClientSection({
       {panelOpen && (
         <ClientDiscoveryPanel
           selectedClientId={client?.id ?? null}
+          selectedUnit={upsUnit}
           currentSystemId={currentSystemId}
           allowedKinds={allowedKinds}
-          onSelect={(picked, suggestedPort) => {
-            onSelect(picked, suggestedPort)
+          onSelect={(picked, suggestedPort, unit) => {
+            onSelect(picked, suggestedPort, unit)
             setShowPanel(false)
           }}
         />

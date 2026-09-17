@@ -8,6 +8,7 @@ import { minTransferVersion, supportsTransfer } from '../src/lib/transfer-rules'
 import { buildUpsClientCustomCode, buildUpsClientDisplayItems, buildUpsClientPreset, isUpsClientPreset, UPS_CLIENT_ITEMS } from '../src/lib/ups-client-preset'
 import { compileCustomCode, executeScript } from '../src/lib/custom-code-script'
 import { alarmDetailsBySystem, isPingClientSystem } from '../src/lib/alarm-details'
+import { markRegistrations } from '../src/lib/client-registrations'
 
 test('the ups client is a third discovery kind on UDP 7792', () => {
   assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791, 7792])
@@ -62,6 +63,24 @@ test('a fake ups client is discovered next to the other kinds', async () => {
     assert.equal(clients[0].units?.length, 2)
     assert.equal(clients[0].units?.[0].alarm, true)
   } finally { socket.close() }
+})
+
+test('one ups pc is registered per card, leaving the other card selectable', () => {
+  const reply = { id: 'ups', kind: 'ups' as const, name: 'UPS PC', host: 'UPS', ip: '10.0.0.5', serverIp: '10.0.0.1', mac: '', ver: '1.0.0', target: null, muted: false, sound: false, uptimeSec: 1 }
+  const sound = { ...reply, id: 'snd', kind: 'sound' as const }
+  const systems = [
+    { id: 's1', name: '1레이더 UPS#1', config: JSON.stringify({ client: { id: 'ups', ip: '10.0.0.5', kind: 'ups', unit: 1 } }) },
+    { id: 's2', name: '음성탐지', config: JSON.stringify({ client: { id: 'snd', ip: '10.0.0.5', kind: 'sound' } }) },
+    { id: 's3', name: '깨진 설정', config: '{not json' },
+  ]
+  const [ups, snd] = markRegistrations([reply, sound], systems)
+  assert.equal(ups.registered, null, 'a ups pc is never blocked as a whole')
+  assert.deepEqual(ups.registeredUnits, [{ unit: 1, systemId: 's1', systemName: '1레이더 UPS#1' }])
+  assert.deepEqual(snd.registered, { systemId: 's2', systemName: '음성탐지' })
+  assert.equal(snd.registeredUnits, undefined)
+
+  const both = markRegistrations([reply], [...systems, { id: 's4', name: '1레이더 UPS#2', config: JSON.stringify({ client: { id: 'ups', ip: '10.0.0.5', kind: 'ups', unit: '2' } }) }])
+  assert.deepEqual(both[0].registeredUnits?.map(r => r.unit), [1, 2])
 })
 
 test('facility config validates the ups client kind, port and unit', () => {

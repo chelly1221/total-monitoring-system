@@ -53,7 +53,16 @@ export interface DiscoveredClient {
   muted: boolean
   sound: boolean
   uptimeSec: number
+  /** Facility bound to this PC (sound/ping clients; null for UPS clients). */
   registered: { systemId: string; systemName: string } | null
+  /** UPS client: one PC feeds up to two facilities, so registration is tracked per card. */
+  registeredUnits?: ClientUnitRegistration[]
+}
+
+export interface ClientUnitRegistration {
+  unit: number
+  systemId: string
+  systemName: string
 }
 
 // Equipment config: pattern-based status detection
