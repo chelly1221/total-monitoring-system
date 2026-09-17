@@ -81,7 +81,7 @@ applies them immediately, and replies with `ack`.
 `nonce` echoes the command. `ok: false` with `error` when the command was
 rejected (invalid payload).
 
-### `transfer` (server -> client ip:7790, SoundSense 3.2.0 and later)
+### `transfer` (server -> client ip:7790 / 7791; SoundSense 3.2.0+, ping 1.1.0+)
 
 ```json
 {
@@ -169,7 +169,41 @@ command. Jobs are kept in memory (`GET /api/transfers`, `GET /api/transfers/<id>
 and reports arrive at `POST /api/transfers/<id>/report`. Selecting an
 `.exe`/`.msi` turns on 자동 실행; the installer then runs visibly on each
 facility PC. Any number of PCs (up to 50 per job) can be selected at once and
-each pulls the file independently.
+each pulls the file independently. Both clients implement the same `transfer`
+handling (SoundSense at UDP 7790, 네트워크 ping 감시 at UDP 7791, files under
+each program's `received/` folder).
+
+## Ping failure events (네트워크 ping 감시 1.1.0 and later)
+
+The ping client shares its 장애 발생 / 정상 복구 history with the server so a
+`PING_FAIL` alarm can say which monitored target failed. Events go over HTTP,
+not UDP: the client posts to `http://<target.ip>:<httpPort>/api/ping-events`
+where `target.ip` is the provisioned UDP server and `httpPort` comes from the
+`config` command (new optional field, default 7777):
+
+```json
+{
+  "id": "6d0c0a1e-...", "name": "1레이더 네트워크", "host": "RADAR1-PC",
+  "events": [
+    { "at": 1758000000000, "name": "1레이더 스위치", "address": "192.168.0.5",
+      "status": "장애 발생", "rttMs": null, "sent": 10, "lost": 3,
+      "consecutiveFailures": 3, "timeoutMs": 1000, "failureThreshold": 3 }
+  ]
+}
+```
+
+- The client queues every transition immediately, batches up to 200 events per
+  POST, retries every 15 s on failure, and re-sends its recent history (up to
+  100 events) after each server (re)provisioning. Nothing is sent while no
+  server is provisioned.
+- The server dedupes on `(client id, address, at, status)`, binds events to the
+  facility whose `config.client.id` matches, keeps 90 days, and writes a
+  summary of the targets still failed ("1레이더 스위치 192.168.0.5 응답 없음
+  (3회 연속)") into the open critical alarm's value so the dashboard alarm
+  card shows it. If the UDP `PING_FAIL` arrives before the HTTP report, the
+  worker attaches the summary when the report lands (`alarm` WebSocket message
+  with `valueOnly`). The facility detail page lists the events
+  (`GET /api/ping-events?systemId=`).
 
 ## Server-side storage
 

@@ -203,6 +203,17 @@ SQLite + Prisma ORM. `prisma/schema.prisma` 참조.
 - **코드**: 순수 규칙(`src/lib/transfer-rules.ts`: 파일명 정리, 실행 가능 판정, 버전 판정, 보고 적용, 정체 판정)은 브라우저 번들에서도 쓰므로 Node 모듈을 import하지 않는다. 저장소·스테이징은 `src/lib/transfers.ts`(메모리 작업 목록 최대 20개, `globalThis`에 보관). 대상 phase는 `pending → sent → downloading → verifying → running → done`, 실패는 `error`/`unreachable`(ack 없음)/`rejected`(클라이언트 거부: 잘못된 페이로드·다른 전송 진행 중). 보고가 끊기면 `expireStalledTargets`가 단계별 시간(sent 60초, 다운로드 3분, 실행 30분)으로 `error` 처리한다.
 - **클라이언트**: `sound-client/src-tauri/src/transfer.rs`. `received/` 폴더(설정 파일 옆)에 `.part`로 받고 검증 후 이름 변경, 최신 3개만 보관. 실행은 `ShellExecuteExW`(창 표시 SW_SHOWNORMAL, `runas` 승격, msi는 `msiexec /i`)로 인수 없이 띄우고 종료까지 대기해 종료 코드를 보고한다. 시설 PC의 UAC 확인이 켜져 있으면 그 PC에서 승인해야 하며 취소 시 "관리자 권한 요청이 취소" 오류로 보고한다. 상태 탭 칩(`chip-transfer`)에 진행률·결과를 2분간 표시. reqwest(HTTP 전용, TLS 없음)·sha2는 이미 tauri 의존 트리에 있던 크레이트다.
 - **테스트**: `tests/transfers.test.ts`(규칙, 스테이징·정리, 루프백 가짜 클라이언트로 `transfer` ack). Rust는 `transfer::tests`가 페이로드 검증을 확인한다. 실제 설치 검증은 Windows 시설 PC에서 V3 파일로 수행해야 한다.
+- **ping 클라이언트도 동일 지원** (2026-09-17, 네트워크 ping 감시 1.1.0+): `ping-client/src-tauri/src/transfer.rs`는 음성탐지기의 모듈을 그대로 옮긴 것이며(상태 접근만 다름) 두 파일을 함께 고친다. 파일은 ping 데이터 폴더의 `received/`에 저장. 서버는 `supportsTransfer(ver, kind)`로 음성 3.2.0+/ping 1.1.0+만 대상에 넣고, API는 탐지 포트 7790·7791을 모두 받는다.
+
+## ping 장애 내역 공유 (네트워크 ping 감시 → 서버)
+
+2026-09-17 추가. ping 클라이언트가 울리면(`PING_FAIL`) 서버 알람에 어느 감시 대상이 끊겼는지까지 보이게 한다. 계약은 `docs/sound-client-protocol.md`의 "Ping failure events" 절.
+
+- **클라이언트**: `ping-client/src-tauri/src/report.rs`. 감시 루프가 장애 발생/정상 복구 전이를 기록할 때 큐에 넣고(`report_queue`, 최대 500건) 즉시 `POST http://<udp_ip>:<server_http_port>/api/ping-events`로 배치 전송(최대 200건). 실패 시 15초 후 재시도, 서버 바인딩(`config_revision`)이 바뀌면 최근 이력 100건을 다시 보낸다(서버가 중복 제거). `server_http_port`는 설정에 저장되며 프로비저닝 `config`의 `httpPort`(서버 `serverHttpPort()`)로 갱신, 기본 7777. UDP 서버가 없으면 전송하지 않는다. 설정 창의 탐지 상태 줄에 공유 상태를 덧붙여 표시한다.
+- **서버 저장**: Prisma `PingEvent`(`ping_events`, 고유키 clientId·address·occurredAt·status, 90일 보관, 시작 시 `prisma db push`로 생성; 개발 마이그레이션 `20260917000000_ping_events`). `src/lib/ping-event-rules.ts`(순수: 파싱·요약 문구·현재 장애 대상 계산)와 `src/lib/ping-events.ts`(저장·시설 매칭 `config.client.id`·알람 값 갱신). `POST /api/ping-events`(클라이언트 보고), `GET /api/ping-events?systemId=`(상세 페이지).
+- **알람 연동**: 워커가 ping 클라이언트가 붙은 시설의 `PING_FAIL` 심각 알람을 올릴 때 최근 10분 이벤트로 현재 장애 대상 요약을 `Alarm.value`에 넣는다(`currentFailureSummary`). UDP가 HTTP 보고보다 먼저 오면 API가 보고 도착 시 열린 심각 알람과 해당 `AlarmLog`의 값을 채우고 WS `alarm`(`valueOnly: true`)로 카드 문구만 갱신한다(발생 횟수·확인 상태는 그대로). 알람 카드는 이미 `(value)`를 표시하므로 감시 화면과 알람 이력에 "1레이더 스위치 192.168.0.5 응답 없음 (3회 연속)"처럼 보인다. 대상이 여러 개면 3개까지 나열하고 "외 n건".
+- **상세 페이지**: `PingEventLog`(`src/components/forms/ping-event-log.tsx`)를 시설 상세의 오른쪽 열(데이터 미리보기와 알람 로그 사이)에 ping 클라이언트가 연결된 시설에서만 표시. WS `ping-events` 메시지로 새로고침(워커가 API 알림을 브라우저로 중계하는 목록에 `ping-events` 추가).
+- **테스트**: `tests/ping-events.test.ts`(파싱·요약·현재 장애 계산, 임시 DB로 저장·중복 제거·시설 매칭·알람 값 부착). Rust `report::tests`가 보고 URL 유도, `settings::tests`가 `httpPort` 프로비저닝을 확인한다.
 
 ## 클라이언트 프로그램 다운로드 메뉴
 
