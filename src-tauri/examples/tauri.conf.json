@@ -1,0 +1,8 @@
+{
+  "productName": "TMS 창 동작 검증",
+  "version": "0.1.0",
+  "identifier": "kr.chelly.tms-window-check",
+  "build": { "frontendDist": "../../splash" },
+  "app": { "withGlobalTauri": true, "windows": [] },
+  "bundle": { "icon": ["../icons/icon.png"] }
+}

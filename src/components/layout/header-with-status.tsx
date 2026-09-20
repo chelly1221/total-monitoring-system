@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { useRealtime } from '@/components/realtime/realtime-provider'
 import { DownloadMenu } from '@/components/layout/download-menu'
@@ -27,14 +27,14 @@ const MUTE_DURATIONS = [
 ]
 
 export function HeaderWithStatus() {
-  const { systems, audioMuted, muteEndTime, setAudioMute, featureFlags } = useRealtime()
+  const { systems, audioMuted, muteEndTime, setAudioMute, featureFlags, connected } = useRealtime()
   const [remainingTime, setRemainingTime] = useState<string>('')
   const [gateLoading, setGateLoading] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isTauri, setIsTauri] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const tauriWindowRef = useRef<TauriWindow | null>(null)
-  const { connected } = useWebSocket()
+  const windowActionRef = useRef(false)
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -44,77 +44,50 @@ export function HeaderWithStatus() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
-  // The native title bar is disabled (decorations: false) inside Tauri — this header IS
-  // the title bar. Only show the window close button when running in the desktop app;
-  // in a plain browser the browser supplies its own window controls. Cache the window
-  // handle up front so the drag handler can act synchronously within the mouse gesture.
   useEffect(() => {
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    if (!('__TAURI_INTERNALS__' in window)) return
     setIsTauri(true)
-    import('@tauri-apps/api/window')
-      .then((m) => { tauriWindowRef.current = m.getCurrentWindow() })
-      .catch(() => {})
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+      const win = getCurrentWindow()
+      tauriWindowRef.current = win
+      const update = async () => {
+        const maximized = await win.isMaximized()
+        if (!disposed) setIsFullscreen(maximized)
+      }
+      await update()
+      const stop = await win.onResized(() => { void update().catch(() => {}) })
+      if (disposed) stop()
+      else unlisten = stop
+    }).catch(() => {})
+    return () => { disposed = true; unlisten?.() }
   }, [])
 
   const handleClose = async () => {
+    try { await tauriWindowRef.current?.close() } catch { /* Window already closed. */ }
+  }
+
+  const controlWindow = async (action: 'toggle' | 'drag', x: number, y: number) => {
+    if (windowActionRef.current) return
+    windowActionRef.current = true
     try {
-      await tauriWindowRef.current?.close()
+      await invoke('control_window', { action, x, y })
+      setIsFullscreen(await tauriWindowRef.current!.isMaximized())
     } catch {
-      // window already gone / not in Tauri
+      toast.error('창 크기 또는 위치를 변경하지 못했습니다')
+    } finally {
+      windowActionRef.current = false
     }
   }
 
-  // Header acts as the title bar: press-and-drag moves the window, double-click toggles
-  // maximize. If the window is in (browser) fullscreen, exit it first — a fullscreen
-  // window can't be moved, and exiting flips the header's fullscreen toggle back so the
-  // user can reposition the window and re-enter fullscreen. Presses that land on a
-  // button/link are ignored so the controls keep working.
-  const handleDragMouseDown = async (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    const win = tauriWindowRef.current
-    if (!win) return
-    // Radix menus/popovers (e.g. the mute dropdown) render into a portal at
-    // document.body, but React still bubbles their synthetic events up through this
-    // header — the portal's React parent. Without this check, clicking a menu item
-    // (a <div role="menuitem">, which the button/link guard below doesn't catch) would
-    // exit fullscreen and start a window drag that swallows the click. Only act on
-    // events that physically originate inside the header element.
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || !tauriWindowRef.current) return
     const target = e.target as HTMLElement
-    if (!e.currentTarget.contains(target)) return
-    if (target.closest('button, a')) return
-
-    if (document.fullscreenElement) {
-      // Where the cursor sat within the window before the size/position changed.
-      const grabX = e.clientX
-      const grabY = e.clientY
-      const screenX = e.screenX
-      const screenY = e.screenY
-      try {
-        await document.exitFullscreen()
-        // Let the native restore settle before we re-anchor the window.
-        await new Promise((r) => requestAnimationFrame(() => r(null)))
-        // Re-anchor so the grabbed point stays exactly under the cursor — otherwise the
-        // restore repositions the window and the grab point visibly jumps. Clamp the
-        // horizontal grab to the restored width so a far-right grab on a wide monitor
-        // doesn't leave the cursor off the window edge.
-        const { LogicalPosition } = await import('@tauri-apps/api/dpi')
-        const factor = await win.scaleFactor()
-        const innerW = (await win.innerSize()).width / factor
-        const anchorX = Math.min(grabX, Math.max(0, innerW - 8))
-        await win.setPosition(new LogicalPosition(screenX - anchorX, screenY - grabY))
-      } catch {
-        // ignore — fall through to drag anyway
-      }
-    }
-    try {
-      if (e.detail === 2) {
-        await win.toggleMaximize()
-      } else {
-        await win.startDragging()
-      }
-    } catch {
-      // not draggable in this state — ignore
-    }
+    // Portal menu clicks bubble through React but are outside the title bar.
+    if (!e.currentTarget.contains(target) || target.closest('button, a, input, [role="menuitem"]')) return
+    e.preventDefault()
+    void controlWindow(e.detail === 2 ? 'toggle' : 'drag', e.clientX, e.clientY)
   }
 
   const unmute = useCallback(async () => {
@@ -206,7 +179,12 @@ export function HeaderWithStatus() {
     }
   }
 
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (tauriWindowRef.current) {
+      const rect = event.currentTarget.getBoundingClientRect()
+      await controlWindow('toggle', rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return
+    }
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen()
     } else {
@@ -328,7 +306,7 @@ export function HeaderWithStatus() {
           variant="ghost"
           size="icon"
           onClick={toggleFullscreen}
-          title={isFullscreen ? '전체화면 종료' : '전체화면'}
+          title={isFullscreen ? '이전 크기로 복원' : '최대화'}
         >
           {isFullscreen ? (
             <Minimize2 className="h-5 w-5" />

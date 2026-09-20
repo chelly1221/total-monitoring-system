@@ -7,6 +7,7 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
+mod window_controls;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -455,7 +456,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_sub_window, save_download])
+        .invoke_handler(tauri::generate_handler![open_sub_window, save_download, window_controls::control_window])
         .manage(AppState {
             shutdown_tx,
             #[cfg(windows)]
