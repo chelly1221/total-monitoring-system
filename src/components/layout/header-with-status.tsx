@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { useRealtime } from '@/components/realtime/realtime-provider'
 import { DownloadMenu } from '@/components/layout/download-menu'
 import { TransferDialog } from '@/components/layout/transfer-dialog'
+import { PiSensorDialog } from '@/components/layout/pi-sensor-dialog'
 import type { Window as TauriWindow } from '@tauri-apps/api/window'
 
 const MUTE_DURATIONS = [
@@ -293,6 +294,8 @@ export function HeaderWithStatus() {
         )}
 
         <DownloadMenu />
+
+        <PiSensorDialog />
 
         <TransferDialog />
 

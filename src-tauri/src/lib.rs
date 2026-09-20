@@ -8,6 +8,7 @@ use tauri_plugin_dialog::DialogExt;
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 mod window_controls;
+mod pi_installer;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -116,11 +117,12 @@ struct AppState {
 #[cfg(windows)]
 fn ensure_firewall_rules() {
     let rules = [
-        ("TMS Web Server (7777)", "7777"),
-        ("TMS WebSocket (7778)", "7778"),
+        ("TMS Web Server (7777)", "7777", "TCP"),
+        ("TMS WebSocket (7778)", "7778", "TCP"),
+        ("TMS Pi Sensors (6300-6399)", "6300-6399", "UDP"),
     ];
 
-    for (name, port) in &rules {
+    for (name, port, protocol) in &rules {
         let check = std::process::Command::new("netsh")
             .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", name)])
             .creation_flags(CREATE_NO_WINDOW)
@@ -137,8 +139,8 @@ fn ensure_firewall_rules() {
             cmd.args([
                 "-Command",
                 &format!(
-                    "Start-Process netsh -ArgumentList 'advfirewall firewall add rule name=\"{}\" dir=in action=allow protocol=TCP localport={}' -Verb RunAs -WindowStyle Hidden -Wait",
-                    name, port
+                    "Start-Process netsh -ArgumentList 'advfirewall firewall add rule name=\"{}\" dir=in action=allow protocol={} localport={}' -Verb RunAs -WindowStyle Hidden -Wait",
+                    name, protocol, port
                 ),
             ]);
             cmd.creation_flags(CREATE_NO_WINDOW);
@@ -456,7 +458,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_sub_window, save_download, window_controls::control_window])
+        .invoke_handler(tauri::generate_handler![open_sub_window, save_download, window_controls::control_window, pi_installer::pi_disks, pi_installer::pi_images, pi_installer::pi_install])
         .manage(AppState {
             shutdown_tx,
             #[cfg(windows)]

@@ -110,6 +110,19 @@ for (const name of ['prisma', 'prisma.cmd', 'prisma.ps1']) {
 // Copy init-db script
 fs.cpSync(path.join(ROOT, 'scripts', 'init-db.js'), path.join(RESOURCES, 'init-db.js'));
 
+// Fully offline ARM64 images; never include an unprepared upstream DietPi image.
+const piImages = path.join(RESOURCES, 'pi-images');
+fs.mkdirSync(piImages, { recursive: true });
+for (const model of ['pi34', 'pi5']) {
+  const file = `tms-${model}.img.xz`;
+  const source = path.join(ROOT, 'downloads', file);
+  if (!fs.existsSync(source) || !fs.existsSync(`${source}.sha256`)) {
+    throw new Error(`Missing offline sensor image: ${file}. Run pi-client/build-offline-image.sh first.`);
+  }
+  fs.copyFileSync(source, path.join(piImages, file));
+  fs.copyFileSync(`${source}.sha256`, path.join(piImages, `${file}.sha256`));
+}
+
 // Bundle client programs offered from the header 다운로드 menu (see src/lib/downloads.ts).
 // Every client must have been built first (cd <client> && cargo tauri build --no-bundle);
 // each package script zips the exe together with the WebView2 fixed runtime folder it carries.
