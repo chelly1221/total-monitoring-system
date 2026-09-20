@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRawPreview } from "@/hooks/use-raw-preview"
 import { Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -101,64 +102,14 @@ function SystemNewForm() {
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>({ type: 'none' })
 
   // Data preview state
-  const [previewMessages, setPreviewMessages] = React.useState<string[]>([])
-  const [wsConnected, setWsConnected] = React.useState(false)
+  const { messages: previewMessages, connected: wsConnected } = useRawPreview(port, 10)
 
   // Update systemType when URL param changes
   React.useEffect(() => {
     setSystemType(getSystemType(typeParam))
   }, [typeParam])
 
-  // WebSocket connection for data preview
-  React.useEffect(() => {
-    const portNum = parseInt(port, 10)
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      setPreviewMessages([])
-      setWsConnected(false)
-      return
-    }
 
-    const wsUrl = `ws://${window.location.hostname}:7778`
-    let ws: WebSocket | null = null
-
-    try {
-      ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        setWsConnected(true)
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data)
-          if (message.type === "raw" && message.data?.port === portNum) {
-            setPreviewMessages((prev) => {
-              const newMessages = [...prev, message.data.rawData]
-              return newMessages.slice(-10)
-            })
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      ws.onclose = () => {
-        setWsConnected(false)
-      }
-
-      ws.onerror = () => {
-        setWsConnected(false)
-      }
-    } catch {
-      setWsConnected(false)
-    }
-
-    return () => {
-      if (ws) {
-        ws.close()
-      }
-    }
-  }, [port])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

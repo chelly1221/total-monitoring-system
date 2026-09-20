@@ -285,6 +285,41 @@ test('metric deletion and cleared thresholds persist with system edits', async (
   assert.equal(await db.metricHistory.count(), 0)
 })
 
+test('unchanged metric configuration does not rewrite live metric rows', async () => {
+  const config = { delimiter: ',', displayItems: [item()] }
+  const system = await createSystem(config)
+  const metric = await db.metric.findFirstOrThrow({ where: { systemId: system.id } })
+  const response = await systemApi.PATCH(request({ config }, 'PATCH'), { params: Promise.resolve({ id: system.id }) })
+  assert.equal(response.status, 200)
+  const after = await db.metric.findUniqueOrThrow({ where: { id: metric.id } })
+  assert.equal(after.updatedAt.getTime(), metric.updatedAt.getTime())
+})
+
+test('chart history bounds dense results and preserves peaks, endpoints and legacy timestamps', async () => {
+  const { readChartHistory } = await import('../src/lib/metric-history')
+  const system = await createSystem({ delimiter: ',', displayItems: [item()] })
+  const metric = await db.metric.findFirstOrThrow({ where: { systemId: system.id } })
+  const since = Date.parse('2026-01-01T00:00:00Z')
+  const count = 12000
+  for (let offset = 0; offset < count; offset += 1000) {
+    await db.metricHistory.createMany({ data: Array.from({ length: 1000 }, (_, i) => ({
+      metricId: metric.id, value: offset + i === 5555 ? 999 : 20,
+      recordedAt: new Date(since + offset + i),
+    })) })
+  }
+  const legacyTime = new Date(since + 5556).toISOString()
+  await db.$executeRaw`INSERT INTO metric_history (id,metricId,value,recordedAt) VALUES ('chart-legacy',${metric.id},-999,${legacyTime})`
+  const rows = await readChartHistory(db, metric.id, since, since + count - 1)
+  assert.ok(rows.length <= 2002, String(rows.length))
+  assert.deepEqual(rows.find(row => row.value === 999), { value: 999, recordedAt: new Date(since + 5555).toISOString() })
+  assert.deepEqual(rows.find(row => row.value === -999), { value: -999, recordedAt: legacyTime })
+  assert.equal(rows[0].recordedAt, new Date(since).toISOString())
+  assert.equal(rows.at(-1)!.recordedAt, new Date(since + count - 1).toISOString())
+  assert.ok(rows.every((row, index) => !index || rows[index - 1].recordedAt <= row.recordedAt))
+  assert.deepEqual(await readChartHistory(db, 'missing', since, since + count), [])
+  assert.deepEqual(await readChartHistory(db, metric.id, since, since), [{ value: 20, recordedAt: new Date(since).toISOString() }])
+})
+
 test('renaming metrics with a long history saves within the transaction limit and purges the history', async () => {
   const system = await createSystem({ delimiter: ',', displayItems: [item(), { ...item('습도'), index: 1 }] }, 23004, 'ups')
   const [kept, renamed] = await Promise.all(['온도', '습도'].map(name => db.metric.findFirstOrThrow({ where: { systemId: system.id, name } })))

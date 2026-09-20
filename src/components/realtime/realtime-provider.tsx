@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useCallback, useState, useEffect, useRef, useMemo } from 'react'
+import { createContext, useContext, useCallback, useState, useEffect, useRef, useMemo, startTransition } from 'react'
+import { applyMetricUpdates, createRefreshQueue } from '@/lib/realtime-updates'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type {
   PrismaSystem,
@@ -110,15 +111,10 @@ export function RealtimeProvider({
       if (pending.size === 0) return
       const snapshot = pending
       pendingMetricsRef.current = new Map()
-      setSystems((prev) =>
-        prev.map((system) => ({
-          ...system,
-          metrics: system.metrics?.map((m) =>
-            snapshot.has(m.id) ? { ...m, ...snapshot.get(m.id)! } : m
-          ),
-        }))
-      )
-      setLastUpdate(new Date())
+      startTransition(() => {
+        setSystems(prev => applyMetricUpdates(prev, snapshot))
+        setLastUpdate(new Date())
+      })
     }
     const id = setInterval(flush, 1000)
     return () => clearInterval(id)
@@ -193,7 +189,7 @@ export function RealtimeProvider({
   }, [])
 
   // WebSocket 재연결 시 전체 상태 동기화
-  const syncState = useCallback(async () => {
+  const fetchState = useCallback(async () => {
     try {
       const [systemsRes, alarmsRes, settingsRes] = await Promise.all([
         fetch('/api/systems'),
@@ -234,6 +230,8 @@ export function RealtimeProvider({
       console.error('[realtime] State sync failed:', e)
     }
   }, [syncWing15])
+
+  const syncState = useMemo(() => createRefreshQueue(fetchState), [fetchState])
 
   const handleMessage = useCallback(
     (message: WebSocketMessage) => {

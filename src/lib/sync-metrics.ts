@@ -32,8 +32,10 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
     return []
   }
 
-  const existing = await db.metric.findMany({ where: { systemId }, select: { id: true, name: true } })
-  const byName = new Map(existing.map(metric => [metric.name, metric.id]))
+  const existing = await db.metric.findMany({ where: { systemId }, select: {
+    id: true, name: true, unit: true, warningThreshold: true, criticalThreshold: true,
+  } })
+  const byName = new Map(existing.map(metric => [metric.name, metric]))
 
   for (const item of config.displayItems) {
     // Use conditions-based thresholds if available, otherwise fall back to legacy
@@ -44,10 +46,12 @@ export async function syncMetricsFromConfig(systemId: string, config: MetricsCon
       ? extractRepresentativeThreshold(item.conditions, 'critical')
       : item.critical ?? null
 
-    const existingId = byName.get(item.name)
-    if (existingId) {
+    const current = byName.get(item.name)
+    if (current) {
+      if (current.unit === item.unit && current.warningThreshold === warningThreshold &&
+        current.criticalThreshold === criticalThreshold) continue
       await db.metric.update({
-        where: { id: existingId },
+        where: { id: current.id },
         data: {
           warningThreshold,
           criticalThreshold,

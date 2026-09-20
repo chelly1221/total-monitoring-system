@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,19 +24,6 @@ interface MetricHistoryItem {
   systemId: string
   system: { name: string }
   history: { value: number; recordedAt: string }[]
-}
-
-function downsample(data: ChartDataPoint[], maxPoints: number): ChartDataPoint[] {
-  if (data.length <= maxPoints) return data
-  const step = Math.ceil(data.length / maxPoints)
-  const result: ChartDataPoint[] = []
-  for (let i = 0; i < data.length; i += step) {
-    result.push(data[i])
-  }
-  if (result[result.length - 1] !== data[data.length - 1]) {
-    result.push(data[data.length - 1])
-  }
-  return result
 }
 
 const PRESETS = [
@@ -73,6 +60,8 @@ export function TemperatureHistory() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [lines, setLines] = useState<{ dataKey: string; name: string; color: string }[]>([])
   const [loading, setLoading] = useState(false)
+  const requestRef = useRef<AbortController | null>(null)
+  useEffect(() => () => requestRef.current?.abort(), [])
 
   // Custom range
   const now = new Date()
@@ -83,6 +72,9 @@ export function TemperatureHistory() {
   const [timeTo, setTimeTo] = useState(toLocalTime(now))
 
   const fetchData = useCallback(async (from: string, to: string) => {
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -91,9 +83,10 @@ export function TemperatureHistory() {
         from,
         to,
       })
-      const res = await fetch(`/api/metrics/history?${params}`)
+      const res = await fetch(`/api/metrics/history?${params}`, { signal: controller.signal })
       if (!res.ok) return
       const metrics: MetricHistoryItem[] = await res.json()
+      if (controller.signal.aborted) return
 
       const timeMap = new Map<string, ChartDataPoint>()
       const lineConfigs: { dataKey: string; name: string; color: string }[] = []
@@ -110,15 +103,16 @@ export function TemperatureHistory() {
       })
 
       const sorted = Array.from(timeMap.values()).sort((a, b) => a.ts - b.ts)
-      const ds = downsample(sorted, 2000)
+      // The API already bounds each series while preserving its extrema.
+      const ds = sorted
       const keys = lineConfigs.map(l => l.dataKey)
       forwardFill(ds, keys)
       setChartData(insertGapMarkers(ds, keys))
       setLines(lineConfigs)
     } catch (e) {
-      console.error('[temperature-history] fetch error:', e)
+      if (!controller.signal.aborted) console.error('[temperature-history] fetch error:', e)
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
     }
   }, [metricName])
 
