@@ -9,7 +9,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![window_controls::control_window])
         .setup(|app| {
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("window-controls-check.html".into()))
+            let window = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("window-controls-check.html".into()))
                 .title("TMS 창 동작 검증")
                 .inner_size(900.0, 600.0)
                 .decorations(false)
@@ -34,6 +34,27 @@ fn main() {
                   });
                 "#)
                 .build()?;
+            let monitors = window.available_monitors()?;
+            for monitor in &monitors {
+                eprintln!("Monitor: {:?} {:?}", monitor.position(), monitor.size());
+            }
+            // Start across a horizontal boundary: the center stays on the left
+            // monitor while the maximize button is on the right monitor.
+            'placement: for left in &monitors {
+                for right in &monitors {
+                    let boundary = left.position().x + left.size().width as i32;
+                    let top = left.position().y.max(right.position().y);
+                    let bottom = (left.position().y + left.size().height as i32)
+                        .min(right.position().y + right.size().height as i32);
+                    let gap = right.position().x - boundary;
+                    if (0..=64).contains(&gap) && bottom - top > 600 {
+                        window.set_size(tauri::PhysicalSize::new(1100 + gap as u32, 600))?;
+                        window.set_position(tauri::PhysicalPosition::new(boundary - 1000, top + 100))?;
+                        eprintln!("Button target: {:?}; window center remains left of {}", right.position(), boundary);
+                        break 'placement;
+                    }
+                }
+            }
             Ok(())
         })
         .run(context)
