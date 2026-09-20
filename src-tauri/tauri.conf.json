@@ -45,6 +45,7 @@
     ],
     "windows": {
       "nsis": {
+        "compression": "zlib",
         "installMode": "currentUser",
         "displayLanguageSelector": false
       }
