@@ -29,6 +29,9 @@ export async function POST(request: Request) {
     }
     const port = parsePort(body.port)
     const discoveryPort = body.discoveryPort ?? 7790
+    if (discoveryPort === 7793) {
+      return NextResponse.json({ error: '라즈베리파이 메뉴에서 채널별로 연결하세요' }, { status: 400 })
+    }
     if (!CLIENT_DISCOVERY_PORTS.includes(discoveryPort)) {
       return NextResponse.json({ error: '지원하지 않는 클라이언트 탐지 포트입니다' }, { status: 400 })
     }

@@ -79,7 +79,7 @@ export function ClientDiscoveryPanel({
         throw new Error(data.error || "PC 탐지에 실패했습니다")
       }
       const data = await response.json()
-      setAllClients(data.clients as DiscoveredClient[])
+      setAllClients((data.clients as DiscoveredClient[]).filter(client => client.kind !== 'pi'))
       setSuggestedPort(typeof data.suggestedPort === "number" ? data.suggestedPort : null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "PC 탐지에 실패했습니다")

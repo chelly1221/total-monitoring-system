@@ -6,11 +6,12 @@ import dgram from 'dgram'
 import os from 'os'
 import { randomBytes } from 'crypto'
 import { isIP } from 'net'
+import { PI_DISCOVERY_PORT, parsePiChannels, type PiChannelReply } from './pi-sensor'
 
 export const CLIENT_DISCOVERY_PORT = 7790
 export const PING_CLIENT_DISCOVERY_PORT = 7791
 export const UPS_CLIENT_DISCOVERY_PORT = 7792
-export const CLIENT_DISCOVERY_PORTS = [CLIENT_DISCOVERY_PORT, PING_CLIENT_DISCOVERY_PORT, UPS_CLIENT_DISCOVERY_PORT] as const
+export const CLIENT_DISCOVERY_PORTS = [CLIENT_DISCOVERY_PORT, PING_CLIENT_DISCOVERY_PORT, UPS_CLIENT_DISCOVERY_PORT, PI_DISCOVERY_PORT] as const
 
 export { CLIENT_KIND_PORTS, CLIENT_KIND_NAMES, clientKindOf, clientKindName, discoveryPortFor } from './client-kinds'
 export type { ClientKind } from './client-kinds'
@@ -33,6 +34,7 @@ export const DEFAULT_HEARTBEAT_MS = 5000
 const MAX_DATAGRAM = 1200
 
 export interface HereReply {
+  channels?: PiChannelReply[]
   kind: ClientKind
   discoveryPort: number
   /** UPS client only: per-unit server binding and alarm state. */
@@ -141,6 +143,7 @@ export function parseHereReply(raw: Buffer | string, nonce: string, from: string
     : undefined
   return {
     kind,
+    ...(kind === 'pi' ? { channels: parsePiChannels(message.channels) } : {}),
     discoveryPort: discoveryPortFor(kind),
     ...(units ? { units } : {}),
     alarm: typeof message.alarm === 'boolean' ? message.alarm : null,

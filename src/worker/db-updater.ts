@@ -22,6 +22,7 @@ import { createLogger } from '@/lib/logger'
 import { applySqlitePragmas } from '@/lib/sqlite'
 import { runHistoryMaintenanceBatch } from './history-maintenance'
 import { recordMetricHistory } from './history-writer'
+import { piBinding, piMeasurement } from '@/lib/pi-sensor'
 
 const log = createLogger('db-updater')
 
@@ -727,7 +728,11 @@ export async function updateMetric(config: PortConfig, data: ParsedData, port: n
 
     for (const system of systems) {
       try {
-        const processed = await processSystemMetric(system, data, numericValue)
+        const pi = piBinding(getParsedConfig(system.id, system.config))
+        const value = pi ? piMeasurement(data.value, pi) : data.value
+        if (value === null) continue
+        const measurement = pi ? { ...data, value } : data
+        const processed = await processSystemMetric(system, measurement, pi ? extractNumericValue(measurement) : numericValue)
 
         if (!sharedSource || processed) {
           await prisma.system.update({
@@ -1232,7 +1237,7 @@ export function startOfflineDetection(): void {
         // mask this device being dead. There, lastDataAt (advanced only on a
         // config-matched payload) is the source of truth.
         const key = livenessKey(system.protocol, system.port, (system as { topic?: string | null }).topic)
-        const memLast = (sourceCounts.get(key) ?? 1) > 1 ? 0 : getLastSeen(key)
+        const memLast = (sourceCounts.get(key) ?? 1) > 1 || piBinding(getParsedConfig(system.id, system.config)) ? 0 : getLastSeen(key)
         const lastData = Math.max(dbLast, memLast, workerStartedAt)
         const timeSinceLastData = now - lastData
         // Per-device threshold overrides the global default (slow reporters need a

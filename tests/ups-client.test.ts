@@ -11,7 +11,7 @@ import { alarmDetailsBySystem, isPingClientSystem } from '../src/lib/alarm-detai
 import { markRegistrations } from '../src/lib/client-registrations'
 
 test('the ups client is a third discovery kind on UDP 7792', () => {
-  assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791, 7792])
+  assert.deepEqual(CLIENT_DISCOVERY_PORTS, [7790, 7791, 7792, 7793])
   assert.equal(UPS_CLIENT_DISCOVERY_PORT, 7792)
   assert.equal(CLIENT_KIND_PORTS.ups, 7792)
   assert.equal(clientKindOf('ups'), 'ups')

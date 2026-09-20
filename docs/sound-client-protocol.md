@@ -3,11 +3,54 @@
 Shared contract between 통합알람감시체계 (server, `tms-portable`) and the Tauri
 clients (`sound-client`, `ping-client`, `ups-client`). All implementations follow this file.
 
+The Linux `pi-client` also implements v1 on UDP **7793** (`kind: "pi"`). The server
+probes all four discovery ports. Its channel extension is specified below.
+
+## Raspberry Pi sensor extension (v1.0.0)
+
+Raspberry Pi 3/4 and 5 use separate, fully offline DietPi ARM64 images.
+`here` includes `kind: "pi"`, a per-card persisted UUID, a name, hostname, version,
+uptime, and `channels: [{id, target, closedLevel}]`. Only enabled channels are
+advertised. Allowed IDs/BCM pins: `dht1/4`, `dht2/17`, `dht3/27`, `dht4/22`,
+`door1/23`, `door2/24`, `door3/25`, `door4/26`. `target` is null before registration.
+
+The server adds each channel as a separate facility and allocates UDP 6300–6399.
+`POST /api/pi/register` re-discovers the exact IP/UUID and advertised channel,
+persists an idempotent facility keyed by `config.client.{id,channel}`, and sends:
+
+```json
+{"v":1,"t":"config","nonce":"0123456789abcdef","id":"per-card-uuid","channel":"door1","target":{"ip":"192.168.1.160","port":6300},"intervalMs":5000,"closedLevel":0}
+```
+
+The client requires a matching UUID, enabled channel, a target IP equal to the
+command sender's IPv4 address, interval 5000, and closedLevel 0 or 1. It persists
+the binding atomically before ACK. Retries reuse the same facility and port;
+thresholds and names edited on the server are retained. Failed ACKs leave the
+facility saved so the operator can retry. ClosedLevel is reported in discovery
+and retained when omitted from a re-provisioning request.
+
+- Measurement datagrams use UTF-8 JSON: `{"v":1,"t":"sensor","id":"per-card-uuid","channel":"dht1","value":"24.5,63.2"}`.
+  The worker checks UUID/channel and value validity before unwrapping the value for
+  existing parsers. Mismatched packets never refresh the facility's liveness, even
+  when a previously deleted facility's UDP port is reused.
+- DHT22 value: `temperature,humidity`, e.g. `24.5,63.2`, every 5 seconds after a
+  successful reading. Invalid, missing or stale readings are never sent as normal.
+- MC-38 value: `CLOSED` / `OPEN` after 100 ms stable input and every 5 seconds. Internal
+  pull-up; default electrical LOW means closed, with optional inversion.
+- Each channel has independent reads and a target. A failed sensor eventually
+  becomes offline through the existing server timeout (60 seconds by default).
+- No periodic discovery broadcasts, HTTP polling, cloud calls or network installs.
+- Identify and executable-transfer commands are unsupported and rejected.
+- Like existing v1 clients, this protocol has no authentication and is intended
+  for the existing trusted facility LAN.
+
+See [Raspberry Pi setup](raspberry-pi-sensors.md) for wiring and offline-image builds.
+
 ## Transport
 
 - UDP, IPv4 only. One JSON object per datagram, UTF-8, no framing, max 1200 bytes.
 - SoundSense binds **UDP 7790**; 네트워크 ping 감시 binds **UDP 7791**; 2026 1레이더 UPS binds **UDP 7792** on all IPv4 interfaces.
-- The server probes all three ports during the same on-demand scan. The clients may coexist on one PC with independent UUIDs, settings and server data ports.
+- The server probes these ports and the Raspberry Pi sensor port **7793** during the same on-demand scan. The PC clients may coexist on one PC with independent UUIDs, settings and server data ports.
 - The server never binds a fixed port. It opens an ephemeral socket per
   operation and receives replies on it.
 - Discovery is **server-initiated and on-demand only**. Clients never broadcast

@@ -1,0 +1,14 @@
+[Unit]
+Description=TMS offline sensor configuration
+After=local-fs.target
+Before=networking.service tms-sensor.service
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/tms-offline-boot.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

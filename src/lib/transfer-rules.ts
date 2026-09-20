@@ -107,6 +107,7 @@ export function minTransferVersion(kind: ClientKind = 'sound'): string {
 
 /** True when a client version (e.g. "3.2.0") supports the transfer command. */
 export function supportsTransfer(version: string, kind: ClientKind = 'sound'): boolean {
+  if (kind === 'pi') return false
   const parse = (v: string) => v.trim().split('.').map(part => Number.parseInt(part, 10))
   const have = parse(version)
   const need = parse(minTransferVersion(kind))

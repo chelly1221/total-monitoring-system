@@ -17,9 +17,10 @@ export type MetricItemType = 'inputVoltage' | 'outputVoltage' | 'batteryVoltage'
 
 // Sound client (TMS SoundSense) selected via LAN auto-discovery. Stored inside
 // EquipmentConfig so the facility can be re-identified and re-provisioned later.
-export type ClientKind = 'sound' | 'ping' | 'ups'
+export type ClientKind = 'sound' | 'ping' | 'ups' | 'pi'
 
 export interface SoundClientInfo {
+  channel?: import('@/lib/pi-sensor').PiChannelId
   kind?: ClientKind
   discoveryPort?: number
   /** UPS client: which of its two UPS cards this facility receives (1 or 2). */
@@ -36,6 +37,8 @@ export interface SoundClientInfo {
 
 // A client that answered a discovery probe (see docs/sound-client-protocol.md)
 export interface DiscoveredClient {
+  channels?: import('@/lib/pi-sensor').PiChannelReply[]
+  registeredChannels?: { channel: string; systemId: string; systemName: string }[]
   kind?: ClientKind
   discoveryPort?: number
   /** UPS client: per-unit server binding and alarm state. */

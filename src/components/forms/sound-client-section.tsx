@@ -126,6 +126,18 @@ interface ProvisionArgs {
  * (the facility itself is already saved; the operator is told to retry).
  */
 export async function provisionSoundClient({ client, port, config, facilityName }: ProvisionArgs): Promise<SoundClientInfo | null> {
+  if (client.kind === 'pi') {
+    try {
+      const response = await fetch('/api/pi/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: client.id, ip: client.ip, channel: client.channel, name: facilityName }) })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
+      return { ...client, provisionedAt: new Date().toISOString() }
+    } catch (error) {
+      toast.warning(`시설은 저장되었지만 라즈베리파이 연결에 실패했습니다: ${String(error)}`)
+      return null
+    }
+  }
   const on = config.criticalPatterns?.[0]?.trim()
   const off = config.normalPatterns?.[0]?.trim()
   if (!on || !off) {
@@ -195,6 +207,8 @@ export function SoundClientSection({
   }, [isEditMode])
 
   if (!isEditMode && !client) return null
+
+  if (client?.kind === 'pi') return <div className="rounded border bg-card px-3 py-2 text-sm">라즈베리파이 · {client.name || client.host} · {client.ip} · {client.channel}<span className="ml-3 text-muted-foreground">채널 연결은 상단 라즈베리파이 메뉴에서 관리합니다.</span></div>
 
   const handleIdentify = async () => {
     if (!client) return

@@ -1,0 +1,22 @@
+[Unit]
+Description=TMS temperature humidity and door sensors
+Wants=network-online.target
+After=network-online.target tms-sensor-setup.service
+Requires=tms-sensor-setup.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/opt/tms-sensor/venv/bin/python /opt/tms-sensor/tms_sensor.py
+Restart=always
+RestartSec=5
+StateDirectory=tms-sensor
+WorkingDirectory=/var/lib/tms-sensor
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -133,7 +133,7 @@ export function TransferDialog() {
       const response = await fetch('/api/discovery/clients', { cache: 'no-store' })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'PC 탐지에 실패했습니다')
-      const found = data.clients as DiscoveredClient[]
+      const found = (data.clients as DiscoveredClient[]).filter(client => client.kind !== 'pi')
       setClients(found)
       // Drop selections that disappeared from the network.
       setSelected(prev => new Set([...prev].filter(id => found.some(c => c.id === id))))
