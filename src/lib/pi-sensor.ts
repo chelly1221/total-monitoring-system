@@ -6,10 +6,10 @@ export const PI_CHANNELS = [
   { id: 'dht2', kind: 'dht22', label: '온습도 2', gpio: 17, pin: 11 },
   { id: 'dht3', kind: 'dht22', label: '온습도 3', gpio: 27, pin: 13 },
   { id: 'dht4', kind: 'dht22', label: '온습도 4', gpio: 22, pin: 15 },
-  { id: 'door1', kind: 'mc38', label: '개폐 1', gpio: 23, pin: 16 },
-  { id: 'door2', kind: 'mc38', label: '개폐 2', gpio: 24, pin: 18 },
-  { id: 'door3', kind: 'mc38', label: '개폐 3', gpio: 25, pin: 22 },
-  { id: 'door4', kind: 'mc38', label: '개폐 4', gpio: 26, pin: 37 },
+  { id: 'door1', kind: 'mc58', label: '개폐 1', gpio: 23, pin: 16 },
+  { id: 'door2', kind: 'mc58', label: '개폐 2', gpio: 24, pin: 18 },
+  { id: 'door3', kind: 'mc58', label: '개폐 3', gpio: 25, pin: 22 },
+  { id: 'door4', kind: 'mc58', label: '개폐 4', gpio: 26, pin: 37 },
 ] as const
 
 export type PiChannelId = typeof PI_CHANNELS[number]['id']
@@ -31,7 +31,7 @@ export function piMeasurement(raw: string, client: SoundClientInfo): string | nu
   try {
     const packet = JSON.parse(raw)
     if (packet?.v !== 1 || packet.t !== 'sensor' || packet.id !== client.id || packet.channel !== client.channel || typeof packet.value !== 'string') return null
-    if (piChannel(client.channel)?.kind === 'mc38') return ['OPEN', 'CLOSED'].includes(packet.value) ? packet.value : null
+    if (piChannel(client.channel)?.kind === 'mc58') return ['OPEN', 'CLOSED'].includes(packet.value) ? packet.value : null
     if (!/^-?\d+(?:\.\d+)?,\d+(?:\.\d+)?$/.test(packet.value)) return null
     const [temperature, humidity] = packet.value.split(',').map(Number)
     return temperature >= -40 && temperature <= 80 && humidity >= 0 && humidity <= 100 ? packet.value : null
@@ -39,7 +39,7 @@ export function piMeasurement(raw: string, client: SoundClientInfo): string | nu
 }
 
 export function piPreset(channel: PiChannelId, client: SoundClientInfo): EquipmentConfig | MetricsConfig {
-  if (piChannel(channel)?.kind === 'mc38') {
+  if (piChannel(channel)?.kind === 'mc58') {
     return { normalPatterns: ['CLOSED'], criticalPatterns: ['OPEN'], matchMode: 'exact', criticalConfirmations: 1, client }
   }
   return {

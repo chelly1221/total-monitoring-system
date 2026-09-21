@@ -59,6 +59,7 @@ let directory: string
 let db: typeof import('../src/lib/db').prisma
 let register: typeof import('../src/lib/pi-registration').registerPiChannel
 before(async () => {
+  process.env.WS_PORT = '17798'
   directory = await mkdtemp(path.join(tmpdir(), 'tms-pi-test-'))
   process.env.DATABASE_URL = `file:${path.join(directory, 'test.db').replaceAll('\\', '/')}`
   execFileSync(process.execPath, [path.resolve('scripts/init-db.js'), path.resolve('prisma/schema.prisma')], { env: process.env, stdio: 'pipe' })
@@ -115,4 +116,24 @@ test('Pi measurements and door transitions reach the existing worker alarms', as
     assert.equal((await db.system.findUnique({ where: { id: door.id } }))?.status, 'normal')
     assert.equal(await db.alarm.count({ where: { systemId: door.id, resolvedAt: null } }), 0)
   } finally { await worker.closeDatabase() }
+})
+
+test('native Pi dashboard exposes every alarm type and persists Korean names', async () => {
+  const { GET, POST } = await import('../src/app/api/pi/dashboard/route')
+  await db.setting.upsert({ where: { key: 'wing15Enabled' }, create: { key: 'wing15Enabled', value: 'false' }, update: { value: 'false' } })
+  const sensor = await register(db, { ...device, id: 'dashboard-pi' }, 'dht1', '화면 시험')
+  for (const type of ['radar', 'ups', 'ping', 'sound', 'sensor', 'equipment']) {
+    const system = await db.system.create({ data: { name: `종류 ${type}`, type, protocol: 'udp' } })
+    await db.alarm.create({ data: { systemId: system.id, message: `${type} 시험`, severity: 'critical' } })
+  }
+  const result = await GET(new Request('http://localhost/api/pi/dashboard?id=dashboard-pi'))
+  assert.equal(result.status, 200)
+  const payload = await result.json()
+  assert.equal(payload.channels.length, 1)
+  for (const kind of ['radar', 'ups', 'ping', 'sound', 'sensor', 'equipment']) assert.ok(payload.alarms.some((a: { kind: string }) => a.kind === kind))
+  const rename = await POST(new Request('http://localhost/api/pi/dashboard', { method: 'POST', body: JSON.stringify({ id: 'dashboard-pi', channel: 'dht1', name: '장비실 온습도 A' }) }))
+  assert.equal(rename.status, 200)
+  assert.equal((await db.system.findUniqueOrThrow({ where: { id: sensor.id } })).name, '장비실 온습도 A')
+  assert.equal((await GET(new Request('http://localhost/api/pi/dashboard?id=unknown'))).status, 404)
+  assert.equal((await POST(new Request('http://localhost/api/pi/dashboard', { method: 'POST', body: '{' }))).status, 400)
 })

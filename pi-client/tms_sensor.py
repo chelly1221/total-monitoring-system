@@ -14,11 +14,11 @@ import uuid
 CHANNELS = {
     'dht1': ('dht22', 4), 'dht2': ('dht22', 17),
     'dht3': ('dht22', 27), 'dht4': ('dht22', 22),
-    'door1': ('mc38', 23), 'door2': ('mc38', 24),
-    'door3': ('mc38', 25), 'door4': ('mc38', 26),
+    'door1': ('mc58', 23), 'door2': ('mc58', 24),
+    'door3': ('mc58', 25), 'door4': ('mc58', 26),
 }
 DISCOVERY_PORT = 7793
-VERSION = '1.0.0'
+VERSION = '2.0.0'
 
 
 def gpiochip_number(base=Path('/sys/bus/gpio/devices')):
@@ -64,9 +64,17 @@ class Client:
             'id': str(uuid.uuid4()), 'name': boot_config['name'],
             'channels': {key: {'target': None, 'closedLevel': 0} for key in boot_config['channels']},
         }
-        if not self.state['channels'] or any(c not in CHANNELS for c in self.state['channels']):
+        if not isinstance(self.state['channels'], dict) or any(c not in CHANNELS for c in self.state['channels']):
             raise ValueError('활성 채널 설정이 올바르지 않습니다')
         atomic_json(self.path, self.state)
+        from local_runtime import LocalRuntime
+        self.runtime = LocalRuntime(self)
+
+    write_json = staticmethod(atomic_json)
+
+    def persist(self, state):
+        atomic_json(self.path, state)
+        self.state = state
 
     def handle(self, message, source):
         if not isinstance(message, dict) or message.get('v') != 1:
@@ -91,6 +99,7 @@ class Client:
                 return dict(base, t='ack', ok=False, error='장비 식별자, 채널 또는 서버 설정이 올바르지 않습니다')
             updated = json.loads(json.dumps(self.state))
             updated['channels'][channel] = {'target': target, 'closedLevel': level}
+            updated['serverIp'] = target['ip']
             try:
                 atomic_json(self.path, updated)
             except OSError:
@@ -101,10 +110,13 @@ class Client:
 
     def send(self, key, value, udp):
         with self.lock:
-            target = self.state['channels'][key]['target']
+            target = self.state['channels'].get(key, {}).get('target')
             if target:
                 packet = {'v': 1, 't': 'sensor', 'id': self.state['id'], 'channel': key, 'value': value}
-                udp.sendto(json.dumps(packet, separators=(',', ':')).encode('utf-8'), (target['ip'], target['port']))
+                try:
+                    udp.sendto(json.dumps(packet, separators=(',', ':')).encode('utf-8'), (target['ip'], target['port']))
+                except OSError as error:
+                    logging.warning('서버 전송 실패: %s', error)
 
     def dht_loop(self, key, gpio):
         # Each sensor owns its reader and schedule; a failing DHT cannot block doors.
@@ -123,6 +135,7 @@ class Client:
                             if (temperature is not None and humidity is not None and
                                     math.isfinite(temperature) and math.isfinite(humidity) and
                                     -40 <= temperature <= 80 and 0 <= humidity <= 100):
+                                self.runtime.sample(key, [temperature, humidity])
                                 self.send(key, f'{temperature:.1f},{humidity:.1f}', udp)
                         except RuntimeError as error:
                             logging.warning('%s: %s', key, error)
@@ -154,12 +167,13 @@ class Client:
                         if now - since >= 0.1:
                             stable = candidate
                         with self.lock:
-                            binding = self.state['channels'][key]
+                            binding = self.state['channels'].get(key, {'target': None})
                             closed = binding.get('closedLevel', 0)
                             target = binding['target']
                         payload = 'CLOSED' if stable == closed else 'OPEN'
                         current = (payload, json.dumps(target))
                         if stable is not None and (current != last_value or now - sent >= 5):
+                            self.runtime.sample(key, stable)
                             self.send(key, payload, udp)
                             sent, last_value = now, current
                         time.sleep(0.02)
@@ -171,7 +185,8 @@ class Client:
                     lgpio.gpiochip_close(chip)
 
     def run(self):
-        for key in self.state['channels']:
+        threading.Thread(target=self.runtime.serve, daemon=True).start()
+        for key in CHANNELS:
             kind, gpio = CHANNELS[key]
             threading.Thread(target=self.dht_loop if kind == 'dht22' else self.door_loop,
                              args=(key, gpio), daemon=True).start()

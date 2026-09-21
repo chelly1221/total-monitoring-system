@@ -30,7 +30,7 @@ function WiringDiagram({ channel }: { channel: typeof PI_CHANNELS[number] }) {
         <text x={i % 2 ? x + 14 : x - 14} y={y + 4} textAnchor={i % 2 ? 'start' : 'end'} fill={active ? '#7dd3fc' : '#cbd5e1'} fontSize="11">{i % 2 ? `${pin} · ${label}` : `${label} · ${pin}`}</text>
       </g>
     })}
-    <text x="400" y="85" fill="#f8fafc" fontSize="20">{channel.label} · {dht ? 'DHT22 3핀 모듈' : 'MC-38 접점'}</text>
+    <text x="400" y="85" fill="#f8fafc" fontSize="20">{channel.label} · {dht ? 'DHT22 3핀 모듈' : 'MC-58(NC) 접점'}</text>
     <rect x="650" y="120" width="166" height={dht ? 200 : 145} rx="10" fill="#24313d" stroke="#64748b" />
     {dht && <>
       <path d="M450 150 H650" stroke="#f87171" strokeWidth="3" /><text x="400" y="136" fill="#fca5a5" fontSize="14">3.3V · 물리 1번</text><text x="665" y="155" fill="#fca5a5" fontSize="16">VCC / +</text>
@@ -177,10 +177,10 @@ export function PiSensorDialog() {
             <table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-3">채널 / 배선</th><th>시설 이름</th><th>닫힘 입력</th><th className="p-3 text-right">서버 연결</th></tr></thead><tbody>{client.channels?.map(entry => {
               const c = PI_CHANNELS.find(c => c.id === entry.id)!, key = `${client.id}:${entry.id}`
               const registered = client.registeredChannels?.find(r => r.channel === entry.id)
-              return <tr key={entry.id} className="border-t"><td className="p-3">{c.label}<div className="text-xs text-muted-foreground">GPIO{c.gpio} · 물리 {c.pin}번</div></td><td className="pr-3">{registered ? <Link className="text-emerald-400 hover:underline" href={`/systems/${registered.systemId}`} onClick={() => setOpen(false)}>{registered.systemName}</Link> : <Input aria-label={`${c.label} 시설 이름`} maxLength={64} value={names[key] ?? `${client.name || client.host} ${c.label}`} onChange={e => setNames(v => ({ ...v, [key]: e.target.value }))} />}</td><td>{c.kind === 'mc38' ? <select aria-label={`${c.label} 닫힘 입력`} className={selectClass} value={levels[key] ?? entry.closedLevel ?? 0} onChange={e => setLevels(v => ({ ...v, [key]: Number(e.target.value) }))}><option value={0}>LOW (기본)</option><option value={1}>HIGH (반전)</option></select> : '—'}</td><td className="p-3 text-right"><Button size="sm" variant={registered ? 'outline' : 'default'} disabled={!!registering || scanning} onClick={() => void register(client, c)}>{registering === key && <Loader2 className="mr-1 size-4 animate-spin" />}{registered ? '다시 연결' : '자동 추가'}</Button></td></tr>
+              return <tr key={entry.id} className="border-t"><td className="p-3">{c.label}<div className="text-xs text-muted-foreground">GPIO{c.gpio} · 물리 {c.pin}번</div></td><td className="pr-3">{registered ? <Link className="text-emerald-400 hover:underline" href={`/systems/${registered.systemId}`} onClick={() => setOpen(false)}>{registered.systemName}</Link> : <Input aria-label={`${c.label} 시설 이름`} maxLength={64} value={names[key] ?? `${client.name || client.host} ${c.label}`} onChange={e => setNames(v => ({ ...v, [key]: e.target.value }))} />}</td><td>{c.kind === 'mc58' ? <select aria-label={`${c.label} 닫힘 입력`} className={selectClass} value={levels[key] ?? entry.closedLevel ?? 0} onChange={e => setLevels(v => ({ ...v, [key]: Number(e.target.value) }))}><option value={0}>LOW (기본)</option><option value={1}>HIGH (반전)</option></select> : '—'}</td><td className="p-3 text-right"><Button size="sm" variant={registered ? 'outline' : 'default'} disabled={!!registering || scanning} onClick={() => void register(client, c)}>{registering === key && <Loader2 className="mr-1 size-4 animate-spin" />}{registered ? '다시 연결' : '자동 추가'}</Button></td></tr>
             })}</tbody></table>
           </div>)}
-          <p className="text-xs text-muted-foreground">온습도는 온습도 감시 화면, 개폐는 장비상태 화면에 등록됩니다. 온습도 알람 임계값은 시설 상세에서 지정하세요. MC-38은 설치 후 실제 문을 열고 닫아 극성을 확인하세요.</p>
+          <p className="text-xs text-muted-foreground">온습도는 온습도 감시 화면, 개폐는 장비상태 화면에 등록됩니다. 온습도 알람 임계값은 시설 상세에서 지정하세요. MC-58(NC)은 설치 후 실제 문을 열고 닫아 극성을 확인하세요.</p>
         </div>}
         {error && <p role="alert" className="mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
       </div>
