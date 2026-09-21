@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const RESOURCES = path.join(ROOT, 'src-tauri', 'resources');
+const RESOURCES = process.env.TMS_RESOURCE_DIR ? path.resolve(ROOT, process.env.TMS_RESOURCE_DIR) : path.join(ROOT, 'src-tauri', 'resources');
 
 function rm(dir) {
   const relative = path.relative(ROOT, path.resolve(dir));
@@ -73,7 +73,7 @@ if (fs.existsSync(publicSrc)) {
 // 3. Bundle worker with esbuild
 const workerDir = path.join(RESOURCES, 'worker');
 fs.mkdirSync(workerDir, { recursive: true });
-run(`npx esbuild src/worker/index.ts --bundle --platform=node --target=node20 --outfile=src-tauri/resources/worker/index.js --external:@prisma/client --external:prisma`);
+require('esbuild').buildSync({ entryPoints: [path.join(ROOT, 'src/worker/index.ts')], bundle: true, platform: 'node', target: 'node20', outfile: path.join(workerDir, 'index.js'), external: ['@prisma/client', 'prisma'] });
 
 // 4. Copy prisma
 fs.mkdirSync(path.join(RESOURCES, 'prisma'), { recursive: true });
@@ -145,4 +145,4 @@ for (const [id, binary] of [['sound-client', 'tms-soundsense'], ['ping-client', 
 }
 fs.writeFileSync(path.join(downloadsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-console.log('\n✅ Build complete. Resources ready in src-tauri/resources/');
+console.log(`\n✅ Build complete. Resources ready in ${RESOURCES}`);

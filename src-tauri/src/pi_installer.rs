@@ -98,6 +98,7 @@ pub fn customize_image(path: &Path, model: &str, config: &Value) -> Result<(), S
         root.open_file("tms-image.json").map_err(|_| "폐쇄망용으로 준비되지 않은 OS 이미지입니다")?.read_to_string(&mut marker).map_err(|e| e.to_string())?;
         let marker: Value = serde_json::from_str(&marker).map_err(|e| e.to_string())?;
         if marker["format"] != "tms-offline-v1" || marker["model"] != model { return Err("선택한 모델과 OS 이미지가 다릅니다".into()); }
+        if marker["gui"] != "qt-native" { return Err("로컬 화면이 포함된 2.0 이상의 OS 이미지가 필요합니다".into()); }
         let directory = root.create_dir("tms-sensor").map_err(|e| e.to_string())?;
         for (name, content) in [("config.json", serde_json::to_vec(config).unwrap()), ("tms_sensor.py", CLIENT.as_bytes().to_vec())] {
             let mut f = directory.create_file(name).map_err(|e| e.to_string())?;
@@ -201,7 +202,7 @@ mod tests {
         {
             let filesystem = fatfs::FileSystem::new(&mut partition, fatfs::FsOptions::new()).unwrap();
             let root = filesystem.root_dir();
-            root.create_file("tms-image.json").unwrap().write_all(br#"{"format":"tms-offline-v1","model":"pi34"}"#).unwrap();
+            root.create_file("tms-image.json").unwrap().write_all(br#"{"format":"tms-offline-v1","model":"pi34","gui":"qt-native"}"#).unwrap();
             drop(root); filesystem.unmount().unwrap();
         }
         let path = std::env::temp_dir().join(format!("tms-pi-fat-test-{}.img", std::process::id()));
