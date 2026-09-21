@@ -2,13 +2,14 @@ use tauri::WebviewWindow;
 
 // Run the native move loop on the window thread. startDragging's IPC response
 // only acknowledges dispatch and cannot be used as a mouse-release notification.
+// Return true only for a completed drop, so the UI can reset its restore state.
 #[tauri::command]
 pub async fn control_window(
     window: WebviewWindow,
     action: String,
     x: f64,
     y: f64,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     if !x.is_finite() || !y.is_finite() {
         return Err("창 위치가 올바르지 않습니다".into());
     }
@@ -30,6 +31,7 @@ pub async fn control_window(
             "drag" => window.start_dragging(),
             _ => window.toggle_maximize(),
         }
+        .map(|_| false)
         .map_err(|e| e.to_string())
     }
 }
@@ -59,7 +61,7 @@ mod native {
         }
     }
 
-    unsafe fn maximize_at(hwnd: HWND, point: POINT) -> Result<(), String> {
+    unsafe fn place_at(hwnd: HWND, point: POINT) -> Result<(), String> {
         let monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
         let mut info: MONITORINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
@@ -69,7 +71,7 @@ mod native {
         check(GetWindowRect(hwnd, &mut rect))?;
         let work = info.rcWork;
         // Place the restored window wholly inside the selected monitor before
-        // maximizing so Windows cannot select a monitor by the old window center.
+        // expanding so Windows cannot select a monitor by the old window center.
         let width = (rect.right - rect.left).min(work.right - work.left);
         let height = (rect.bottom - rect.top).min(work.bottom - work.top);
         check(SetWindowPos(
@@ -81,11 +83,10 @@ mod native {
             height,
             SWP_NOZORDER | SWP_NOACTIVATE,
         ))?;
-        ShowWindow(hwnd, SW_MAXIMIZE);
         Ok(())
     }
 
-    pub fn control(window: &WebviewWindow, action: &str, x: f64, y: f64) -> Result<(), String> {
+    pub fn control(window: &WebviewWindow, action: &str, x: f64, y: f64) -> Result<bool, String> {
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as HWND;
         let scale = window.scale_factor().map_err(|e| e.to_string())?;
         unsafe {
@@ -96,26 +97,35 @@ mod native {
             check(ClientToScreen(hwnd, &mut point))?;
             match action {
                 "toggle" => {
+                    if window.is_fullscreen().map_err(|e| e.to_string())? {
+                        window.set_fullscreen(false).map_err(|e| e.to_string())?;
+                        return Ok(false);
+                    }
                     if IsZoomed(hwnd) != 0 {
                         ShowWindow(hwnd, SW_RESTORE);
-                        Ok(())
                     } else {
-                        maximize_at(hwnd, point)
+                        place_at(hwnd, point)?;
+                        ShowWindow(hwnd, SW_MAXIMIZE);
                     }
+                    Ok(false)
                 }
                 "drag" => {
-                    // A click, double click or released button must never maximize.
+                    // Leave fullscreen only once an actual drag crosses the threshold.
                     if GetAsyncKeyState(VK_LBUTTON as i32) >= 0 || DragDetect(hwnd, point) == 0 {
-                        return Ok(());
+                        return Ok(false);
                     }
-                    let mut placement: WINDOWPLACEMENT = std::mem::zeroed();
-                    placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
-                    check(GetWindowPlacement(hwnd, &mut placement))?;
+                    let was_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
                     let mut rect: RECT = std::mem::zeroed();
                     check(GetWindowRect(hwnd, &mut rect))?;
                     let ratio =
                         (point.x - rect.left) as f64 / (rect.right - rect.left).max(1) as f64;
                     let offset_y = point.y - rect.top;
+                    if was_fullscreen {
+                        window.set_fullscreen(false).map_err(|e| e.to_string())?;
+                    }
+                    let mut placement: WINDOWPLACEMENT = std::mem::zeroed();
+                    placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+                    check(GetWindowPlacement(hwnd, &mut placement))?;
                     ShowWindow(hwnd, SW_RESTORE);
                     check(GetWindowRect(hwnd, &mut rect))?;
                     check(GetCursorPos(&mut point))?;
@@ -132,10 +142,16 @@ mod native {
                     // SendMessage returns only when the native move loop ends.
                     SendMessageW(hwnd, WM_SYSCOMMAND, (SC_MOVE | HTCAPTION) as usize, 0);
                     if GetAsyncKeyState(VK_ESCAPE as i32) < 0 {
-                        check(SetWindowPlacement(hwnd, &placement))
+                        check(SetWindowPlacement(hwnd, &placement))?;
+                        if was_fullscreen {
+                            window.set_fullscreen(true).map_err(|e| e.to_string())?;
+                        }
+                        Ok(false)
                     } else {
                         check(GetCursorPos(&mut point))?;
-                        maximize_at(hwnd, point)
+                        place_at(hwnd, point)?;
+                        window.set_fullscreen(true).map_err(|e| e.to_string())?;
+                        Ok(true)
                     }
                 }
                 _ => Err("지원하지 않는 창 동작입니다".into()),

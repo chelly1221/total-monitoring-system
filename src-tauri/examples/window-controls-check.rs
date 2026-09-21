@@ -26,7 +26,7 @@ fn main() {
                         await window.__TAURI__.core.invoke('control_window',{action,x,y});
                         const win=window.__TAURI__.window.getCurrentWindow();
                         const pos=await win.outerPosition(), size=await win.outerSize();
-                        output.textContent=JSON.stringify({action,maximized:await win.isMaximized(),pos,size},null,2);
+                        output.textContent=JSON.stringify({action,fullscreen:await win.isFullscreen(),maximized:await win.isMaximized(),pos,size},null,2);
                       } catch(e) {output.textContent=String(e)} finally {busy=false}
                     }
                     header.onmousedown=e=>{if(e.button===0&&!e.target.closest('button')){e.preventDefault();control(e.detail===2?'toggle':'drag',e.clientX,e.clientY)}};

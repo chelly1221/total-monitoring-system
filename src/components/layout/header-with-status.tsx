@@ -75,7 +75,8 @@ export function HeaderWithStatus() {
     if (windowActionRef.current) return
     windowActionRef.current = true
     try {
-      await invoke('control_window', { action, x, y })
+      const moved = await invoke<boolean>('control_window', { action, x, y })
+      if (moved) restoreMaximizedRef.current = false
       setIsFullscreen(await tauriWindowRef.current!.isFullscreen())
     } catch {
       toast.error('창 크기 또는 위치를 변경하지 못했습니다')
@@ -85,11 +86,15 @@ export function HeaderWithStatus() {
   }
 
   const handleDragMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || !tauriWindowRef.current || isFullscreen) return
+    if (e.button !== 0 || !tauriWindowRef.current) return
     const target = e.target as HTMLElement
     // Portal menu clicks bubble through React but are outside the title bar.
     if (!e.currentTarget.contains(target) || target.closest('button, a, input, [role="menuitem"]')) return
     e.preventDefault()
+    if (e.detail === 2 && isFullscreen) {
+      void toggleFullscreen()
+      return
+    }
     void controlWindow(e.detail === 2 ? 'toggle' : 'drag', e.clientX, e.clientY)
   }
 
