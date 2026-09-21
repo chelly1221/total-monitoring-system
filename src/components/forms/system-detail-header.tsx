@@ -1,9 +1,13 @@
-import { ArrowLeft, Loader2, X, Check } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { SystemActions } from "@/components/forms/system-actions"
-import { getStatusBadgeClass, getStatusLabel, getTypeLabel } from "@/lib/system-display-utils"
-import type { SystemStatus, PrismaSystem } from "@/types"
+import { ArrowLeft, Loader2, X, Check } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { SystemActions } from '@/components/forms/system-actions'
+import {
+  getStatusBadgeClass,
+  getStatusLabel,
+  getTypeLabel,
+} from '@/lib/system-display-utils'
+import type { SystemStatus, PrismaSystem } from '@/types'
 
 interface SystemHeaderSystem {
   id: string
@@ -46,48 +50,51 @@ export function SystemDetailHeader({
   onEnabledChange,
 }: SystemDetailHeaderProps) {
   return (
-    <div className="flex items-center justify-between shrink-0 pb-1.5">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack}>
+    <div className="device-editor-header">
+      <div className="device-editor-heading">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="목록으로"
+          onClick={onBack}
+        >
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <h1 className="text-lg font-bold">{displayName}</h1>
-        <span className="text-xs text-muted-foreground">
-          {getTypeLabel(system.type)}
-          {displayProtocol === 'mqtt'
-            ? displayTopic && <> | 토픽:{displayTopic} (MQTT)</>
-            : displayPort && <> | 포트:{displayPort} ({displayProtocol.toUpperCase()})</>}
-        </span>
-        <Badge className={`text-[10px] px-1.5 py-0 ${getStatusBadgeClass(status, isEnabled)}`}>
+        <div>
+          <h1>{displayName}</h1>
+          <p>
+            {getTypeLabel(system.type)}
+            {displayProtocol === 'mqtt'
+              ? displayTopic && <> | 토픽:{displayTopic} (MQTT)</>
+              : displayPort && (
+                  <>
+                    {' '}
+                    | 포트:{displayPort} ({displayProtocol.toUpperCase()})
+                  </>
+                )}
+          </p>
+        </div>
+        <Badge
+          className={`text-[10px] px-1.5 py-0 ${getStatusBadgeClass(status, isEnabled)}`}
+        >
           {getStatusLabel(status, isEnabled)}
         </Badge>
       </div>
-      <div className="flex gap-2">
+      <div className="device-editor-actions">
         {isEditMode ? (
           <>
-            {/* 취소 버튼 (아이콘만) */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onCancel}
-              disabled={saving}
-              className="h-8 w-8"
-            >
+            <Button variant="outline" onClick={onCancel} disabled={saving}>
               <X className="h-4 w-4" />
+              취소
             </Button>
-
-            {/* 저장 버튼 (아이콘만) */}
-            <Button
-              size="icon"
-              onClick={onSave}
-              disabled={saving}
-              className="h-8 w-8"
-            >
+            <Button onClick={onSave} disabled={saving}>
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Check className="h-4 w-4" />
               )}
+              {saving ? '저장 중' : '변경 저장'}
             </Button>
           </>
         ) : (

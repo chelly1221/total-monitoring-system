@@ -36,6 +36,8 @@ interface SystemMetricsConfigProps {
   disabled?: boolean
   sensorItemName?: string // "온도" or "습도" - render only this item
   testResultKeys?: string[] | null
+  layout?: 'table' | 'editor'
+  allowAdd?: boolean
 }
 
 const SENSOR_TYPES = [
@@ -566,9 +568,12 @@ export function SystemMetricsConfig({
   disabled = false,
   sensorItemName,
   testResultKeys,
+  layout = 'table',
+  allowAdd = true,
 }: SystemMetricsConfigProps) {
   const isSensor = systemType === "sensor"
   const [expandedAudioRow, setExpandedAudioRow] = React.useState<number | null>(null)
+  const [expandedItem, setExpandedItem] = React.useState<number | null>(null)
 
   const addItem = () => {
     const nextIndex = config.displayItems.length
@@ -758,6 +763,138 @@ export function SystemMetricsConfig({
     // Render only specific sensor item if specified
     const shouldRenderTemp = !sensorItemName || sensorItemName === "온도"
     const shouldRenderHumid = !sensorItemName || sensorItemName === "습도"
+
+    if (layout === 'editor') {
+      return (
+        <div>
+          {[temperatureItem, humidityItem]
+            .filter((item): item is DisplayItem => !!item)
+            .map((item) => {
+              const index = config.displayItems.indexOf(item)
+              const temperature = item.name === '온도'
+              const lowKey = temperature ? 'coldCritical' : 'dryCritical'
+              const highKey = temperature ? 'critical' : 'humidCritical'
+              return (
+                <section className="device-sensor" key={item.name}>
+                  <h3>
+                    {item.name}{' '}
+                    <span className="text-muted-foreground">{item.unit}</span>
+                  </h3>
+                  <div className="device-fields">
+                    {(
+                      [
+                        [
+                          lowKey,
+                          temperature ? '저온 경고 · 하한' : '건조 경고 · 하한',
+                        ],
+                        [
+                          highKey,
+                          temperature ? '고온 경고 · 상한' : '다습 경고 · 상한',
+                        ],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label className="device-field" key={key}>
+                        <span>
+                          {label} ({item.unit})
+                        </span>
+                        <Input
+                          type="number"
+                          step="any"
+                          value={getSingleConditionValue(item, key) ?? ''}
+                          placeholder="미설정"
+                          disabled={disabled}
+                          onChange={(event) => {
+                            const raw = event.target.value
+                            if (raw === '' || Number.isFinite(Number(raw)))
+                              updateSingleCondition(
+                                index,
+                                key,
+                                raw === '' ? null : Number(raw)
+                              )
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <p className="device-help">
+                    하한 이하 또는 상한 이상이면 해당 알람이 발생합니다.
+                  </p>
+                  <details className="device-advanced">
+                    <summary>표준값 · 수신 데이터 · 음성 설정</summary>
+                    <div>
+                      <div className="device-fields">
+                        <label className="device-field">
+                          <span>표준값 ({item.unit})</span>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={
+                              getSingleConditionValue(item, 'normal') ?? ''
+                            }
+                            disabled={disabled}
+                            placeholder="미설정"
+                            onChange={(event) =>
+                              updateSingleCondition(
+                                index,
+                                'normal',
+                                event.target.value === ''
+                                  ? null
+                                  : Number(event.target.value)
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="device-field">
+                          <span>수신 값 인덱스 (0부터)</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.index}
+                            disabled={disabled}
+                            onChange={(event) =>
+                              updateItem(index, {
+                                index: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="device-field">
+                          <span>구분자</span>
+                          <Input
+                            value={config.delimiter}
+                            disabled={disabled}
+                            onChange={(event) =>
+                              onChange({
+                                ...config,
+                                delimiter: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <SensorItemDataMatch
+                        conditions={item.dataMatchConditions || []}
+                        onUpdate={(conditions) =>
+                          updateItem(index, { dataMatchConditions: conditions })
+                        }
+                        disabled={disabled}
+                      />
+                      <SensorItemAudio
+                        audioConfig={item.audioConfig || { type: 'none' }}
+                        onUpdate={(audioConfig) =>
+                          updateItem(index, { audioConfig })
+                        }
+                        itemIndex={index}
+                        disabled={disabled}
+                      />
+                    </div>
+                  </details>
+                </section>
+              )
+            })}
+        </div>
+      )
+    }
 
     return (
       <div className="space-y-1">
@@ -1052,6 +1189,159 @@ export function SystemMetricsConfig({
 
   // Default UPS/other mode (dense table UI)
   const hasCustomCode = !!config.customCode?.trim()
+
+  if (layout === 'editor') {
+    const selected =
+      expandedItem === null ? undefined : config.displayItems[expandedItem]
+    return (
+      <div>
+        {config.displayItems.length ? (
+          <table
+            className="device-metric-table"
+            aria-label="UPS 감시 항목과 알람 기준"
+          >
+            <thead>
+              <tr>
+                <th>감시 항목</th>
+                <th>하한 이하</th>
+                <th>상한 이상</th>
+                <th>단위</th>
+              </tr>
+            </thead>
+            <tbody>
+              {config.displayItems.map((item, index) => {
+                const preset = getTypePreset(resolveItemType(item))
+                const simple = preset && preset.conditionPattern !== 'status'
+                return (
+                  <tr key={index}>
+                    <td>
+                      <button
+                        type="button"
+                        className="device-metric-name"
+                        aria-expanded={expandedItem === index}
+                        onClick={() =>
+                          setExpandedItem(expandedItem === index ? null : index)
+                        }
+                      >
+                        {item.name || '새 항목'}
+                      </button>
+                    </td>
+                    {simple ? (
+                      (['lower', 'upper'] as const).map((side) => {
+                        const applicable =
+                          preset.conditionPattern === 'both' ||
+                          preset.conditionPattern === side
+                        const value =
+                          side === 'lower'
+                            ? getLowerThreshold(item)
+                            : getUpperThreshold(item)
+                        return (
+                          <td key={side}>
+                            {applicable ? (
+                              <Input
+                                type="number"
+                                step="any"
+                                aria-label={`${item.name || '새 항목'} ${side === 'lower' ? '하한' : '상한'}`}
+                                value={value ?? ''}
+                                placeholder="미설정"
+                                disabled={disabled}
+                                onChange={(event) => {
+                                  const next =
+                                    event.target.value === ''
+                                      ? null
+                                      : Number(event.target.value)
+                                  if (next !== null && !Number.isFinite(next))
+                                    return
+                                  updateItem(index, {
+                                    warning: null,
+                                    critical: null,
+                                    conditions: buildConditionsFromThresholds(
+                                      side === 'lower'
+                                        ? next
+                                        : getLowerThreshold(item),
+                                      side === 'upper'
+                                        ? next
+                                        : getUpperThreshold(item)
+                                    ),
+                                  })
+                                }}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        )
+                      })
+                    ) : (
+                      <td colSpan={2}>{formatConditionsReadonly(item)}</td>
+                    )}
+                    <td>{item.unit}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p className="device-empty">
+            감시할 항목을 추가하거나 왼쪽에서 UPS PC를 자동 탐지하세요.
+          </p>
+        )}
+        <div className="device-metric-actions">
+          <p>항목 이름을 누르면 이름·타입·차트·음성을 설정합니다.</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => {
+              setExpandedItem(config.displayItems.length)
+              addItem()
+            }}
+          >
+            <Plus />
+            항목 추가
+          </Button>
+        </div>
+        {selected && expandedItem !== null && (
+          <div
+            className="device-metric-options"
+            role="region"
+            aria-label={`${selected.name || '새 항목'} 세부 설정`}
+          >
+            <SystemMetricsConfig
+              config={{ ...config, displayItems: [selected] }}
+              onChange={(next) =>
+                onChange({
+                  ...next,
+                  displayItems: [
+                    ...config.displayItems.slice(0, expandedItem),
+                    ...next.displayItems,
+                    ...config.displayItems.slice(expandedItem + 1),
+                  ],
+                })
+              }
+              typeLabel={typeLabel}
+              systemType={systemType}
+              disabled={disabled}
+              testResultKeys={testResultKeys}
+              allowAdd={false}
+            />
+            {!hasCustomCode && (
+              <label className="device-field">
+                <span>데이터 구분자</span>
+                <Input
+                  value={config.delimiter}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onChange({ ...config, delimiter: event.target.value })
+                  }
+                />
+              </label>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
 
   return (
@@ -1419,7 +1709,7 @@ export function SystemMetricsConfig({
         </div>
       )}
 
-      <Button
+      {allowAdd && <Button
         type="button"
         variant="outline"
         size="sm"
@@ -1429,7 +1719,7 @@ export function SystemMetricsConfig({
       >
         <Plus className="mr-1 h-3 w-3" />
         항목 추가
-      </Button>
+      </Button>}
     </div>
   )
 }

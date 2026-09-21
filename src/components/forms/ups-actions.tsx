@@ -1,13 +1,13 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRouter } from "next/navigation"
-import { useWindowHref } from "@/hooks/use-window-href"
-import Link from "next/link"
-import { Pencil, Trash2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { PrismaSystem } from "@/types"
+import * as React from 'react'
+import { useRouter } from 'next/navigation'
+import { useWindowHref } from '@/hooks/use-window-href'
+import Link from 'next/link'
+import { Pencil, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { PrismaSystem } from '@/types'
 
 interface UpsActionsProps {
   system: PrismaSystem
@@ -15,7 +15,11 @@ interface UpsActionsProps {
   onEditClick?: () => void
 }
 
-export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsProps) {
+export function UpsActions({
+  system,
+  onEnabledChange,
+  onEditClick,
+}: UpsActionsProps) {
   const router = useRouter()
   const windowHref = useWindowHref()
   const [isEnabled, setIsEnabled] = React.useState(system.isEnabled !== false)
@@ -26,8 +30,8 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
     setToggling(true)
     try {
       const response = await fetch(`/api/systems/${system.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isEnabled: checked }),
       })
       if (response.ok) {
@@ -43,17 +47,21 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
   }
 
   const handleDelete = async () => {
-    if (!confirm(`${system.name}을(를) 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+    if (
+      !confirm(
+        `${system.name}을(를) 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`
+      )
+    ) {
       return
     }
 
     setDeleting(true)
     try {
       const response = await fetch(`/api/systems/${system.id}`, {
-        method: "DELETE",
+        method: 'DELETE',
       })
       if (response.ok) {
-        router.push(windowHref("/ups"))
+        router.push(windowHref('/ups'))
       }
     } finally {
       setDeleting(false)
@@ -64,6 +72,7 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
     <div className="flex items-center gap-3">
       <Switch
         id="enabled-toggle"
+        aria-label="장비 감시 사용"
         checked={isEnabled}
         onCheckedChange={handleToggleEnabled}
         disabled={toggling}
@@ -71,27 +80,30 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
       {onEditClick ? (
         <Button
           variant="outline"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
+
           onClick={onEditClick}
         >
           <Pencil className="h-4 w-4" />
+          수정
         </Button>
       ) : (
         <Link href={windowHref(`/ups/${system.id}`)}>
-          <Button variant="outline" size="icon" className="h-8 w-8">
+          <Button variant="outline" size="sm">
             <Pencil className="h-4 w-4" />
+            수정
           </Button>
         </Link>
       )}
       <Button
         variant="outline"
-        size="icon"
+        size="sm"
         onClick={handleDelete}
         disabled={deleting}
-        className="h-8 w-8 text-red-500 hover:bg-red-500/10 hover:text-red-500"
+        className="text-red-500 hover:bg-red-500/10 hover:text-red-500"
       >
         <Trash2 className="h-4 w-4" />
+        삭제
       </Button>
     </div>
   )

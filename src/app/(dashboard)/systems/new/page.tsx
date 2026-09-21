@@ -1,42 +1,39 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRawPreview } from "@/hooks/use-raw-preview"
-import { Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useWindowHref } from "@/hooks/use-window-href"
-
-import { Loader2, Activity, Thermometer, ArrowLeft, Check, X } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { SystemDataPreview } from "@/components/forms/system-data-preview"
-import { SystemEquipmentConfig } from "@/components/forms/system-equipment-config"
-import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
-import { SystemAudioConfig } from "@/components/forms/system-audio-config"
-import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
+  DeviceAdvanced,
+  DeviceConnectionFields,
+  DeviceDataPreview,
+  DeviceEditor,
+  DeviceNewHeader,
+  DeviceSection,
+} from '@/components/forms/device-editor'
+import * as React from 'react'
+
+import { useRawPreview } from '@/hooks/use-raw-preview'
+import { useWindowHref } from '@/hooks/use-window-href'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
+
+import { buildIngestPayloadFields } from '@/components/forms/ingest-options-inline'
 import {
   SoundClientSection,
   buildClientSelection,
   provisionSoundClient,
   type RegistrationMode,
-} from "@/components/forms/sound-client-section"
+} from '@/components/forms/sound-client-section'
+import { SystemAudioConfig } from '@/components/forms/system-audio-config'
+import { SystemEquipmentConfig } from '@/components/forms/system-equipment-config'
+import { SystemMetricsConfig } from '@/components/forms/system-metrics-config'
 import type {
-  SystemType,
-  EquipmentConfig,
-  MetricsConfig,
   AudioConfig,
   DataMatchCondition,
   DiscoveredClient,
-} from "@/types"
+  EquipmentConfig,
+  MetricsConfig,
+  SystemType,
+} from '@/types'
+import { Activity, Loader2, Thermometer } from 'lucide-react'
 
 const TYPE_LABELS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
   equipment: { label: "장비상태", icon: Activity },
@@ -215,319 +212,109 @@ function SystemNewForm() {
     metricsConfig.displayItems.find((i) => i.name === itemName)?.dataMatchConditions
 
   return (
-    <div className="flex flex-col h-full">
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0">
-        {/* Header */}
-        <div className="flex items-center justify-between shrink-0 pb-1.5">
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => router.back()}>
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </Button>
-            <h1 className="text-lg font-bold">{name.trim() || "새 시설"}</h1>
-            <span className="text-xs text-muted-foreground">
-              {typeInfo.label}
-              {port && <> | 포트:{port} ({protocol.toUpperCase()})</>}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => router.back()}
-              disabled={saving}
-              className="h-8 w-8"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            <Button
-              type="submit"
-              size="icon"
-              disabled={saving}
-              className="h-8 w-8"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {isSensor ? (
-          <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
-            {/* Band 1: 기본정보 */}
-            <div className="flex flex-wrap items-center gap-6 rounded-lg border bg-card p-4 shrink-0">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="name" className="whitespace-nowrap">시설명</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="예: 온습도 센서"
-                  className="w-64"
-                  required
-                />
-              </div>
-              <Select
-                value={systemType}
-                onValueChange={(value) => setSystemType(value as SystemType)}
-              >
-                <SelectTrigger className="w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(TYPE_LABELS) as SystemType[]).map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {TYPE_LABELS[type].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {protocol !== "mqtt" && (
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="port" className="whitespace-nowrap">포트</Label>
-                  <Input
-                    id="port"
-                    type="number"
-                    value={port}
-                    onChange={(e) => setPort(e.target.value)}
-                    placeholder="1892"
-                    className="w-24"
-                    min={1}
-                    max={65535}
-                  />
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Label className="whitespace-nowrap">프로토콜</Label>
-                <Select
-                  value={protocol}
-                  onValueChange={(value) => setProtocol(value as "udp" | "tcp" | "mqtt")}
-                >
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="udp">UDP</SelectItem>
-                    <SelectItem value="tcp">TCP</SelectItem>
-                    <SelectItem value="mqtt">MQTT</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <IngestOptionsInline
-                encoding={encoding}
-                offlineThresholdMin={offlineThresholdMin}
-                onEncodingChange={setEncoding}
-                onOfflineThresholdChange={setOfflineThresholdMin}
-                protocol={protocol}
-                topic={topic}
-                onTopicChange={setTopic}
-              />
-            </div>
-
-            {error && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive shrink-0">
-                {error}
-              </div>
-            )}
-
-            {/* Band 2: 2열 레이아웃 (온습도 설정 | 데이터 미리보기) */}
-            <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-              {/* 왼쪽 컬럼: 온습도 설정 */}
-              <Card className="flex-1 flex flex-col overflow-hidden p-0">
-                <CardHeader className="shrink-0 py-2">
-                  <CardTitle className="text-sm">온습도 설정</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-3 overflow-y-auto px-3 pb-3">
-                  <div className="flex-1 min-h-0 border rounded-lg p-3">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">온도</div>
-                    <SystemMetricsConfig
-                      config={metricsConfig}
-                      onChange={setMetricsConfig}
-                      typeLabel="온도"
-                      systemType="sensor"
-                      fixedSensorMode={true}
-                      sensorItemName="온도"
-                    />
-                  </div>
-                  <div className="flex-1 min-h-0 border rounded-lg p-3">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">습도</div>
-                    <SystemMetricsConfig
-                      config={metricsConfig}
-                      onChange={setMetricsConfig}
-                      typeLabel="습도"
-                      systemType="sensor"
-                      fixedSensorMode={true}
-                      sensorItemName="습도"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 중앙 컬럼: 데이터 미리보기 */}
-              <Card className="flex-1 flex flex-col overflow-hidden p-0">
-                <CardHeader className="shrink-0 py-2">
-                  <CardTitle className="text-sm">데이터 미리보기</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-3 overflow-hidden px-3 pb-3">
-                  <div className="flex-1 min-h-0 border rounded-lg p-3">
-                    <SystemDataPreview
-                      port={port}
-                      connected={wsConnected}
-                      messages={previewMessages}
-                      className="h-[calc(100%-1.5rem)]"
-                      label="온도"
-                      dataMatchConditions={getConditionsForItem("온도")}
-                    />
-                  </div>
-                  <div className="flex-1 min-h-0 border rounded-lg p-3">
-                    <SystemDataPreview
-                      port={port}
-                      connected={wsConnected}
-                      messages={previewMessages}
-                      className="h-[calc(100%-1.5rem)]"
-                      label="습도"
-                      dataMatchConditions={getConditionsForItem("습도")}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-            </div>
-          </div>
-        ) : (
-          /* equipment 레이아웃 */
-          <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-hidden">
-            {/* Band 1: 기본정보 */}
-            <div className="flex flex-wrap items-center gap-3 rounded border bg-card px-2 py-1.5 shrink-0">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="name" className="whitespace-nowrap text-xs text-muted-foreground">시설명</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="예: 장비명"
-                  className="w-48 h-7 text-xs"
-                  required
-                />
-              </div>
-              <Select
-                value={systemType}
-                onValueChange={(value) => setSystemType(value as SystemType)}
-              >
-                <SelectTrigger className="w-24 h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(TYPE_LABELS) as SystemType[]).map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {TYPE_LABELS[type].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {protocol !== "mqtt" && (
-                <div className="flex items-center gap-1.5">
-                  <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
-                  <Input
-                    id="port"
-                    type="number"
-                    value={port}
-                    onChange={(e) => setPort(e.target.value)}
-                    placeholder="1892"
-                    className="w-20 h-7 text-xs"
-                    min={1}
-                    max={65535}
-                  />
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <Label className="whitespace-nowrap text-xs text-muted-foreground">프로토콜</Label>
-                <Select
-                  value={protocol}
-                  onValueChange={(value) => setProtocol(value as "udp" | "tcp" | "mqtt")}
-                >
-                  <SelectTrigger className="w-20 h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="udp">UDP</SelectItem>
-                    <SelectItem value="tcp">TCP</SelectItem>
-                    <SelectItem value="mqtt">MQTT</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <IngestOptionsInline
-                compact
-                encoding={encoding}
-                offlineThresholdMin={offlineThresholdMin}
-                onEncodingChange={setEncoding}
-                onOfflineThresholdChange={setOfflineThresholdMin}
-                protocol={protocol}
-                topic={topic}
-                onTopicChange={setTopic}
-              />
-            </div>
-
-            {/* 등록 방식 + 자동 탐지 (PC 클라이언트) */}
-            <SoundClientSection
-              mode={registrationMode}
-              onModeChange={setRegistrationMode}
-              client={equipmentConfig.client}
-              isEditMode
-              onSelect={handleClientSelect}
-            allowedKinds={['sound', 'ping']}
-              onUnlink={handleClientUnlink}
+    <form onSubmit={handleSubmit} className="device-editor-form">
+      <DeviceEditor
+        creating
+        error={error}
+        header={
+          <DeviceNewHeader
+            typeName={typeInfo.label}
+            saving={saving}
+            onBack={() => router.back()}
+          />
+        }
+        connection={
+          <>
+            <DeviceConnectionFields
+              name={name}
+              port={port}
+              protocol={protocol}
+              topic={topic}
+              encoding={encoding}
+              offlineThresholdMin={offlineThresholdMin}
+              onNameChange={setName}
+              onPortChange={setPort}
+              onProtocolChange={setProtocol}
+              onTopicChange={setTopic}
+              onEncodingChange={setEncoding}
+              onOfflineThresholdChange={setOfflineThresholdMin}
+              systemType={systemType as 'equipment' | 'sensor'}
+              onSystemTypeChange={setSystemType}
             />
-
-            {error && (
-              <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">
-                {error}
-              </div>
+            {!isSensor && (
+              <DeviceSection
+                title="클라이언트 연결"
+                description="자동 탐지하거나 통신 정보를 직접 입력합니다."
+              >
+                <div className="device-linked-client">
+                  <SoundClientSection
+                    mode={registrationMode}
+                    onModeChange={setRegistrationMode}
+                    client={equipmentConfig.client}
+                    isEditMode
+                    onSelect={handleClientSelect}
+                    onUnlink={handleClientUnlink}
+                    allowedKinds={['sound', 'ping']}
+                  />
+                </div>
+              </DeviceSection>
             )}
-
-            {/* Band 2: 2열 레이아웃 (설정 | 데이터 미리보기) */}
-            <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
-              {/* 왼쪽: 타입별 설정 */}
-              <div className="flex-[2] flex flex-col overflow-hidden border rounded p-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-                  상태 판단 패턴
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  <SystemEquipmentConfig
-                    config={equipmentConfig}
-                    onChange={setEquipmentConfig}
-                    layout="horizontal"
-                  />
-                </div>
-              </div>
-
-              {/* 중앙: 데이터 미리보기 */}
-              <div className="flex-1 flex flex-col overflow-hidden border rounded p-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-                  데이터 미리보기
-                </div>
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <SystemDataPreview
-                    port={port}
-                    connected={wsConnected}
-                    messages={previewMessages}
-                    className="flex-1 min-h-0"
-                  />
-                </div>
-              </div>
-
-            </div>
-
-            {/* Band 3: 음성 알림 설정 (equipment만) - 인라인 */}
-            <div className="shrink-0">
-              <SystemAudioConfig config={audioConfig} onChange={setAudioConfig} compact />
-            </div>
-          </div>
-        )}
-      </form>
-    </div>
+          </>
+        }
+        settings={
+          <>
+            {isSensor ? (
+              <DeviceSection
+                title="온도 · 습도 알람 기준"
+                description="정상 범위를 벗어나는 조건을 각각 설정합니다."
+              >
+                <SystemMetricsConfig
+                  config={metricsConfig}
+                  onChange={setMetricsConfig}
+                  typeLabel="온습도"
+                  systemType="sensor"
+                  layout="editor"
+                  fixedSensorMode
+                />
+              </DeviceSection>
+            ) : (
+              <>
+                <DeviceSection
+                  title="상태 판단 · 알람 기준"
+                  description="수신 메시지를 비교할 정상·심각 패턴을 지정합니다."
+                >
+                  <div className="device-equipment">
+                    <SystemEquipmentConfig
+                      config={equipmentConfig}
+                      onChange={setEquipmentConfig}
+                      layout="horizontal"
+                    />
+                  </div>
+                </DeviceSection>
+                <DeviceAdvanced title="음성 알림 설정">
+                  <div className="device-audio">
+                    <SystemAudioConfig
+                      config={audioConfig}
+                      onChange={setAudioConfig}
+                    />
+                  </div>
+                </DeviceAdvanced>
+              </>
+            )}
+          </>
+        }
+        preview={
+          <>
+            <DeviceDataPreview
+              kind={isSensor ? 'sensor' : 'equipment'}
+              port={port}
+              connected={wsConnected}
+              messages={previewMessages}
+              getConditionsForItem={getConditionsForItem}
+            />
+          </>
+        }
+      />
+    </form>
   )
 }

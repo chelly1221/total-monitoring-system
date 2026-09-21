@@ -1,33 +1,43 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRawPreview } from "@/hooks/use-raw-preview"
-import { useParams, useRouter } from "next/navigation"
-import { useWindowHref } from "@/hooks/use-window-href"
-import { ArrowLeft, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
-import { UpsAudioConfig } from "@/components/forms/ups-audio-config"
-import { SystemCustomCode } from "@/components/forms/system-custom-code"
-import { UpsDetailHeader } from "@/components/forms/ups-detail-header"
-import { UpsBasicInfoBar } from "@/components/forms/ups-basic-info-bar"
-import { UpsPreviewAlarmSidebar } from "@/components/forms/ups-preview-alarm-sidebar"
-import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
+import {
+  DeviceAdvanced,
+  DeviceAlarmLog,
+  DeviceConnectionFields,
+  DeviceDataPreview,
+  DeviceEditor,
+  DeviceSection,
+} from '@/components/forms/device-editor'
+import * as React from 'react'
+
+import {
+  buildIngestPayloadFields,
+  offlineThresholdToMinutes,
+} from '@/components/forms/ingest-options-inline'
 import {
   SoundClientSection,
   buildUpsClientSelection,
   provisionUpsClient,
   type RegistrationMode,
-} from "@/components/forms/sound-client-section"
-import { upsClientUnit } from "@/lib/ups-client-preset"
-import { useWebSocket } from "@/hooks/useWebSocket"
+} from '@/components/forms/sound-client-section'
+import { SystemCustomCode } from '@/components/forms/system-custom-code'
+import { SystemMetricsConfig } from '@/components/forms/system-metrics-config'
+import { UpsAudioConfig } from '@/components/forms/ups-audio-config'
+import { UpsDetailHeader } from '@/components/forms/ups-detail-header'
+import { Button } from '@/components/ui/button'
+import { useRawPreview } from '@/hooks/use-raw-preview'
+import { useWindowHref } from '@/hooks/use-window-href'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { upsClientUnit } from '@/lib/ups-client-preset'
 import type {
-  SystemStatus,
-  WebSocketMessage,
-  MetricsConfig,
   AudioConfig,
   DiscoveredClient,
-} from "@/types"
+  MetricsConfig,
+  SystemStatus,
+  WebSocketMessage,
+} from '@/types'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
   delimiter: ",",
@@ -363,6 +373,8 @@ export default function UpsDetailPage() {
       setPort(system.port?.toString() || "")
       setProtocol((system.protocol as "udp" | "tcp" | "mqtt") || "udp")
       setTopic(system.topic ?? "")
+      setEncoding(system.encoding === "utf8" ? "utf8" : "buffer")
+      setOfflineThresholdMin(offlineThresholdToMinutes(system.offlineThreshold))
       if (system.config) {
         try {
           const parsed = JSON.parse(system.config)
@@ -431,116 +443,149 @@ export default function UpsDetailPage() {
   const isEnabled = system.isEnabled !== false
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <UpsDetailHeader
-        system={system}
-        displayName={isEditMode ? name : system.name}
-        displayPort={String(isEditMode ? port : system.port ?? "")}
-        displayProtocol={(isEditMode ? protocol : system.protocol) ?? "udp"}
-        displayTopic={isEditMode ? topic : system.topic ?? ""}
-        status={status}
-        isEnabled={isEnabled}
-        isEditMode={isEditMode}
-        saving={saving}
-        onBack={() => router.back()}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        onEditClick={() => setIsEditMode(true)}
-        onEnabledChange={(enabled) =>
-          setSystem((prev) => (prev ? { ...prev, isEnabled: enabled } : prev))
-        }
-      />
-
-      {/* UPS: 인라인 편집 레이아웃 */}
-      <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-hidden">
-        {/* Band 1: 기본정보 */}
-        <UpsBasicInfoBar
-          name={name}
-          port={port}
-          protocol={protocol}
-          topic={topic}
+    <DeviceEditor
+      error={error}
+      header={
+        <UpsDetailHeader
+          system={system}
+          displayName={isEditMode ? name : system.name}
+          displayPort={String(isEditMode ? port : (system.port ?? ''))}
+          displayProtocol={(isEditMode ? protocol : system.protocol) ?? 'udp'}
+          displayTopic={isEditMode ? topic : (system.topic ?? '')}
+          status={status}
+          isEnabled={isEnabled}
           isEditMode={isEditMode}
-          onNameChange={setName}
-          onPortChange={setPort}
-          onProtocolChange={(v) => setProtocol(v)}
-          onTopicChange={setTopic}
-          encoding={encoding}
-          offlineThresholdMin={offlineThresholdMin}
-          onEncodingChange={setEncoding}
-          onOfflineThresholdChange={setOfflineThresholdMin}
+          saving={saving}
+          onBack={() => router.back()}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          onEditClick={() => setIsEditMode(true)}
+          onEnabledChange={(enabled) =>
+            setSystem((prev) => (prev ? { ...prev, isEnabled: enabled } : prev))
+          }
         />
-
-        {/* 등록 방식 + 자동 탐지 (UPS 클라이언트 PC) */}
-        <SoundClientSection
-          mode={registrationMode}
-          onModeChange={setRegistrationMode}
-          client={metricsConfig.client}
-          currentSystemId={systemId}
-          isEditMode={isEditMode}
-          onSelect={handleClientSelect}
-          onUnlink={handleClientUnlink}
-          allowedKinds={['ups']}
-          upsUnit={upsClientUnit(metricsConfig.client?.unit)}
-          onUpsUnitChange={(unit) => {
-            const client = metricsConfig.client
-            if (!client) return
-            const discovered: DiscoveredClient = { ...client, kind: 'ups', serverIp: client.serverIp ?? '', mac: client.mac ?? '', ver: client.ver ?? '', target: null, muted: false, sound: false, uptimeSec: 0, registered: null }
-            handleClientSelect(discovered, port ? Number(port) : null, unit)
-          }}
-        />
-
-        {error && (
-          <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">
-            {error}
-          </div>
-        )}
-
-        {/* Band 2: 2열 레이아웃 (설정 | 미리보기+알람) */}
-        <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
-          {/* 왼쪽: 메트릭 설정 */}
-          <div className="flex-[3] flex flex-col overflow-hidden border rounded p-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-              메트릭 설정
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <SystemMetricsConfig
-                config={metricsConfig}
-                onChange={setMetricsConfig}
-                typeLabel="UPS"
-                systemType="ups"
-                disabled={!isEditMode}
-                testResultKeys={customCodeTestResult ? Object.keys(customCodeTestResult) : null}
-              />
-              <SystemCustomCode
-                code={metricsConfig.customCode}
-                onChange={(code) => setMetricsConfig(prev => ({ ...prev, customCode: code || undefined }))}
-                latestRawData={previewMessages[previewMessages.length - 1]}
-                disabled={!isEditMode}
-                onTestResult={setCustomCodeTestResult}
-                displayItems={metricsConfig.displayItems}
-                onAutoPopulate={(items) => setMetricsConfig(prev => ({ ...prev, displayItems: items }))}
-              />
-            </div>
-          </div>
-
-          {/* 오른쪽: 데이터 미리보기 + 알람 로그 */}
-          <UpsPreviewAlarmSidebar
+      }
+      connection={
+        <>
+          <DeviceConnectionFields
+            name={name}
             port={port}
-            wsConnected={wsConnected}
-            previewMessages={previewMessages}
+            protocol={protocol}
+            topic={topic}
+            encoding={encoding}
+            offlineThresholdMin={offlineThresholdMin}
+            disabled={!isEditMode}
+            onNameChange={setName}
+            onPortChange={setPort}
+            onProtocolChange={setProtocol}
+            onTopicChange={setTopic}
+            onEncodingChange={setEncoding}
+            onOfflineThresholdChange={setOfflineThresholdMin}
+          />
+          <DeviceSection
+            title="UPS 클라이언트 연결"
+            description="자동 탐지하거나 통신 정보를 직접 입력합니다."
+          >
+            <div className="device-linked-client">
+              <SoundClientSection
+                mode={registrationMode}
+                onModeChange={setRegistrationMode}
+                client={metricsConfig.client}
+                currentSystemId={systemId}
+                isEditMode={isEditMode}
+                onSelect={handleClientSelect}
+                onUnlink={handleClientUnlink}
+                allowedKinds={['ups']}
+                upsUnit={upsClientUnit(metricsConfig.client?.unit)}
+                onUpsUnitChange={(unit) => {
+                  const client = metricsConfig.client
+                  if (!client) return
+                  const discovered: DiscoveredClient = {
+                    ...client,
+                    kind: 'ups',
+                    serverIp: client.serverIp ?? '',
+                    mac: client.mac ?? '',
+                    ver: client.ver ?? '',
+                    target: null,
+                    muted: false,
+                    sound: false,
+                    uptimeSec: 0,
+                    registered: null,
+                  }
+                  handleClientSelect(
+                    discovered,
+                    port ? Number(port) : null,
+                    unit
+                  )
+                }}
+              />
+            </div>
+          </DeviceSection>
+        </>
+      }
+      settings={
+        <>
+          <DeviceSection
+            title="감시 항목 · 알람 기준"
+            description="표시할 항목과 알람 조건을 관리합니다. 항목 이름을 누르면 세부 설정을 열 수 있습니다."
+          >
+            <SystemMetricsConfig
+              config={metricsConfig}
+              onChange={setMetricsConfig}
+              typeLabel="UPS"
+              systemType="ups"
+              layout="editor"
+              testResultKeys={
+                customCodeTestResult ? Object.keys(customCodeTestResult) : null
+              }
+              disabled={!isEditMode}
+            />
+          </DeviceSection>
+          <DeviceAdvanced title="고급 설정 · 사용자 정의 파서">
+            <SystemCustomCode
+              code={metricsConfig.customCode}
+              onChange={(code) =>
+                setMetricsConfig((prev) => ({
+                  ...prev,
+                  customCode: code || undefined,
+                }))
+              }
+              latestRawData={previewMessages[previewMessages.length - 1]}
+              disabled={!isEditMode}
+              onTestResult={setCustomCodeTestResult}
+              displayItems={metricsConfig.displayItems}
+              onAutoPopulate={(items) =>
+                setMetricsConfig((prev) => ({ ...prev, displayItems: items }))
+              }
+            />
+          </DeviceAdvanced>
+          {isEditMode && (
+            <DeviceAdvanced title="음성 알림 설정">
+              <div className="device-audio">
+                <UpsAudioConfig
+                  config={audioConfig}
+                  onChange={setAudioConfig}
+                />
+              </div>
+            </DeviceAdvanced>
+          )}
+        </>
+      }
+      preview={
+        <>
+          <DeviceDataPreview
+            kind={'ups'}
+            port={port}
+            connected={wsConnected}
+            messages={previewMessages}
+            metrics={system.metrics}
+          />
+          <DeviceAlarmLog
             alarms={system.alarms}
             onAcknowledge={handleAcknowledge}
           />
-        </div>
-
-        {/* Band 3: 음성 알림 설정 (편집 모드에서만) - 인라인 */}
-        {isEditMode && (
-          <div className="shrink-0">
-            <UpsAudioConfig config={audioConfig} onChange={setAudioConfig} compact />
-          </div>
-        )}
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }

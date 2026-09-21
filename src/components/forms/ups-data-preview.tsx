@@ -60,6 +60,7 @@ export function UpsDataPreview({
             {label && <div className="font-medium text-muted-foreground">{label}</div>}
             {validPort && messages.length > 0 && (
               <button
+                type="button"
                 onClick={handleTogglePause}
                 className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 title={paused ? "재개" : "일시정지"}

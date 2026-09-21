@@ -1,38 +1,31 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRawPreview } from "@/hooks/use-raw-preview"
-import { useRouter } from "next/navigation"
-import { useWindowHref } from "@/hooks/use-window-href"
-
-import { Loader2, ArrowLeft, Check, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { UpsDataPreview } from "@/components/forms/ups-data-preview"
-import { SystemMetricsConfig } from "@/components/forms/system-metrics-config"
-import { UpsAudioConfig } from "@/components/forms/ups-audio-config"
-import { SystemCustomCode } from "@/components/forms/system-custom-code"
-import { IngestOptionsInline, buildIngestPayloadFields } from "@/components/forms/ingest-options-inline"
+  DeviceAdvanced,
+  DeviceConnectionFields,
+  DeviceDataPreview,
+  DeviceEditor,
+  DeviceNewHeader,
+  DeviceSection,
+} from '@/components/forms/device-editor'
+import * as React from 'react'
+
+import { useRawPreview } from '@/hooks/use-raw-preview'
+import { useWindowHref } from '@/hooks/use-window-href'
+import { useRouter } from 'next/navigation'
+
+import { buildIngestPayloadFields } from '@/components/forms/ingest-options-inline'
 import {
   SoundClientSection,
   buildUpsClientSelection,
   provisionUpsClient,
   type RegistrationMode,
-} from "@/components/forms/sound-client-section"
-import { upsClientUnit } from "@/lib/ups-client-preset"
-import type {
-  MetricsConfig,
-  AudioConfig,
-  DiscoveredClient,
-} from "@/types"
+} from '@/components/forms/sound-client-section'
+import { SystemCustomCode } from '@/components/forms/system-custom-code'
+import { SystemMetricsConfig } from '@/components/forms/system-metrics-config'
+import { UpsAudioConfig } from '@/components/forms/ups-audio-config'
+import { upsClientUnit } from '@/lib/ups-client-preset'
+import type { AudioConfig, DiscoveredClient, MetricsConfig } from '@/types'
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
   delimiter: ",",
@@ -162,177 +155,130 @@ export default function UpsNewPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0">
-        {/* Header */}
-        <div className="flex items-center justify-between shrink-0 pb-1.5">
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => router.back()}>
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </Button>
-            <h1 className="text-lg font-bold">{name.trim() || "새 UPS"}</h1>
-            <span className="text-xs text-muted-foreground">
-              UPS
-              {port && <> | 포트:{port} ({protocol.toUpperCase()})</>}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => router.back()}
-              disabled={saving}
-              className="h-8 w-8"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            <Button
-              type="submit"
-              size="icon"
-              disabled={saving}
-              className="h-8 w-8"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* UPS 레이아웃 */}
-        <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-hidden">
-          {/* Band 1: 기본정보 */}
-          <div className="flex flex-wrap items-center gap-3 rounded border bg-card px-2 py-1.5 shrink-0">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="name" className="whitespace-nowrap text-xs text-muted-foreground">시설명</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="예: 관제송신 UPS"
-                className="w-48 h-7 text-xs"
-                required
-              />
-            </div>
-            {protocol !== "mqtt" && (
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="port" className="whitespace-nowrap text-xs text-muted-foreground">포트</Label>
-                <Input
-                  id="port"
-                  type="number"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  placeholder="1892"
-                  className="w-20 h-7 text-xs"
-                  min={1}
-                  max={65535}
-                />
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Label className="whitespace-nowrap text-xs text-muted-foreground">프로토콜</Label>
-              <Select
-                value={protocol}
-                onValueChange={(value) => setProtocol(value as "udp" | "tcp" | "mqtt")}
-              >
-                <SelectTrigger className="w-20 h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="udp">UDP</SelectItem>
-                  <SelectItem value="tcp">TCP</SelectItem>
-                  <SelectItem value="mqtt">MQTT</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <IngestOptionsInline
-              compact
+    <form onSubmit={handleSubmit} className="device-editor-form">
+      <DeviceEditor
+        creating
+        error={error}
+        header={
+          <DeviceNewHeader
+            typeName={'UPS'}
+            saving={saving}
+            onBack={() => router.back()}
+          />
+        }
+        connection={
+          <>
+            <DeviceConnectionFields
+              name={name}
+              port={port}
               protocol={protocol}
               topic={topic}
-              onTopicChange={setTopic}
               encoding={encoding}
               offlineThresholdMin={offlineThresholdMin}
+              onNameChange={setName}
+              onPortChange={setPort}
+              onProtocolChange={setProtocol}
+              onTopicChange={setTopic}
               onEncodingChange={setEncoding}
               onOfflineThresholdChange={setOfflineThresholdMin}
             />
-          </div>
-
-          {/* 등록 방식 + 자동 탐지 (UPS 클라이언트 PC) */}
-          <SoundClientSection
-            mode={registrationMode}
-            onModeChange={setRegistrationMode}
-            client={metricsConfig.client}
-            isEditMode
-            onSelect={handleClientSelect}
-            onUnlink={handleClientUnlink}
-            allowedKinds={['ups']}
-            upsUnit={upsClientUnit(metricsConfig.client?.unit)}
-            onUpsUnitChange={(unit) => {
-              const client = metricsConfig.client
-              if (!client) return
-              const discovered: DiscoveredClient = { ...client, kind: 'ups', serverIp: client.serverIp ?? '', mac: client.mac ?? '', ver: client.ver ?? '', target: null, muted: false, sound: false, uptimeSec: 0, registered: null }
-              handleClientSelect(discovered, port ? Number(port) : null, unit)
-            }}
-          />
-
-          {error && (
-            <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">
-              {error}
-            </div>
-          )}
-
-          {/* Band 2: 2열 레이아웃 (메트릭 설정 | 데이터 미리보기) */}
-          <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
-            {/* 왼쪽: 메트릭 설정 */}
-            <div className="flex-[2] flex flex-col overflow-hidden border rounded p-1.5">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-                메트릭 설정
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <SystemMetricsConfig
-                  config={metricsConfig}
-                  onChange={setMetricsConfig}
-                  typeLabel="UPS"
-                  systemType="ups"
-                  testResultKeys={customCodeTestResult ? Object.keys(customCodeTestResult) : null}
-                />
-                <SystemCustomCode
-                  code={metricsConfig.customCode}
-                  onChange={(code) => setMetricsConfig(prev => ({ ...prev, customCode: code || undefined }))}
-                  latestRawData={previewMessages[previewMessages.length - 1]}
-                  onTestResult={setCustomCodeTestResult}
-                  displayItems={metricsConfig.displayItems}
-                  onAutoPopulate={(items) => setMetricsConfig(prev => ({ ...prev, displayItems: items }))}
+            <DeviceSection
+              title="UPS 클라이언트 연결"
+              description="자동 탐지하거나 통신 정보를 직접 입력합니다."
+            >
+              <div className="device-linked-client">
+                <SoundClientSection
+                  mode={registrationMode}
+                  onModeChange={setRegistrationMode}
+                  client={metricsConfig.client}
+                  isEditMode
+                  onSelect={handleClientSelect}
+                  onUnlink={handleClientUnlink}
+                  allowedKinds={['ups']}
+                  upsUnit={upsClientUnit(metricsConfig.client?.unit)}
+                  onUpsUnitChange={(unit) => {
+                    const client = metricsConfig.client
+                    if (!client) return
+                    const discovered: DiscoveredClient = {
+                      ...client,
+                      kind: 'ups',
+                      serverIp: client.serverIp ?? '',
+                      mac: client.mac ?? '',
+                      ver: client.ver ?? '',
+                      target: null,
+                      muted: false,
+                      sound: false,
+                      uptimeSec: 0,
+                      registered: null,
+                    }
+                    handleClientSelect(
+                      discovered,
+                      port ? Number(port) : null,
+                      unit
+                    )
+                  }}
                 />
               </div>
-            </div>
-
-            {/* 중앙: 데이터 미리보기 */}
-            <div className="flex-1 flex flex-col overflow-hidden border rounded p-1.5">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-                데이터 미리보기
-              </div>
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <UpsDataPreview
-                  port={port}
-                  connected={wsConnected}
-                  messages={previewMessages}
-                  className="flex-1 min-h-0"
+            </DeviceSection>
+          </>
+        }
+        settings={
+          <>
+            <DeviceSection
+              title="감시 항목 · 알람 기준"
+              description="표시할 항목과 알람 조건을 관리합니다. 항목 이름을 누르면 세부 설정을 열 수 있습니다."
+            >
+              <SystemMetricsConfig
+                config={metricsConfig}
+                onChange={setMetricsConfig}
+                typeLabel="UPS"
+                systemType="ups"
+                layout="editor"
+                testResultKeys={
+                  customCodeTestResult
+                    ? Object.keys(customCodeTestResult)
+                    : null
+                }
+              />
+            </DeviceSection>
+            <DeviceAdvanced title="고급 설정 · 사용자 정의 파서">
+              <SystemCustomCode
+                code={metricsConfig.customCode}
+                onChange={(code) =>
+                  setMetricsConfig((prev) => ({
+                    ...prev,
+                    customCode: code || undefined,
+                  }))
+                }
+                latestRawData={previewMessages[previewMessages.length - 1]}
+                onTestResult={setCustomCodeTestResult}
+                displayItems={metricsConfig.displayItems}
+                onAutoPopulate={(items) =>
+                  setMetricsConfig((prev) => ({ ...prev, displayItems: items }))
+                }
+              />
+            </DeviceAdvanced>
+            <DeviceAdvanced title="음성 알림 설정">
+              <div className="device-audio">
+                <UpsAudioConfig
+                  config={audioConfig}
+                  onChange={setAudioConfig}
                 />
               </div>
-            </div>
-
-          </div>
-
-          {/* Band 3: 음성 알림 설정 - 인라인 */}
-          <div className="shrink-0">
-            <UpsAudioConfig config={audioConfig} onChange={setAudioConfig} compact />
-          </div>
-        </div>
-      </form>
-    </div>
+            </DeviceAdvanced>
+          </>
+        }
+        preview={
+          <>
+            <DeviceDataPreview
+              kind={'ups'}
+              port={port}
+              connected={wsConnected}
+              messages={previewMessages}
+            />
+          </>
+        }
+      />
+    </form>
   )
 }

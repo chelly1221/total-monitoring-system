@@ -1,38 +1,45 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRawPreview } from "@/hooks/use-raw-preview"
-import { useParams, useRouter } from "next/navigation"
-import { useWindowHref } from "@/hooks/use-window-href"
-import { ArrowLeft, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { SystemEquipmentConfig } from "@/components/forms/system-equipment-config"
-import { SystemAudioConfig } from "@/components/forms/system-audio-config"
-import { SystemDetailHeader } from "@/components/forms/system-detail-header"
-import { SystemBasicInfoBar } from "@/components/forms/system-basic-info-bar"
-import { SystemPreviewAlarmSidebar } from "@/components/forms/system-preview-alarm-sidebar"
-import { SensorBasicInfoBar } from "@/components/forms/sensor-basic-info-bar"
-import { SensorAlarmLog } from "@/components/forms/sensor-alarm-log"
-import { SensorSettingsCard } from "@/components/forms/sensor-settings-card"
-import { SensorDataPreviewCard } from "@/components/forms/sensor-data-preview-card"
-import { buildIngestPayloadFields, offlineThresholdToMinutes } from "@/components/forms/ingest-options-inline"
+import {
+  DeviceAdvanced,
+  DeviceAlarmLog,
+  DeviceConnectionFields,
+  DeviceDataPreview,
+  DeviceEditor,
+  DeviceSection,
+} from '@/components/forms/device-editor'
+import { PingEventLog } from '@/components/forms/ping-event-log'
+import { SystemMetricsConfig } from '@/components/forms/system-metrics-config'
+import * as React from 'react'
+
+import {
+  buildIngestPayloadFields,
+  offlineThresholdToMinutes,
+} from '@/components/forms/ingest-options-inline'
 import {
   SoundClientSection,
   buildClientSelection,
   provisionSoundClient,
   type RegistrationMode,
-} from "@/components/forms/sound-client-section"
-import { useWebSocket } from "@/hooks/useWebSocket"
+} from '@/components/forms/sound-client-section'
+import { SystemAudioConfig } from '@/components/forms/system-audio-config'
+import { SystemDetailHeader } from '@/components/forms/system-detail-header'
+import { SystemEquipmentConfig } from '@/components/forms/system-equipment-config'
+import { Button } from '@/components/ui/button'
+import { useRawPreview } from '@/hooks/use-raw-preview'
+import { useWindowHref } from '@/hooks/use-window-href'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import type {
-  SystemStatus,
-  WebSocketMessage,
-  SystemType,
-  MetricsConfig,
-  EquipmentConfig,
   AudioConfig,
   DataMatchCondition,
   DiscoveredClient,
-} from "@/types"
+  EquipmentConfig,
+  MetricsConfig,
+  SystemStatus,
+  WebSocketMessage,
+} from '@/types'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
 
 const DEFAULT_METRICS_CONFIG: MetricsConfig = {
   delimiter: ",",
@@ -49,12 +56,6 @@ const DEFAULT_AUDIO_CONFIG: AudioConfig = {
   type: "none",
 }
 
-function getSystemType(type: string): SystemType {
-  if (["equipment", "sensor"].includes(type)) {
-    return type as SystemType
-  }
-  return "equipment"
-}
 
 interface MetricData {
   id: string
@@ -398,6 +399,8 @@ export default function SystemDetailPage() {
       setPort(system.port?.toString() || "")
       setProtocol((system.protocol as "udp" | "tcp" | "mqtt") || "udp")
       setTopic(system.topic ?? "")
+      setEncoding(system.encoding === "utf8" ? "utf8" : "buffer")
+      setOfflineThresholdMin(offlineThresholdToMinutes(system.offlineThreshold))
       if (system.config) {
         try {
           const parsed = JSON.parse(system.config)
@@ -474,147 +477,133 @@ export default function SystemDetailPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <SystemDetailHeader
-        system={system}
-        displayName={isEditMode ? name : system.name}
-        displayPort={String(isEditMode ? port : system.port ?? "")}
-        displayProtocol={(isEditMode ? protocol : system.protocol) ?? "udp"}
-        displayTopic={isEditMode ? topic : system.topic ?? ""}
-        status={status}
-        isEnabled={isEnabled}
-        isEditMode={isEditMode}
-        saving={saving}
-        onBack={() => router.back()}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        onEditClick={() => setIsEditMode(true)}
-        onEnabledChange={(enabled) =>
-          setSystem((prev) => (prev ? { ...prev, isEnabled: enabled } : prev))
-        }
-      />
-
-      {/* Content - sensor 타입은 3열 레이아웃 */}
-      {isSensor ? (
-        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
-          {/* Band 1: 기본정보 (편집 모드에서만 수정 가능) */}
-          <SensorBasicInfoBar
-            name={name}
-            port={port}
-            protocol={protocol}
-            isEditMode={isEditMode}
-            onNameChange={setName}
-            onPortChange={setPort}
-            onProtocolChange={(v) => setProtocol(v)}
-            encoding={encoding}
-            offlineThresholdMin={offlineThresholdMin}
-            onEncodingChange={setEncoding}
-            onOfflineThresholdChange={setOfflineThresholdMin}
-            topic={topic}
-            onTopicChange={setTopic}
-          />
-
-          {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive shrink-0">
-              {error}
-            </div>
-          )}
-
-          {/* Band 2: 3열 레이아웃 (온습도 설정 | 데이터 미리보기 | 알람) */}
-          <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-            <SensorSettingsCard
-              config={metricsConfig}
-              onChange={setMetricsConfig}
-              systemType={getSystemType(system.type)}
-              disabled={!isEditMode}
-            />
-            <SensorDataPreviewCard
-              port={port}
-              connected={wsConnected}
-              messages={previewMessages}
-              getConditionsForItem={getConditionsForItem}
-            />
-            <SensorAlarmLog
-              alarms={system.alarms}
-              onAcknowledge={handleAcknowledge}
-            />
-          </div>
-        </div>
-      ) : (
-        /* equipment: 인라인 편집 레이아웃 */
-        <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-hidden">
-          {/* Band 1: 기본정보 */}
-          <SystemBasicInfoBar
+    <DeviceEditor
+      error={error}
+      header={
+        <SystemDetailHeader
+          system={system}
+          displayName={isEditMode ? name : system.name}
+          displayPort={String(isEditMode ? port : (system.port ?? ''))}
+          displayProtocol={(isEditMode ? protocol : system.protocol) ?? 'udp'}
+          displayTopic={isEditMode ? topic : (system.topic ?? '')}
+          status={status}
+          isEnabled={isEnabled}
+          isEditMode={isEditMode}
+          saving={saving}
+          onBack={() => router.back()}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          onEditClick={() => setIsEditMode(true)}
+          onEnabledChange={(enabled) =>
+            setSystem((prev) => (prev ? { ...prev, isEnabled: enabled } : prev))
+          }
+        />
+      }
+      connection={
+        <>
+          <DeviceConnectionFields
             name={name}
             port={port}
             protocol={protocol}
             topic={topic}
-            isEditMode={isEditMode}
-            onNameChange={setName}
-            onPortChange={setPort}
-            onProtocolChange={(v) => setProtocol(v)}
-            onTopicChange={setTopic}
             encoding={encoding}
             offlineThresholdMin={offlineThresholdMin}
+            disabled={!isEditMode}
+            onNameChange={setName}
+            onPortChange={setPort}
+            onProtocolChange={setProtocol}
+            onTopicChange={setTopic}
             onEncodingChange={setEncoding}
             onOfflineThresholdChange={setOfflineThresholdMin}
           />
-
-          {/* 등록 방식 + 연결된 PC (자동 탐지) */}
-          <SoundClientSection
-            mode={registrationMode}
-            onModeChange={setRegistrationMode}
-            client={equipmentConfig.client}
-            currentSystemId={systemId}
-            isEditMode={isEditMode}
-            onSelect={handleClientSelect}
-            allowedKinds={['sound', 'ping']}
-            onUnlink={handleClientUnlink}
-          />
-
-          {error && (
-            <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive shrink-0">
-              {error}
-            </div>
-          )}
-
-          {/* Band 2: 2열 레이아웃 (설정 | 미리보기+알람) */}
-          <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
-            {/* 왼쪽: 타입별 설정 */}
-            <div className="flex-[3] flex flex-col overflow-hidden border rounded p-1.5">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-0.5">
-                상태 판단 패턴
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <SystemEquipmentConfig
-                  config={equipmentConfig}
-                  onChange={setEquipmentConfig}
-                  layout="horizontal"
-                  disabled={!isEditMode}
+          {!isSensor && (
+            <DeviceSection
+              title="클라이언트 연결"
+              description="자동 탐지하거나 통신 정보를 직접 입력합니다."
+            >
+              <div className="device-linked-client">
+                <SoundClientSection
+                  mode={registrationMode}
+                  onModeChange={setRegistrationMode}
+                  client={equipmentConfig.client}
+                  currentSystemId={systemId}
+                  isEditMode={isEditMode}
+                  onSelect={handleClientSelect}
+                  onUnlink={handleClientUnlink}
+                  allowedKinds={['sound', 'ping']}
                 />
               </div>
-            </div>
-
-            {/* 오른쪽: 데이터 미리보기 + 알람 로그 */}
-            <SystemPreviewAlarmSidebar
-              port={port}
-              wsConnected={wsConnected}
-              previewMessages={previewMessages}
-              alarms={system.alarms}
-              onAcknowledge={handleAcknowledge}
-              pingSystemId={equipmentConfig.client?.kind === "ping" ? systemId : null}
-            />
-          </div>
-
-          {/* Band 3: 음성 알림 설정 (편집 모드에서만) - 인라인 */}
-          {isEditMode && (
-            <div className="shrink-0">
-              <SystemAudioConfig config={audioConfig} onChange={setAudioConfig} compact />
-            </div>
+            </DeviceSection>
           )}
-        </div>
-      )}
-    </div>
+        </>
+      }
+      settings={
+        <>
+          {isSensor ? (
+            <DeviceSection
+              title="온도 · 습도 알람 기준"
+              description="정상 범위를 벗어나는 조건을 각각 설정합니다."
+            >
+              <SystemMetricsConfig
+                config={metricsConfig}
+                onChange={setMetricsConfig}
+                typeLabel="온습도"
+                systemType="sensor"
+                layout="editor"
+                fixedSensorMode
+                disabled={!isEditMode}
+              />
+            </DeviceSection>
+          ) : (
+            <>
+              <DeviceSection
+                title="상태 판단 · 알람 기준"
+                description="수신 메시지를 비교할 정상·심각 패턴을 지정합니다."
+              >
+                <div className="device-equipment">
+                  <SystemEquipmentConfig
+                    config={equipmentConfig}
+                    onChange={setEquipmentConfig}
+                    layout="horizontal"
+                    disabled={!isEditMode}
+                  />
+                </div>
+              </DeviceSection>
+              {isEditMode && (
+                <DeviceAdvanced title="음성 알림 설정">
+                  <div className="device-audio">
+                    <SystemAudioConfig
+                      config={audioConfig}
+                      onChange={setAudioConfig}
+                    />
+                  </div>
+                </DeviceAdvanced>
+              )}
+            </>
+          )}
+        </>
+      }
+      preview={
+        <>
+          <DeviceDataPreview
+            kind={isSensor ? 'sensor' : 'equipment'}
+            port={port}
+            connected={wsConnected}
+            messages={previewMessages}
+            metrics={system.metrics}
+            getConditionsForItem={getConditionsForItem}
+          />
+          <DeviceAlarmLog
+            alarms={system.alarms}
+            onAcknowledge={handleAcknowledge}
+          />
+          {equipmentConfig.client?.kind === 'ping' && (
+            <DeviceSection title="Ping 장애 · 복구 내역">
+              <PingEventLog systemId={systemId} />
+            </DeviceSection>
+          )}
+        </>
+      }
+    />
   )
 }

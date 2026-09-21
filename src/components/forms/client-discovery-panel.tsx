@@ -165,10 +165,10 @@ export function ClientDiscoveryPanel({
                       {client.name || <span className="text-muted-foreground">(미등록)</span>}
                       <div className="text-[10px] font-normal text-muted-foreground">{clientKindName(client.kind)}</div>
                     </td>
-                    <td className="py-1 pr-2">{client.host}</td>
-                    <td className="py-1 pr-2 font-mono">{client.ip}</td>
-                    <td className="py-1 pr-2 font-mono text-muted-foreground">{client.mac || "-"}</td>
-                    <td className="py-1 pr-2">
+                    <td data-label="PC 이름" className="py-1 pr-2">{client.host}</td>
+                    <td data-label="IP" className="py-1 pr-2 font-mono">{client.ip}</td>
+                    <td data-label="MAC" className="py-1 pr-2 font-mono text-muted-foreground">{client.mac || "-"}</td>
+                    <td data-label="상태" className="py-1 pr-2">
                       <span className="inline-flex items-center gap-1">
                         {client.kind === 'ups' ? (
                           (client.units ?? []).map(u => (
@@ -192,7 +192,7 @@ export function ClientDiscoveryPanel({
                         )}</>}
                       </span>
                     </td>
-                    <td className="py-1 pr-2">
+                    <td data-label="등록" className="py-1 pr-2">
                       {client.kind === 'ups' ? (
                         <span className="inline-flex flex-wrap items-center gap-1">
                           {upsCards.map(unit => {
