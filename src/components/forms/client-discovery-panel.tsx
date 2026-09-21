@@ -1,10 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, RefreshCw, MonitorCheck, Check, Volume2, VolumeX } from "lucide-react"
+import { Loader2, RefreshCw, MonitorCheck, Check } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { clientDiscoveryRows } from "@/lib/client-discovery-rows"
+import './client-discovery-panel.css'
 import { cn } from "@/lib/utils"
 import type { DiscoveredClient } from "@/types"
 import { CLIENT_KIND_PORTS, clientKindName, clientKindOf, upsUnitLabel, type ClientKind } from "@/lib/client-kinds"
@@ -64,6 +66,9 @@ export function ClientDiscoveryPanel({
     () => allClients && allowedKinds ? allClients.filter(c => allowedKinds.includes(clientKindOf(c.kind))) : allClients,
     [allClients, allowedKinds],
   )
+  const rows = React.useMemo(() => clientDiscoveryRows(clients ?? []), [clients])
+  const [expandedRow, setExpandedRow] = React.useState<string | null>(null)
+  const panelId = React.useId()
   const [suggestedPort, setSuggestedPort] = React.useState<number | null>(null)
   const [scanning, setScanning] = React.useState(false)
   const [identifying, setIdentifying] = React.useState<string | null>(null)
@@ -129,163 +134,68 @@ export function ClientDiscoveryPanel({
       )}
 
       {clients && clients.length > 0 && (
-        <div className="max-h-44 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="text-[10px] text-muted-foreground">
-              <tr className="text-left">
-                <th className="py-0.5 pr-2 font-normal">장비명 / 프로그램</th>
-                <th className="py-0.5 pr-2 font-normal">PC 이름</th>
-                <th className="py-0.5 pr-2 font-normal">IP</th>
-                <th className="py-0.5 pr-2 font-normal">MAC</th>
-                <th className="py-0.5 pr-2 font-normal">상태</th>
-                <th className="py-0.5 pr-2 font-normal">등록</th>
-                <th className="py-0.5 font-normal text-right">동작</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.map((client) => {
-                const isSelected = selectedClientId === client.id
-                const boundElsewhere =
-                  client.registered !== null && client.registered.systemId !== currentSystemId
-                // One UPS PC feeds two facilities: offer each card separately and only
-                // block the card another facility already receives.
-                const reportedCards = (client.units ?? []).map(u => u.unit).filter((u): u is 1 | 2 => u === 1 || u === 2)
-                const upsCards: readonly (1 | 2)[] = client.kind !== 'ups' ? [] : reportedCards.length ? reportedCards : [1, 2]
-                const cardRegistration = (unit: 1 | 2) => client.registeredUnits?.find(r => r.unit === unit) ?? null
-                const cardBoundElsewhere = (unit: 1 | 2) => {
-                  const registration = cardRegistration(unit)
-                  return registration !== null && registration.systemId !== currentSystemId
-                }
-                return (
-                  <tr
-                    key={client.id}
-                    className={cn("border-t", isSelected && "bg-primary/10")}
-                  >
-                    <td className="py-1 pr-2 font-medium">
-                      {client.name || <span className="text-muted-foreground">(미등록)</span>}
-                      <div className="text-[10px] font-normal text-muted-foreground">{clientKindName(client.kind)}</div>
-                    </td>
-                    <td data-label="PC 이름" className="py-1 pr-2">{client.host}</td>
-                    <td data-label="IP" className="py-1 pr-2 font-mono">{client.ip}</td>
-                    <td data-label="MAC" className="py-1 pr-2 font-mono text-muted-foreground">{client.mac || "-"}</td>
-                    <td data-label="상태" className="py-1 pr-2">
-                      <span className="inline-flex items-center gap-1">
-                        {client.kind === 'ups' ? (
-                          (client.units ?? []).map(u => (
-                            <Badge key={u.unit} variant={u.alarm ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[10px]" title={u.target ? `서버 ${u.target.ip}:${u.target.port}` : '서버 미연결'}>
-                              UPS#{u.unit} {!client.running ? '정지' : u.alarm === null ? '대기' : u.alarm ? '경보' : '정상'}
-                            </Badge>
-                          ))
-                        ) : client.kind === 'ping' ? (
-                          <Badge variant={client.alarm ? 'destructive' : 'secondary'} className="px-1.5 py-0 text-[10px]">
-                            {!client.running ? '정지' : client.alarm === null ? '대기' : client.alarm ? '장애' : '정상'}
-                          </Badge>
-                        ) : <>{client.muted ? (
-                          <VolumeX className="h-3 w-3 text-amber-500" />
-                        ) : (
-                          <Volume2 className="h-3 w-3 text-muted-foreground" />
-                        )}
-                        {client.sound ? (
-                          <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">소리</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">무음</Badge>
-                        )}</>}
-                      </span>
-                    </td>
-                    <td data-label="등록" className="py-1 pr-2">
-                      {client.kind === 'ups' ? (
-                        <span className="inline-flex flex-wrap items-center gap-1">
-                          {upsCards.map(unit => {
-                            const registration = cardRegistration(unit)
-                            const elsewhere = cardBoundElsewhere(unit)
-                            return registration ? (
-                              <Badge
-                                key={unit}
-                                variant={elsewhere ? "outline" : "secondary"}
-                                className="px-1.5 py-0 text-[10px]"
-                                title={registration.systemName}
-                              >
-                                {upsUnitLabel(unit)} {elsewhere ? `등록됨: ${registration.systemName}` : "이 시설"}
-                              </Badge>
-                            ) : (
-                              <span key={unit} className="text-muted-foreground">{upsUnitLabel(unit)} 미등록</span>
-                            )
-                          })}
-                        </span>
-                      ) : client.registered ? (
-                        <Badge
-                          variant={boundElsewhere ? "outline" : "secondary"}
-                          className="px-1.5 py-0 text-[10px]"
-                          title={client.registered.systemName}
-                        >
-                          {boundElsewhere ? `등록됨: ${client.registered.systemName}` : "이 시설"}
-                        </Badge>
-                      ) : client.target ? (
-                        <span className="text-muted-foreground" title={`${client.target.ip}:${client.target.port}`}>
-                          다른 서버
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">미등록</span>
-                      )}
-                    </td>
-                    <td className="py-1 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 gap-1 px-2 text-xs"
-                          onClick={() => void handleIdentify(client)}
-                          disabled={identifying !== null}
-                          title="해당 PC 화면에 확인 알림을 띄웁니다"
-                        >
-                          {identifying === client.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <MonitorCheck className="h-3 w-3" />
-                          )}
-                          PC 확인
-                        </Button>
-                        {client.kind === 'ups' ? upsCards.map(unit => {
-                          const cardSelected = isSelected && selectedUnit === unit
-                          const elsewhere = cardBoundElsewhere(unit)
-                          return (
-                            <Button
-                              key={unit}
-                              type="button"
-                              size="sm"
-                              variant={cardSelected ? "secondary" : "default"}
-                              className="h-6 gap-1 px-2 text-xs"
-                              onClick={() => onSelect(client, suggestedPort, unit)}
-                              disabled={disabled || cardSelected || elsewhere}
-                              title={elsewhere ? `${upsUnitLabel(unit)}은(는) 이미 다른 시설에 등록되어 있습니다` : undefined}
-                            >
-                              <Check className="h-3 w-3" />
-                              {cardSelected ? `${upsUnitLabel(unit)} 선택됨` : `${upsUnitLabel(unit)} 선택`}
-                            </Button>
-                          )
-                        }) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isSelected ? "secondary" : "default"}
-                            className="h-6 gap-1 px-2 text-xs"
-                            onClick={() => onSelect(client, suggestedPort)}
-                            disabled={disabled || isSelected || boundElsewhere}
-                            title={boundElsewhere ? "이미 다른 시설에 등록된 PC입니다" : undefined}
-                          >
-                            <Check className="h-3 w-3" />
-                            {isSelected ? "선택됨" : "선택"}
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="client-discovery-list" aria-label="탐지된 장비">
+          {rows.map(({ key, client, unit, registration }) => {
+            const isSelected = selectedClientId === client.id && (unit === undefined || selectedUnit === unit)
+            const boundElsewhere = !!registration && registration.systemId !== currentSystemId
+            const expanded = expandedRow === key
+            const detailsId = panelId + '-' + encodeURIComponent(key)
+            const name = client.name || client.host || client.ip
+            const label = unit === undefined ? name : name + ' ' + upsUnitLabel(unit)
+            const reportedUnit = client.units?.find(item => item.unit === unit)
+            const target = unit === undefined ? client.target : reportedUnit?.target
+            const alarm = unit === undefined ? client.alarm : reportedUnit?.alarm
+            const status = client.kind === 'ups' || client.kind === 'ping'
+              ? client.running === false ? '정지' : alarm == null ? '대기' : alarm ? '경보' : '정상'
+              : client.sound ? '소리 감지' : '무음'
+            return (
+              <li key={key} className={cn("client-discovery-item", isSelected && "bg-primary/10")}>
+                <div className="client-discovery-summary">
+                  <div className="client-discovery-name" title={label}>
+                    <span>{name}</span>
+                    {unit !== undefined && <strong>{upsUnitLabel(unit)}</strong>}
+                  </div>
+                  <span className="client-discovery-registration" data-available={!registration}>
+                    {registration ? registration.systemId === currentSystemId ? '이 시설' : '등록됨' : '미등록'}
+                  </span>
+                  <Button type="button" variant="outline" size="sm"
+                    aria-label={label + ' 상세'} aria-expanded={expanded} aria-controls={detailsId}
+                    onClick={() => setExpandedRow(expanded ? null : key)}>
+                    {expanded ? '접기' : '상세'}
+                  </Button>
+                  <Button type="button" size="sm" variant={isSelected ? 'secondary' : 'default'}
+                    aria-label={label + (isSelected ? ' 선택됨' : ' 선택')}
+                    onClick={() => onSelect(client, suggestedPort, unit)}
+                    disabled={disabled || isSelected || boundElsewhere}
+                    title={boundElsewhere ? registration.systemName + '에 등록되어 있습니다' : undefined}>
+                    {isSelected && <Check className="h-3 w-3" />}
+                    {isSelected ? '선택됨' : '선택'}
+                  </Button>
+                </div>
+                {expanded && (
+                  <div id={detailsId} className="client-discovery-details" role="region" aria-label={label + ' 상세 정보'}>
+                    <dl>
+                      <dt>장비명</dt><dd>{label}</dd>
+                      <dt>프로그램</dt><dd>{clientKindName(client.kind)}{client.ver && ' · v' + client.ver}</dd>
+                      <dt>PC 이름</dt><dd>{client.host || '—'}</dd>
+                      <dt>IP 주소</dt><dd>{client.ip}</dd>
+                      <dt>MAC 주소</dt><dd>{client.mac || '—'}</dd>
+                      <dt>상태</dt><dd><Badge variant={alarm || client.sound ? 'destructive' : 'secondary'}>{status}</Badge>{client.kind !== 'ups' && client.kind !== 'ping' && client.muted && ' · 음소거'}</dd>
+                      <dt>등록 시설</dt><dd>{registration?.systemName || '미등록'}</dd>
+                      <dt>전송 대상</dt><dd>{target ? target.ip + ':' + target.port : '서버 미연결'}</dd>
+                    </dl>
+                    <Button type="button" variant="outline" size="sm"
+                      onClick={() => void handleIdentify(client)} disabled={identifying !== null || disabled}
+                      title="해당 PC 화면에 확인 알림을 띄웁니다">
+                      {identifying === client.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <MonitorCheck className="h-3 w-3" />}
+                      PC 확인
+                    </Button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       )}
     </div>
   )
