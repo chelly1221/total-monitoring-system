@@ -1,6 +1,6 @@
 [package]
 name = "tms-soundsense"
-version = "3.2.0"
+version = "3.2.1"
 description = "TMS SoundSense - sound detection, auto-unmute, LAN discovery and file transfer client"
 authors = ["chelly1221"]
 edition = "2021"
