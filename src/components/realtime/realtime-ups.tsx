@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LineChart } from '@/components/charts/line-chart'
 import { PlusCircle } from 'lucide-react'
 import Link from 'next/link'
+import { useWindowHref } from "@/hooks/use-window-href"
 import { Button } from '@/components/ui/button'
 import type { MetricsConfig, DisplayItem, SystemStatus } from '@/types'
 import { insertGapMarkers, forwardFill } from '@/lib/chart-utils'
@@ -126,6 +127,7 @@ const chartCache: {
 }
 
 export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
+  const windowHref = useWindowHref()
   const { systems, lastUpdate } = useRealtime()
 
   const [chartsMap, setChartsMap] = useState<Map<string, MetricChartCache>>(() => chartCache.charts)
@@ -461,7 +463,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
           variant="ghost"
           className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md text-white hover:text-white"
         >
-          <Link href="/ups/new">
+          <Link href={windowHref("/ups/new")}>
             <PlusCircle className="h-5 w-5" />
           </Link>
         </Button>
@@ -490,7 +492,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const displayItems = config?.displayItems ?? []
                       return (
                         <SortableCard key={sys.id} id={sys.id} label={sys.name}>
-                        <Link href={`/ups/${sys.id}`} className="block">
+                        <Link href={windowHref(`/ups/${sys.id}`)} className="block">
                           {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
                         </SortableCard>
@@ -504,7 +506,7 @@ export function RealtimeUpsPanel({ upsSystemIds }: RealtimeUpsPanelProps) {
                       const displayItems = config?.displayItems ?? []
                       return (
                         <SortableCard key={sys.id} id={sys.id} label={sys.name}>
-                        <Link href={`/ups/${sys.id}`} className="block">
+                        <Link href={windowHref(`/ups/${sys.id}`)} className="block">
                           {renderSystemCard(sys, status, displayItems, systemColorMap.get(sys.id) ?? 0)}
                         </Link>
                         </SortableCard>

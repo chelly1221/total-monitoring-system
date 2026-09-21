@@ -4,6 +4,7 @@ import * as React from "react"
 import { useRawPreview } from "@/hooks/use-raw-preview"
 import { Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useWindowHref } from "@/hooks/use-window-href"
 
 import { Loader2, Activity, Thermometer, ArrowLeft, Check, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -74,6 +75,7 @@ export default function SystemNewPage() {
 
 function SystemNewForm() {
   const router = useRouter()
+  const windowHref = useWindowHref()
   const searchParams = useSearchParams()
   const typeParam = searchParams.get('type')
 
@@ -180,7 +182,7 @@ function SystemNewForm() {
         }
       }
 
-      router.push(`/systems/${newSystem.id}`)
+      router.push(windowHref(`/systems/${newSystem.id}`))
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류가 발생했습니다")

@@ -7,6 +7,7 @@ import { CircularGauge } from '@/components/gauges/circular-gauge'
 import { LineChart } from '@/components/charts/line-chart'
 import { Thermometer, Droplets } from 'lucide-react'
 import Link from 'next/link'
+import { useWindowHref } from "@/hooks/use-window-href"
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -76,6 +77,7 @@ const chartCache = {
 export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperaturePanelProps) {
   const { systems, lastUpdate } = useRealtime()
   const router = useRouter()
+  const windowHref = useWindowHref()
 
   const [tempChartData, setTempChartData] = useState<ChartDataPoint[]>(() => chartCache.tempChartData)
   const [humidityChartData, setHumidityChartData] = useState<ChartDataPoint[]>(() => chartCache.humidityChartData)
@@ -323,7 +325,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
             variant="ghost"
             className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md text-white hover:text-white"
           >
-            <Link href="/systems/new?type=sensor">
+            <Link href={windowHref("/systems/new?type=sensor")}>
               <PlusCircle className="h-5 w-5" />
             </Link>
           </Button>
@@ -374,7 +376,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
 
             return (
               <SortableCard key={sys.id} id={sys.id} label={sys.name}>
-              <Link href={`/systems/${sys.id}`} className="block min-h-0">
+              <Link href={windowHref(`/systems/${sys.id}`)} className="block min-h-0">
               <Card className="cursor-pointer transition-colors hover:border-primary/50 py-0 gap-0 h-full relative">
                 <div className="absolute left-1.5 top-1.5 h-2.5 w-2.5 rounded-full z-10" style={{ backgroundColor: SENSOR_COLORS[sensorIndex % SENSOR_COLORS.length] }} />
                 {isCompact ? (
@@ -570,7 +572,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
         {chartOrder.items.map(item => item.id === 'temperature' ? (
         <SortableCard key={item.id} id={item.id} label="온도 그래프" className="flex-1">
         {/* Temperature chart */}
-        <Card className="flex flex-1 flex-col overflow-hidden py-0 gap-0 cursor-pointer transition-colors hover:border-primary/50" onClick={() => router.push('/temperature/history?metric=temperature')}>
+        <Card className="flex flex-1 flex-col overflow-hidden py-0 gap-0 cursor-pointer transition-colors hover:border-primary/50" onClick={() => router.push(windowHref('/temperature/history?metric=temperature'))}>
           <CardHeader className="flex-none px-2 py-1.5">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Thermometer className="h-4 w-4 text-[#f87171]" />
@@ -605,7 +607,7 @@ export function RealtimeTemperaturePanel({ sensorSystemIds }: RealtimeTemperatur
         <SortableCard key={item.id} id={item.id} label="습도 그래프" className="flex-1">
 
         {/* Humidity chart */}
-        <Card className="flex flex-1 flex-col overflow-hidden py-0 gap-0 cursor-pointer transition-colors hover:border-primary/50" onClick={() => router.push('/temperature/history?metric=humidity')}>
+        <Card className="flex flex-1 flex-col overflow-hidden py-0 gap-0 cursor-pointer transition-colors hover:border-primary/50" onClick={() => router.push(windowHref('/temperature/history?metric=humidity'))}>
           <CardHeader className="flex-none px-2 py-1.5">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Droplets className="h-4 w-4 text-[#60a5fa]" />

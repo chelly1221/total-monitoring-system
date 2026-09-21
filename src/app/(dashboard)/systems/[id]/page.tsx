@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRawPreview } from "@/hooks/use-raw-preview"
 import { useParams, useRouter } from "next/navigation"
+import { useWindowHref } from "@/hooks/use-window-href"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SystemEquipmentConfig } from "@/components/forms/system-equipment-config"
@@ -101,6 +102,7 @@ interface SystemWithRelations {
 
 export default function SystemDetailPage() {
   const router = useRouter()
+  const windowHref = useWindowHref()
   const params = useParams()
   const systemId = params.id as string
 
@@ -226,7 +228,7 @@ export default function SystemDetailPage() {
 
         // If UPS type, redirect to UPS page
         if (data.type === "ups") {
-          router.replace(`/ups/${systemId}`)
+          router.replace(windowHref(`/ups/${systemId}`))
           return
         }
 
@@ -271,7 +273,7 @@ export default function SystemDetailPage() {
     }
 
     fetchSystem()
-  }, [systemId, router])
+  }, [systemId, router, windowHref])
 
 
 

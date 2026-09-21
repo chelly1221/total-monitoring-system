@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useWindowHref } from "@/hooks/use-window-href"
 import Link from "next/link"
 import { Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -16,6 +17,7 @@ interface UpsActionsProps {
 
 export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsProps) {
   const router = useRouter()
+  const windowHref = useWindowHref()
   const [isEnabled, setIsEnabled] = React.useState(system.isEnabled !== false)
   const [toggling, setToggling] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
@@ -51,7 +53,7 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
         method: "DELETE",
       })
       if (response.ok) {
-        router.push("/ups")
+        router.push(windowHref("/ups"))
       }
     } finally {
       setDeleting(false)
@@ -76,7 +78,7 @@ export function UpsActions({ system, onEnabledChange, onEditClick }: UpsActionsP
           <Pencil className="h-4 w-4" />
         </Button>
       ) : (
-        <Link href={`/ups/${system.id}`}>
+        <Link href={windowHref(`/ups/${system.id}`)}>
           <Button variant="outline" size="icon" className="h-8 w-8">
             <Pencil className="h-4 w-4" />
           </Button>

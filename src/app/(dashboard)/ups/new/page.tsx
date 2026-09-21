@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRawPreview } from "@/hooks/use-raw-preview"
 import { useRouter } from "next/navigation"
+import { useWindowHref } from "@/hooks/use-window-href"
 
 import { Loader2, ArrowLeft, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,7 @@ const DEFAULT_METRICS_CONFIG: MetricsConfig = {
 
 export default function UpsNewPage() {
   const router = useRouter()
+  const windowHref = useWindowHref()
 
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -133,7 +135,7 @@ export default function UpsNewPage() {
         }
       }
 
-      router.push(`/ups/${newSystem.id}`)
+      router.push(windowHref(`/ups/${newSystem.id}`))
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류가 발생했습니다")
