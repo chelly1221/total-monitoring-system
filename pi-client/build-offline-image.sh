@@ -40,6 +40,9 @@ mount -t devpts devpts "$WORK/root/dev/pts"
 mount -t proc proc "$WORK/root/proc"
 mount -t sysfs sysfs "$WORK/root/sys"
 cp "$HERE/requirements.txt" "$WORK/root/tmp/tms-requirements.txt"
+mkdir -p "$WORK/root/tmp/tms-korean"
+cp -r "$HERE/assets" "$HERE/korean" "$WORK/root/tmp/tms-korean/"
+cp "$HERE/install-korean.sh" "$HERE/korean-session.sh" "$HERE/verify-korean.py" "$WORK/root/tmp/tms-korean/"
 chmod 1777 "$WORK/root/tmp"
 if [[ -f "$WORK/root/etc/apt/apt.conf.d/70debconf" ]]; then
   mv "$WORK/root/etc/apt/apt.conf.d/70debconf" "$WORK/root/tmp/tms-70debconf"
@@ -57,6 +60,7 @@ chroot "$WORK/root" /bin/bash -ec '
   /opt/tms-sensor/venv/bin/python -c "import lgpio; import importlib.metadata as m; print(m.version(\"adafruit-circuitpython-dht\"))"
   /opt/tms-sensor/venv/bin/python -c "import importlib.util as u; assert u.find_spec(\"RPi.GPIO\") is not None"
   /opt/tms-sensor/venv/bin/pip freeze > /opt/tms-sensor/dependencies.txt
+  bash /tmp/tms-korean/install-korean.sh
   apt-get clean
   passwd -l root
   if getent passwd dietpi >/dev/null; then passwd -l dietpi; fi
@@ -85,16 +89,19 @@ sed -i 's/$/ net.ifnames=0/' "$WORK/root/boot/firmware/cmdline.txt"
 mkdir -p "$WORK/root/boot/firmware/tms-sensor"
 cp "$HERE/tms_sensor.py" "$WORK/root/boot/firmware/tms-sensor/"
 printf '{"name":"TMS 센서","channels":["dht1","door1"],"network":{"mode":"dhcp"}}\n' > "$WORK/root/boot/firmware/tms-sensor/config.json"
-printf '{"format":"tms-offline-v1","model":"%s","version":"1.0.0","sourceSha256":"%s"}\n' "$MODEL" "$(sha256sum "$SOURCE" | cut -d' ' -f1)" > "$WORK/root/boot/firmware/tms-image.json"
+printf '{"format":"tms-offline-v1","model":"%s","version":"1.1.0","locale":"ko_KR.UTF-8","koreanInput":"fcitx5-hangul","sourceSha256":"%s"}\n' "$MODEL" "$(sha256sum "$SOURCE" | cut -d' ' -f1)" > "$WORK/root/boot/firmware/tms-image.json"
 # No source-host resolver, shared machine identity, or emulator in shipped cards.
 rm -f "$WORK/root/usr/sbin/policy-rc.d" "$WORK/root/usr/bin/qemu-aarch64-static" "$WORK/root/tmp/tms-requirements.txt"
+rm -r "$WORK/root/tmp/tms-korean"
 truncate -s 0 "$WORK/root/etc/machine-id"
 rm -f "$WORK/root/var/lib/dbus/machine-id"
 printf 'nameserver 127.0.0.1\n' > "$WORK/root/etc/resolv.conf"
 cp "$WORK/root/opt/tms-sensor/dependencies.txt" "${OUTPUT%.img.xz}-dependencies.txt"
+cp "$WORK/root/opt/tms-sensor/korean-dependencies.txt" "${OUTPUT%.img.xz}-korean-dependencies.txt"
 sync
 cleanup
 LOOP=
+bash "$HERE/check-korean-image.sh" "$WORK/image.img"
 mkdir -p "$(dirname "$OUTPUT")"
 xz -T2 -3 -c "$WORK/image.img" > "$OUTPUT.part"
 mv "$OUTPUT.part" "$OUTPUT"

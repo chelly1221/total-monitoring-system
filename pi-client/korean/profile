@@ -1,0 +1,15 @@
+[Groups/0]
+Name=기본
+Default Layout=kr-kr104
+DefaultIM=hangul
+
+[Groups/0/Items/0]
+Name=keyboard-kr-kr104
+Layout=
+
+[Groups/0/Items/1]
+Name=hangul
+Layout=
+
+[GroupOrder]
+0=기본

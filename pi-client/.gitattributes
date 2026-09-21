@@ -2,3 +2,4 @@
 *.py text eol=lf
 *.service text eol=lf
 *.txt text eol=lf
+korean/* text eol=lf
