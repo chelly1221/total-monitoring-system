@@ -1,0 +1,29 @@
+TMS 라즈베리파이 배선도 · Fritzing
+
+이 도면은 Fritzing 1.0.1의 Breadboard SVG 내보내기로 제작했습니다.
+This image was created with Fritzing (https://fritzing.org/).
+편집 가능한 .fzz 원본에 사용 부품과 이 출처 문서가 포함되어 있습니다.
+
+도면 및 포함된 부품 그래픽: Creative Commons Attribution-ShareAlike 3.0 Unported.
+https://creativecommons.org/licenses/by-sa/3.0/
+저작자 표시와 동일 조건으로 도면을 공유하거나 수정할 수 있습니다.
+이 조건은 배선도 자산에 적용되며 TMS 프로그램 전체의 라이선스를 변경하지 않습니다.
+
+Raspberry Pi 4B:
+Anudit Nagar; modified for 4B by Peter Van Epp (Apr 2020); updated by arnab.blue.
+Fritzing parts library, raspberry-pi-4B_1. 원본 부품을 변경하지 않고 사용했습니다.
+https://github.com/fritzing/fritzing-parts
+
+DHT22:
+John De Cristofaro for Adafruit Industries, based on RHT03 by Martha Maldonado.
+Fritzing parts library, DHT22 Humidity and Temperature Sensor (contrib).
+원본 센서 그래픽에 TMS에서 3핀 모듈 기판과 VCC / DATA / GND 단자를 추가했습니다.
+https://github.com/fritzing/fritzing-parts/blob/develop/contrib/DHT22_Humidity_and_Temperature_Sensor__5a66c01a9adead9b6c488a2653070fb3_C9.fzp
+
+MC-58 NC 접점·자석 사용자 부품 및 채널별 배치·배선: TMS, 2026.
+센서 외형은 연결 설명용이며 제조사의 기구 도면이나 PCB 제작용 풋프린트가 아닙니다.
+그림은 보드 윗면 기준이며 Raspberry Pi 3/4/5 공통 40핀 배선에 사용합니다.
+DHT22는 실제 모듈의 단자 인쇄를 확인하세요. MC-58 NC 접점은 무극성입니다.
+
+공식 라이브러리 이용조건:
+https://github.com/fritzing/fritzing-parts/blob/develop/LICENSE.txt

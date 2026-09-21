@@ -9,44 +9,11 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { PI_CHANNELS, type PiChannelId } from '@/lib/pi-sensor'
 import type { DiscoveredClient } from '@/types'
+import { PiWiringDiagram } from './pi-wiring-diagram'
 
 interface Disk { number: number; name: string; size: number; uniqueId: string; serial: string | null; bus: string }
 interface Progress { phase: string; done: number; total: number; message: string }
 const selectClass = 'h-9 rounded-md border border-input bg-background px-3 text-sm'
-const pinLabels = ['3.3V', '5V', 'GPIO2', '5V', 'GPIO3', 'GND', 'GPIO4', 'GPIO14', 'GND', 'GPIO15', 'GPIO17', 'GPIO18', 'GPIO27', 'GND', 'GPIO22', 'GPIO23', '3.3V', 'GPIO24', 'GPIO10', 'GND', 'GPIO9', 'GPIO25', 'GPIO11', 'GPIO8', 'GND', 'GPIO7', 'GPIO0', 'GPIO1', 'GPIO5', 'GND', 'GPIO6', 'GPIO12', 'GPIO13', 'GND', 'GPIO19', 'GPIO16', 'GPIO26', 'GPIO20', 'GND', 'GPIO21']
-
-function WiringDiagram({ channel }: { channel: typeof PI_CHANNELS[number] }) {
-  const dht = channel.kind === 'dht22'
-  return <svg viewBox="0 0 850 450" role="img" aria-label={`${channel.label}: GPIO ${channel.gpio}, 물리 핀 ${channel.pin} 배선도`} className="max-h-[48vh] w-full rounded-lg bg-[#101820]">
-    <text x="30" y="30" fill="#e2e8f0" fontSize="16">라즈베리파이 3 / 4 / 5 · 40핀 GPIO</text>
-    <text x="30" y="53" fill="#94a3b8" fontSize="12">핀 1 표식 기준 · 보드 윗면에서 본 배열</text>
-    <rect x="125" y="65" width="112" height="366" rx="10" fill="#19382f" stroke="#3d7564" />
-    {pinLabels.map((label, i) => {
-      const pin = i + 1, x = i % 2 ? 208 : 154, y = 80 + Math.floor(i / 2) * 17.5
-      const active = pin === channel.pin
-      const color = active ? '#38bdf8' : pin === 1 && dht ? '#f87171' : pin === 6 ? '#94a3b8' : '#456354'
-      return <g key={pin}>
-        <circle cx={x} cy={y} r={active ? 6 : 4.5} fill={color} stroke={active ? '#e0f2fe' : 'none'} />
-        <text x={i % 2 ? x + 14 : x - 14} y={y + 4} textAnchor={i % 2 ? 'start' : 'end'} fill={active ? '#7dd3fc' : '#cbd5e1'} fontSize="11">{i % 2 ? `${pin} · ${label}` : `${label} · ${pin}`}</text>
-      </g>
-    })}
-    <text x="400" y="85" fill="#f8fafc" fontSize="20">{channel.label} · {dht ? 'DHT22 3핀 모듈' : 'MC-58(NC) 접점'}</text>
-    <rect x="650" y="120" width="166" height={dht ? 200 : 145} rx="10" fill="#24313d" stroke="#64748b" />
-    {dht && <>
-      <path d="M450 150 H650" stroke="#f87171" strokeWidth="3" /><text x="400" y="136" fill="#fca5a5" fontSize="14">3.3V · 물리 1번</text><text x="665" y="155" fill="#fca5a5" fontSize="16">VCC / +</text>
-    </>}
-    <path d={`M450 ${dht ? 220 : 155} H650`} stroke="#38bdf8" strokeWidth="3" />
-    <text x="400" y={dht ? 204 : 139} fill="#7dd3fc" fontSize="14">GPIO{channel.gpio} · 물리 {channel.pin}번</text>
-    <text x="665" y={dht ? 225 : 160} fill="#7dd3fc" fontSize="16">{dht ? 'DATA / OUT / S' : '선 1'}</text>
-    <path d={`M450 ${dht ? 290 : 230} H650`} stroke="#94a3b8" strokeWidth="3" />
-    <text x="400" y={dht ? 274 : 214} fill="#cbd5e1" fontSize="14">GND · 물리 6번</text>
-    <text x="665" y={dht ? 295 : 235} fill="#cbd5e1" fontSize="16">{dht ? 'GND / −' : '선 2'}</text>
-    <text x="400" y="365" fill="#cbd5e1" fontSize="14">{dht ? '모듈의 인쇄된 핀 이름을 확인하세요.' : '무극성 접점 · 내부 풀업 사용'}</text>
-    <text x="400" y="390" fill="#fbbf24" fontSize="13">{dht ? '모듈마다 핀 순서가 다릅니다. GPIO에 5V 금지.' : '기본: 접점 연결(LOW)=닫힘, 분리(HIGH)=열림'}</text>
-    <text x="400" y="415" fill="#94a3b8" fontSize="12">{dht ? '풀업이 없는 모듈: DATA–3.3V 사이 4.7~10kΩ' : '분리형 자석은 배선하지 않습니다. 외부 전압 금지.'}</text>
-  </svg>
-}
-
 export function PiSensorDialog() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'wiring' | 'install' | 'discover'>('wiring')
@@ -136,13 +103,13 @@ export function PiSensorDialog() {
     <DialogTrigger asChild><Button variant="ghost" size="icon" title="라즈베리파이 센서 · 배선 및 SD 설치" aria-label="라즈베리파이 센서"><CircuitBoard className="h-5 w-5" /></Button></DialogTrigger>
     <DialogContent className="flex max-h-[90vh] flex-col gap-[14px] p-[20px] text-[15px] sm:max-w-[1060px] [&_p]:text-[14px] [&_label]:text-[14px] [&_button]:h-[36px] [&_button]:text-[14px] [&_input]:text-[14px] [&_input:not([type=checkbox])]:h-[36px] [&_select]:h-[36px] [&_select]:text-[14px] [&_table]:text-[14px] [&_.text-sm]:text-[14px] [&_.text-xs]:text-[12px]" showCloseButton={!busy && !registering} style={{ fontFamily: 'var(--font-pretendard), sans-serif' }}>
       <DialogHeader><DialogTitle className="flex items-center gap-2 text-[22px]"><CircuitBoard className="size-6 text-emerald-400" />라즈베리파이 센서</DialogTitle><DialogDescription>채널 배선 → 폐쇄망용 SD 카드 설치 → 자동탐지 및 시설 등록</DialogDescription></DialogHeader>
-      <div className="flex gap-2 border-b pb-3" role="tablist" aria-label="라즈베리파이 관리">
+      <div className="flex flex-wrap gap-2 border-b pb-3" role="tablist" aria-label="라즈베리파이 관리">
         {([{ id: 'wiring', label: '입력 배선도', Icon: Cable }, { id: 'install', label: 'SD 카드 설치', Icon: CardSim }, { id: 'discover', label: '자동탐지 · 등록', Icon: Search }] as const).map(({ id, label, Icon }) => <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? 'secondary' : 'ghost'} disabled={busy || !!registering} onClick={() => { setTab(id); setError('') }}><Icon className="mr-2 size-4" />{label}</Button>)}
       </div>
       <div className="min-h-0 overflow-y-auto pr-1" role="tabpanel">
         {tab === 'wiring' && <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-2">{PI_CHANNELS.map(c => <Button key={c.id} size="sm" variant={channel === c.id ? 'default' : 'outline'} onClick={() => setChannel(c.id)}>{c.label} · GPIO{c.gpio}</Button>)}</div>
-          <WiringDiagram channel={PI_CHANNELS.find(c => c.id === channel)!} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{PI_CHANNELS.map(c => <Button key={c.id} size="sm" aria-pressed={channel === c.id} variant={channel === c.id ? 'default' : 'outline'} onClick={() => setChannel(c.id)}>{c.label} · GPIO{c.gpio}</Button>)}</div>
+          <PiWiringDiagram key={channel} channel={PI_CHANNELS.find(c => c.id === channel)!} />
           <p className="text-sm text-muted-foreground">전원을 끈 상태에서 연결하세요. 3.3V와 GND는 단자대로 분배할 수 있습니다. 기본 4개 온습도 채널·4개 개폐 채널 중 실제 연결한 채널만 설치 시 선택합니다. 배선 길이는 짧게 유지하세요.</p>
         </div>}
         {tab === 'install' && <div className="space-y-5">

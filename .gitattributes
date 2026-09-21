@@ -1,0 +1,5 @@
+# Preserve the exact imported part and Fritzing export bytes on Windows.
+docs/wiring/fritzing/parts/* -text -whitespace
+public/pi-wiring/*.svg -text
+public/pi-wiring/*.fzz binary
+public/pi-wiring/NOTICE.txt text eol=lf

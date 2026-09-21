@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<module moduleId="tms-mc58-nc" fritzingVersion="1.0.1">
+  <version>1</version>
+  <author>TMS</author>
+  <title>MC-58 NC two-wire magnetic contact</title>
+  <label>MC</label>
+  <date>2026-09-21</date>
+  <description>Two-wire NC contact with a separate unwired magnet. Illustrative enclosure; no dimensional or PCB footprint claim.</description>
+  <properties>
+    <property name="family">Magnetic contact</property>
+  </properties>
+  <views>
+    <breadboardView>
+      <layers image="breadboard/tms-mc58-nc.svg">
+        <layer layerId="breadboard" />
+      </layers>
+    </breadboardView>
+    <iconView>
+      <layers image="breadboard/tms-mc58-nc.svg">
+        <layer layerId="icon" />
+      </layers>
+    </iconView>
+  </views>
+  <connectors>
+    <connector id="connector0" name="NC lead 1" type="male">
+      <description>Dry contact, no polarity</description>
+      <views>
+        <breadboardView>
+          <p svgId="connector0pin" layer="breadboard" />
+        </breadboardView>
+      </views>
+    </connector>
+    <connector id="connector1" name="NC lead 2" type="male">
+      <description>Dry contact, no polarity</description>
+      <views>
+        <breadboardView>
+          <p svgId="connector1pin" layer="breadboard" />
+        </breadboardView>
+      </views>
+    </connector>
+  </connectors>
+</module>
