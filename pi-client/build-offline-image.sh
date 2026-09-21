@@ -61,6 +61,9 @@ chroot "$WORK/root" /bin/bash -ec '
   /opt/tms-sensor/venv/bin/python -c "import importlib.util as u; assert u.find_spec(\"RPi.GPIO\") is not None"
   /opt/tms-sensor/venv/bin/pip freeze > /opt/tms-sensor/dependencies.txt
   bash /tmp/tms-korean/install-korean.sh
+  apt-get install -y --no-install-recommends python3-pyside6.qtwidgets python3-pyside6.qtsvg python3-pyside6.qttest qt6-qpa-plugins xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev xinit xauth x11-xserver-utils x11-xkb-utils alsa-utils
+  apt-get purge -y build-essential python3-dev python3.13-dev libpython3-dev libpython3.13-dev gcc g++ gcc-14 g++-14
+  apt-get autoremove -y
   apt-get clean
   passwd -l root
   if getent passwd dietpi >/dev/null; then passwd -l dietpi; fi
@@ -69,6 +72,7 @@ if [[ -f "$WORK/root/tmp/tms-70debconf" ]]; then
   mv "$WORK/root/tmp/tms-70debconf" "$WORK/root/etc/apt/apt.conf.d/70debconf"
 fi
 install -m 755 "$HERE/offline_boot.py" "$WORK/root/usr/local/lib/tms-offline-boot.py"
+bash "$HERE/install-display.sh" "$WORK/root"
 install -m 644 "$HERE/tms-sensor-setup.service" "$HERE/tms-sensor.service" "$WORK/root/etc/systemd/system/"
 mkdir -p "$WORK/root/etc/systemd/system/networking.service.d"
 printf '[Unit]\nRequires=tms-sensor-setup.service\nAfter=tms-sensor-setup.service\n' > "$WORK/root/etc/systemd/system/networking.service.d/tms.conf"
@@ -88,8 +92,9 @@ sed -i 's/^CONFIG_CHECK_DIETPI_UPDATES=.*/CONFIG_CHECK_DIETPI_UPDATES=0/;s/^CONF
 sed -i 's/$/ net.ifnames=0/' "$WORK/root/boot/firmware/cmdline.txt"
 mkdir -p "$WORK/root/boot/firmware/tms-sensor"
 cp "$HERE/tms_sensor.py" "$WORK/root/boot/firmware/tms-sensor/"
+cp "$HERE/tms_sensor.py" "$WORK/root/opt/tms-sensor/"
 printf '{"name":"TMS 센서","channels":["dht1","door1"],"network":{"mode":"dhcp"}}\n' > "$WORK/root/boot/firmware/tms-sensor/config.json"
-printf '{"format":"tms-offline-v1","model":"%s","version":"1.1.0","locale":"ko_KR.UTF-8","koreanInput":"fcitx5-hangul","sourceSha256":"%s"}\n' "$MODEL" "$(sha256sum "$SOURCE" | cut -d' ' -f1)" > "$WORK/root/boot/firmware/tms-image.json"
+printf '{"format":"tms-offline-v1","model":"%s","version":"2.0.0","gui":"qt-native","locale":"ko_KR.UTF-8","koreanInput":"fcitx5-hangul","sourceSha256":"%s"}\n' "$MODEL" "$(sha256sum "$SOURCE" | cut -d' ' -f1)" > "$WORK/root/boot/firmware/tms-image.json"
 # No source-host resolver, shared machine identity, or emulator in shipped cards.
 rm -f "$WORK/root/usr/sbin/policy-rc.d" "$WORK/root/usr/bin/qemu-aarch64-static" "$WORK/root/tmp/tms-requirements.txt"
 rm -r "$WORK/root/tmp/tms-korean"
@@ -99,6 +104,8 @@ printf 'nameserver 127.0.0.1\n' > "$WORK/root/etc/resolv.conf"
 cp "$WORK/root/opt/tms-sensor/dependencies.txt" "${OUTPUT%.img.xz}-dependencies.txt"
 cp "$WORK/root/opt/tms-sensor/korean-dependencies.txt" "${OUTPUT%.img.xz}-korean-dependencies.txt"
 sync
+# Discard free blocks so removed build tools and package archives are not shipped.
+fstrim "$WORK/root"
 cleanup
 LOOP=
 bash "$HERE/check-korean-image.sh" "$WORK/image.img"

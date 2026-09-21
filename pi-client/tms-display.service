@@ -1,0 +1,28 @@
+[Unit]
+Description=TMS native touchscreen dashboard
+After=systemd-user-sessions.service tms-sensor.service
+Wants=tms-sensor.service
+Conflicts=getty@tty7.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tms-display-start
+Restart=always
+RestartSec=3
+StateDirectory=tms-display
+RuntimeDirectory=tms-display
+RuntimeDirectoryMode=0700
+WorkingDirectory=/var/lib/tms-display
+Environment=LANG=ko_KR.UTF-8
+Environment=HOME=/var/lib/tms-display
+TTYPath=/dev/tty7
+StandardInput=tty
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+UMask=0077
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

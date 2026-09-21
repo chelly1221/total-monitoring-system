@@ -48,4 +48,11 @@ unshare -n chroot "$ROOT" env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_
     exit 1
   '
 systemctl --root="$ROOT" is-enabled tms-sensor tms-sensor-setup
+if grep -q 'qt-native' "$ROOT/boot/firmware/tms-image.json"; then
+  systemctl --root="$ROOT" is-enabled tms-display
+  cmp "$HERE/tms_display.py" "$ROOT/opt/tms-sensor/tms_display.py"
+  mkdir "$ROOT/tmp/tms-tests"
+  cp "$HERE/"{test_sensor,test_runtime,test_display,offline_boot}.py "$ROOT/tmp/tms-tests/"
+  unshare -n chroot "$ROOT" env PYTHONPATH=/opt/tms-sensor PYTHONDONTWRITEBYTECODE=1 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s /tmp/tms-tests -v
+fi
 echo 'Network-isolated ARM Korean verification passed'
