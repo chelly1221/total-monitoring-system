@@ -336,9 +336,11 @@ export function DeviceDataPreview({
   return (
     <DeviceSection
       title="데이터 미리보기"
-      description="수신한 원문과 현재 측정값을 확인합니다."
+      description={kind === 'equipment'
+        ? '수신한 원문을 확인합니다.'
+        : '수신한 원문과 현재 측정값을 확인합니다.'}
     >
-      {metrics.length > 0 && (
+      {kind !== 'equipment' && metrics.length > 0 && (
         <div className="device-readings">
           {metrics.slice(0, 4).map((metric, index) => (
             <div key={`${metric.name}-${index}`}>
