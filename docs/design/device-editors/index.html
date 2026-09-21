@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UPS · 온습도 장비 설정 디자인 비교</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="review-toolbar">
+    <div class="review-title"><strong>장비 설정 디자인 비교</strong><span>시안 · 표시 값은 예시이며 서버에 저장되지 않습니다.</span></div>
+    <div class="review-controls">
+      <label>장비<select id="device"><option value="ups">UPS</option><option value="sensor">온습도</option></select></label>
+      <label>화면<select id="mode"><option value="edit">장비 수정</option><option value="new">새 장비 추가</option></select></label>
+      <div class="segmented" aria-label="디자인안"><button id="choose-a" aria-pressed="true">A안 · 한눈에 설정</button><button id="choose-b" aria-pressed="false">B안 · 집중해서 설정</button></div>
+    </div>
+  </header>
+  <div class="concept-description" id="concept-description"></div>
+  <div class="application">
+    <header class="app-header"><strong>통합알람감시체계</strong><span>장비 설정</span><div class="app-tools" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15 8q5 4 0 8m3-11q8 7 0 14"/></svg><svg viewBox="0 0 24 24"><path d="M5 20V4h14v16M3 20h18m-6-8h.01"/></svg><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg></div></header>
+    <main id="screen"></main>
+  </div>
+  <div id="notification" role="status"></div>
+  <script src="design.js"></script>
+</body>
+</html>
