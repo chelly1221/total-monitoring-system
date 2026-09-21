@@ -1,6 +1,6 @@
 'use client'
 
-import { Settings, Volume2, VolumeX, DoorClosed, DoorOpen, Loader2, Maximize2, Minimize2, X } from 'lucide-react'
+import { Settings, Volume2, VolumeX, DoorClosed, DoorOpen, Loader2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -331,20 +331,6 @@ export function HeaderWithStatus() {
             <Settings className="h-5 w-5" />
           </Button>
         </Link>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? '전체화면 해제' : '전체화면'}
-          aria-label={isFullscreen ? '전체화면 해제' : '전체화면'}
-        >
-          {isFullscreen ? (
-            <Minimize2 className="h-5 w-5" />
-          ) : (
-            <Maximize2 className="h-5 w-5" />
-          )}
-        </Button>
 
         {isTauri && (
           <Button
