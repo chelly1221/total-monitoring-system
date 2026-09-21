@@ -36,8 +36,10 @@ export function HeaderWithStatus() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const tauriWindowRef = useRef<TauriWindow | null>(null)
   const windowActionRef = useRef(false)
+  const restoreMaximizedRef = useRef(false)
 
   useEffect(() => {
+    if ('__TAURI_INTERNALS__' in window) return
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement)
     }
@@ -54,8 +56,8 @@ export function HeaderWithStatus() {
       const win = getCurrentWindow()
       tauriWindowRef.current = win
       const update = async () => {
-        const maximized = await win.isMaximized()
-        if (!disposed) setIsFullscreen(maximized)
+        const fullscreen = await win.isFullscreen()
+        if (!disposed) setIsFullscreen(fullscreen)
       }
       await update()
       const stop = await win.onResized(() => { void update().catch(() => {}) })
@@ -74,7 +76,7 @@ export function HeaderWithStatus() {
     windowActionRef.current = true
     try {
       await invoke('control_window', { action, x, y })
-      setIsFullscreen(await tauriWindowRef.current!.isMaximized())
+      setIsFullscreen(await tauriWindowRef.current!.isFullscreen())
     } catch {
       toast.error('창 크기 또는 위치를 변경하지 못했습니다')
     } finally {
@@ -83,7 +85,7 @@ export function HeaderWithStatus() {
   }
 
   const handleDragMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || !tauriWindowRef.current) return
+    if (e.button !== 0 || !tauriWindowRef.current || isFullscreen) return
     const target = e.target as HTMLElement
     // Portal menu clicks bubble through React but are outside the title bar.
     if (!e.currentTarget.contains(target) || target.closest('button, a, input, [role="menuitem"]')) return
@@ -180,16 +182,36 @@ export function HeaderWithStatus() {
     }
   }
 
-  const toggleFullscreen = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (tauriWindowRef.current) {
-      const rect = event.currentTarget.getBoundingClientRect()
-      await controlWindow('toggle', rect.left + rect.width / 2, rect.top + rect.height / 2)
-      return
-    }
-    if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen()
-    } else {
-      await document.exitFullscreen()
+  const toggleFullscreen = async () => {
+    if (windowActionRef.current) return
+    windowActionRef.current = true
+    try {
+      if ('__TAURI_INTERNALS__' in window) {
+        const win = tauriWindowRef.current ?? (await import('@tauri-apps/api/window')).getCurrentWindow()
+        tauriWindowRef.current = win
+        // Native fullscreen covers the monitor, including the Windows taskbar.
+        if (await win.isFullscreen()) {
+          await win.setFullscreen(false)
+          if (restoreMaximizedRef.current) {
+            // Reapply the work area; Windows can retain fullscreen bounds when maximized.
+            await win.unmaximize()
+            await win.maximize()
+          }
+          restoreMaximizedRef.current = false
+        } else {
+          restoreMaximizedRef.current = await win.isMaximized()
+          await win.setFullscreen(true)
+        }
+        setIsFullscreen(await win.isFullscreen())
+      } else if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      } else {
+        await document.exitFullscreen()
+      }
+    } catch {
+      toast.error('전체화면을 전환하지 못했습니다')
+    } finally {
+      windowActionRef.current = false
     }
   }
 
@@ -309,7 +331,8 @@ export function HeaderWithStatus() {
           variant="ghost"
           size="icon"
           onClick={toggleFullscreen}
-          title={isFullscreen ? '이전 크기로 복원' : '최대화'}
+          title={isFullscreen ? '전체화면 해제' : '전체화면'}
+          aria-label={isFullscreen ? '전체화면 해제' : '전체화면'}
         >
           {isFullscreen ? (
             <Minimize2 className="h-5 w-5" />
